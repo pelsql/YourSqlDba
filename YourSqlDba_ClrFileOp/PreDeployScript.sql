@@ -1,0 +1,6 @@
+﻿Print '*****************  Execution de PreDeployScript écrit par Maurice (voir explorateur de solution) ****************************'
+Print 'Rappel : Il faut que dans les propriétés de ce projet, sous l''onglet application que le framework cible soit 2.0 (SQL2005 et SQL2008)'
+Print ' faire select * from sys.dm_clr_properties pour voir le framework supporté par la version de SQL'
+Print ' pour plus d''info sur le sujet voir : http://software.intel.com/en-us/blogs/2009/10/16/sql-server-2008-sqlclr-net-framework-version/'
+Print ' select * from sys.dm_clr_appdomains; select * from sys.dm_clr_loaded_assemblies; select * from sys.dm_clr_tasks'
+Print '*****************  Fin de PreDeployScript écrit par Maurice (voir explorateur de solution) ****************************'
