@@ -1,7 +1,7 @@
 # **Project Description**
 T-SQL Database script that automate database maintenance using SQL Agent an SQL Server DatabaseMail. Perform all maintenance good practices (backups, optimizations and history log management).  Default setup does the job for most configurations, but it still remains very configurable.
 
-**Documentation** of **YourSqlDba** is now in online format.  **Click on the following link** to access **[YourSqlDba Online documentation](https://onedrive.live.com/redir?resid=12C385255443C4ED!7080&authkey=!AHNqPfcuRy83NzA&ithint=onenote%2c)**.
+**Documentation** of **YourSqlDba** is now in online format.  **Click on the following link** to access **[YourSqlDba Online documentation](https://pelsql.github.io/YourSqlDba/)**.
 
 This documentation is in OneNote's notebook web access format on OneDrive.  _For small form factor displays **use the top left icon** to display/hide document navigation_. Documentation can be browsed natively in many browsers and no software licence is required to browse documentation 
 
