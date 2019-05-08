@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -95,7 +95,7 @@
                                         <div class="content">
                                             <h4 class="callout-title">News</h4>
                                             <p>Disable Microsoft SQL Server Error Usage And Reporting, see why:
-                                                <a href="https://onedrive.live.com/redir?resid=12C385255443C4ED%217080&authkey=%21AHNqPfcuRy83NzA&page=View&wd=target%28Introduction%20and%20download.one%7Cc7014943-14b8-4c1d-9ae7-429002e0759c%2FWhy%20disabling%20SQL%20Server%20Telemetry%7Cb46b29a8-1493-4ae2-a7da-81e6acaa39a0%2F%29">Here</a>
+                                                <a href="#disabling-telemetry">Here</a>
                                             </p>
                                         </div>
                                         <!--//content-->
@@ -517,7 +517,7 @@ REG_DWORD,
                                                     </td>
                                                     <td>Manage auto-mounted network drive letters. Set also information
                                                         for master auto start procedure
-                                                        dbo.YourSqlDbaAutostart_ReconnectNetworkDrive. This procedure
+                                                        <strong>dbo.YourSqlDbaAutostart_ReconnectNetworkDrive</strong>. This procedure
                                                         associates UNC path to a drive letter. This is the only stored
                                                         procedure of YourSqlDba that is installed into master database.
                                                         Network drives are a way to shorten access to network location,
@@ -1692,8 +1692,7 @@ Sales%
                                              <li>When YourSqlDba puts a database in emergency mode it does it for the same reason that Sql Server would have done it.  It just detects faster integrity problems which increases a lot your chances of recovery of theses database and their data.  YourSqlDba detects internal inconsistencies by the use of the DBCC CheckDb T-SQL command.  This database can be recovered easily by using a full database backup of previous day onto which maintenance succeed without putting the database in emergency mode.  Then restore the database using this backup file and all log backups files in between.</li>
                                              <li>
                                                 <p>When a database is put offline by YourSqlDba, this is because you specified at initial setup of YourSqlDba to do it so if no successful backups of that database where done after the specified number of days specified.  Did you notice that you were no longer receiving YourSqlDba email alerts or are you just ignoring them?  Don't panic! Bring them online by right clicking on database to get contextual menu and find the option to bring it online. A faster way to do it if you have many is to run</p>
-                                                <p><a href="#BringBackOnlineAllBdInEmergencyOrOffline">Maint.BringBackOnlineAllBdInEmergencyOrOffline</a>. Next find out why it happened by displaying backup errors with Maint.ShowHistoryErrors.  Solve the problem (most often a lack of backup space, or an inccessible or lack of privileges to backup destination), and once ok performs Maint.SaveDbOnNewFileSet. Last find out why email messages alert from YourSqlDba doesn't reach you. Check anti-spam, diagnose database mail with</p>
-                                                <p><a href="#DiagDbMail">Maint.DiagDbMail</a>.</p>
+                                                <p><a href="#BringBackOnlineAllBdInEmergencyOrOffline">Maint.BringBackOnlineAllBdInEmergencyOrOffline</a>. Next find out why it happened by displaying backup errors with <a href="#ShowHistoryErrors">Maint.ShowHistoryErrors</a>.  Solve the problem (most often a lack of backup space, or an inccessible or lack of privileges to backup destination), and once ok performs <a href="#SaveDbOnNewFileSet">Maint.SaveDbOnNewFileSet</a>. Last find out why email messages alert from YourSqlDba doesn't reach you. Check anti-spam, diagnose database mail with <a href="#DiagDbMail">Maint.DiagDbMail</a>.</p>
                                              </li>
                                           </ol>
                                       </li>
@@ -2032,6 +2031,7 @@ Sales%
                                         <div class="content">
                                             <h4 class="callout-title">Purpose</h4>
                                             <p>Delete old backup files.</p>
+                                            <p>This procedure is usually executed from a global maintenance job in SQL Server Agent, but it can be executed alone in its own job in SQL Server Agent, or in a SQL Server Management Studio query window.</p>
                                         </div>
                                         <!--//content-->
                                     </div>
@@ -2065,7 +2065,6 @@ Sales%
                                                     <td>
                                                       <p>Full path of the backup directory. <strong>Mandatory</strong>.</p>
                                                       <p>A UNC path is allowed.</p>
-                                                      <p>A UNC path is allowed.</p>
                                                       <p>Example A : <code>'G:\Sql\Backups'</code></p>
                                                       <p>Example B : <code>'\\Sql\Backups'</code></p>
                                                       <p><code>(NVarchar(512))</code></p>
@@ -2086,6 +2085,14 @@ Sales%
                                                       <p>This parameter permits the deletion of backup files for databases that don't exist anymore in the SQL server. That could happen for a test database, taken in backup, deleted after a test, and no more selected by @incDb or @excDb parameters.</p>
                                                       <p>NULL = no cleanup (default value).</p>
                                                       <p><code>(int)</code></p>
+                                                   </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>@RefDate</td>
+                                                    <td>
+                                                      <p>Reference date for the cleanup of backup files. This date can be provided in the following form <code>'2009-05-14 17:15'</code></p>
+                                                      <p>NULL = use the current date and time. (default value).</p>
+                                                      <p><code>(Datetime)</code></p>
                                                    </td>
                                                 </tr>
                                                 <tr>
@@ -2311,7 +2318,7 @@ Sales%
                                                     <td>@PathOfBackupBeforeMaintenance</td>
                                                     <td>
                                                       <p>Path of the backup that will be used to return the database to its current state at this procedure completion, in case of maintenance failure. Recommended, otherwise specify an empty string.</p>
-                                                      <p>When the @PathOfBackupBeforeMaintenance is absent and a full backup exist for the database; the <a href="#PrepDbForMaintenance">Maint.PrepDbForMaintenance</a> procedure executes a log backup.</p>
+                                                      <p>When the @PathOfBackupBeforeMaintenance is absent and a full backup exist for the database; the <a href="#PrepDbForMaintenanceMode">Maint.PrepDbForMaintenanceMode</a> procedure executes a log backup.</p>
                                                       <p>This log backup will be appended to the previous log backup file; even if in the log backup job @BkpLogsOnSameFile = 0</p>
                                                       <p>(Create a new backup file for each log backup).</p>
                                                       <p><code>(NVarchar(512))</code></p>
@@ -2324,7 +2331,7 @@ Sales%
                                                       <p>1 = yes  (put the database in the « Simple » recovery mode)</p>
                                                       <p>0 = no  (default) recommended option.</p>
                                                       <p>The "Simple" recovery mode reduces the size of the log file necessary for the maintenance when you have limited disk space.</p>
-                                                      <p>But the « Simple» recovery mode breaks the restoration sequence and a full backup will be done by the stored proc <a href="#ReturnDbToNormalUseFromMaintenance">Maint.ReturnDbToNormalUseFromMaintenance</a>.</p>
+                                                      <p>But the « Simple» recovery mode breaks the restoration sequence and a full backup will be done by the stored proc <a href="#ReturnDbToNormalUseFromMaintenanceMode">Maint.ReturnDbToNormalUseFromMaintenanceMode</a>.</p>
                                                       <p><code>(int)</code></p>
                                                    </td>
                                                 </tr>
@@ -2375,7 +2382,7 @@ Sales%
                                         <!--//icon-holder-->
                                         <div class="content">
                                             <h4 class="callout-title">Purpose</h4>
-                                            <p>This procedure restores the selected databases in the state they were just after the call to <a href="#PrepDbForMainteanceMode">Maint.PrepDbForMainteanceMode</a>.</p>
+                                            <p>This procedure restores the selected databases in the state they were just after the call to <a href="#PrepDbForMaintenanceMode">Maint.PrepDbForMaintenanceMode</a>.</p>
                                             <p>Upon completion, the database state is the same as it was immediately after the call to <a href="#PrepDbForMaintenanceMode">Maint.PrepDbForMaintenanceMode</a>. This allows another Maintenance attempt. It also allows postponing of the maintenance process by making the database available to user with a call to <a href="#ReturnDbToNormalUseFromMaintenanceMode">Maint.ReturnDbToNormalUseFromMaintenanceMode</a>.</p>
                                         </div>
                                         <!--//content-->
@@ -2923,7 +2930,7 @@ Exec YourSQLDba.Maint.ShowHistoryErrors
                                         <!--//icon-holder-->
                                         <div class="content">
                                             <h4 class="callout-title">Purpose</h4>
-                                            <p> Immediately map drive letters to network location.  Inserts the mapping into the <strong>Maint.NetworkDrivesToSetOnStartup</strong> table, so SQL Server will remap them at startup by executing autostart procedure <a href="#YourSqlDbaAutostart_ReconnectNetworkDrive">dbo.YourSqlDbaAutostart_ReconnectNetworkDrive</a>. This is the only object that YouSqlDba puts in master</p>
+                                            <p> Immediately map drive letters to network location.  Inserts the mapping into the <strong>Maint.NetworkDrivesToSetOnStartup</strong> table, so SQL Server will remap them at startup by executing autostart procedure <strong>dbo.YourSqlDbaAutostart_ReconnectNetworkDrive</strong>. This is the only object that YouSqlDba puts in master</p>
                                         </div>
                                         <!--//content-->
                                     </div>
@@ -3025,15 +3032,7 @@ Exec YourSQLDba.Maint.ShowHistoryErrors
                                         </div>
                                         <!--//content-->
                                     </div>
-                                   <div class="table-responsive">
-                                        <table class="table table-bordered">
-                                            <tbody>
-                                                <tr>
-                                                    <td><strong>No parameters required</strong></td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                   <div class="alert alert-info">No parameters required</div>
                                    <h5>Sample</h5>
                                    <div class="code-block">
                                        <pre><code class="language-sql">Exec YourSQLDba.Maint.ListNetworkDrives</code></pre>
@@ -3094,15 +3093,15 @@ Exec YourSQLDba.Maint.ShowHistoryErrors
                                    <ul>
                                       <li>It creates a link server for the mirror SQL instance.</li>
                                       <li>It tests that YourSQLDba versions are the same on both SQL instances.</li>
-                                      <li>It adds the mirror instance name in the Mirroring.TargetServer table on the source instance.</li>
-                                      <li>It adds the source instance name in the Mirroring.TargetServer table on the mirror instance.</li>
+                                      <li>It adds the mirror instance name in the <strong>Mirroring.TargetServer</strong> table on the source instance.</li>
+                                      <li>It adds the source instance name in the <strong>Mirroring.TargetServer</strong> table on the mirror instance.</li>
                                       <li>It executes a copy of all SQL logins to the mirror SQL instance.</li>
                                    </ul>
-                                   <p>Execute the global maintenance after the execution of Mirroring.AddServer</p>
+                                   <div class="alert alert-info">Execute the global maintenance after the execution of Mirroring.AddServer</div>
                                    <p>After the execution of the Mirroring.AddServer procedure and for each databases with a recovery model Full or Bulk-logged, you must execute the <a href="#YourSQLDba_DoMaint">Maint.YourSQLDba_DoMaint</a> or <a href="#SaveDbOnNewFileSet">Maint.SaveDbOnNewFileSet</a> procedure to generate a full backup for each mirrored database in the mirror instance.</p>
                                    <p>If there is no full backup of the database when the next log backup is executed, YourSQLDba will send an email to the database administrators to warn that a full backup must be done before making a log backup.</p>
                                    <p>The email will lead you to the following error message:</p>
-                                   <p><code>To restore a LOG backup to the mirror server the database <your database name> in the mirror server must exist and be in «RESTORING» state.</code></p>
+                                   <p><code>To restore a LOG backup to the mirror server the database "your database name" in the mirror server must exist and be in «RESTORING» state.</code></p>
                                    <div class="table-responsive">
                                         <table class="table table-bordered">
                                             <thead>
@@ -3260,9 +3259,6 @@ Exec YourSQLDba.Mirroring.AddServer
                                                       <p><code>(NVarchar(max))</code></p>
                                                    </td>
                                                 </tr>
-
-
-
                                             </tbody>
                                         </table>
                                     </div>
@@ -3332,7 +3328,7 @@ Sales%
                                    <p>The <strong>Mirroring.Failover</strong> procedure executes the following steps for each selected database:</p>
                                    <ol>
                                       <li>It synchronizes the SQL connection codes from the source server to the mirror server.</li>
-                                      <li>It checks that the database is Online in the source server.</li>
+                                      <li>It checks that the database is <strong>Online</strong> in the source server.</li>
                                       <li>It checks if database to restore is not there, or there in restoring state on the mirror server.</li>
                                       <li>It checks that the database has been configured to be restored in a mirror server.</li>
                                       <li>It checks destination server version.</li>
@@ -3345,7 +3341,7 @@ Sales%
                                       <li>It changes the compatibility level of the database in the mirror server to match instance version.</li>
                                    </ol>
                                    <p>When all databases have been processed, the <strong>Mirroring.Failover</strong> procedure shows the migration status of each database.</p>
-                                   <p>You must perform a full backup of migrated databases on the mirror instance for databases that are not in simple recovery model.</p>
+                                   <div class="alert alert-info">You must perform a full backup of migrated databases on the mirror instance for databases that are not in simple recovery model.</div>
                                    <p>After the execution of the <strong>Mirroring.Failover</strong> procedure and for each databases with a recovery model <strong>Full</strong> or <strong>Bulk-logged</strong>, you must execute the <a href="#YourSQLDba_DoMaint">Maint.YourSQLDba_DoMaint</a> or <a href="#SaveDbOnNewFileSet">Maint.SaveDbOnNewFileSet</a> procedure to generate a full backup for each migrated database in the mirror server.</p>
                                    <p>If there is no full backup of the database when the next log backup is executed, YourSQLDba will send an email to the database administrators to warn that a full backup must be done before making a log backup of theses databases.</p>
                                    <p>The email will lead you to the following error message:</p>
@@ -3563,7 +3559,6 @@ Ventes%
                                         </table>
                                     </div>
                                    <h5>Set YourSqlDba account password:</h5>
-                                   <h6>Finalize the manual migration (by backup restore) of a database</h6>
                                    <p>The following example make's accessible all databases that are in "RESTORING" state.</p>
                                    <div class="code-block">
                                        <pre><code class="language-sql">-- This command must be executed on the SQL mirror instance.  
@@ -3609,8 +3604,8 @@ Exec YourSQLDba.Mirroring.SetYourSqlDbaAccountForMirroring
                                    <p>Initial setup is mandatory after YourSqlDba <a href="#first-install-or-upgrade">First install or upgrade</a>, or when renaming/dropping recreating YourSqlDba database.</p>
                                    <p>This procedure sets default backup locations for database backup and logs.  It also sets SMTP email server that is going to be used by SQL Database Mail to send maintenance job report or alerts, and email recipients for them.</p>
                                    <p>Initial setup creates also two maintenance jobs in SQL Agent.  The first one does daily maintenance at midnight and the second one regular logs backups (every 15 minutes).  Daily maintenance does database optimization, database consistency check and initial daily database full and log backups.</p>
-                                   <p>The maintenance jobs have each a single step that call SQL stored procedure <a href="#YourSqlDba_DoMaint">Maint.YourSqlDba_DoMaint</a>.  This procedure have several parameters and some comes from running <a href="#InitialSetupOfYourSqlDba">Install.InitialSetupOfYourSqlDba</a>.</p>
-                                   <p>See <a href="#InitialSetupOfYourSqlDba">Install.InitialSetupOfYourSqlDba</a> description for parameters and some samples.</p>
+                                   <p>The maintenance jobs have each a single step that call SQL stored procedure <a href="#YourSQLDba_DoMaint">Maint.YourSqlDba_DoMaint</a>.  This procedure have several parameters and some comes from running <a href="#InitialSetupOfYourSQLDba">Install.InitialSetupOfYourSqlDba</a>.</p>
+                                   <p>See <a href="#InitialSetupOfYourSQLDba">Install.InitialSetupOfYourSqlDba</a> description for parameters and some samples.</p>
                                     <div class="callout-block callout-info">
                                         <div class="icon-holder">
                                             <i class="fas fa-info-circle"></i>
@@ -3618,7 +3613,7 @@ Exec YourSQLDba.Mirroring.SetYourSqlDbaAccountForMirroring
                                         <!--//icon-holder-->
                                         <div class="content">
                                             <h4 class="callout-title">NOTE</h4>
-                                            <p><a href="#InitialSetupOfYourSqlDba">Install.InitialSetupOfYourSqlDba</a> recreates the jobs default definition for daily maintenance and log backups.</p>
+                                            <p><a href="#InitialSetupOfYourSQLDba">Install.InitialSetupOfYourSqlDba</a> recreates the jobs default definition for daily maintenance and log backups.</p>
                                         </div>
                                         <!--//content-->
                                     </div>
