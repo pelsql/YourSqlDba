@@ -9,11 +9,13 @@
 */
 /* ======= Base ======= */
 body {
-  font-family: 'Open Sans', arial, sans-serif;
-  color: #494d55;
-  font-size: 14px;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+   position: relative;
+   scroll-behavior: smooth;
+   font-family: 'Open Sans', arial, sans-serif;
+   color: #494d55;
+   font-size: 14px;
+   -webkit-font-smoothing: antialiased;
+   -moz-osx-font-smoothing: grayscale;
 }
 
 html, body {
@@ -44,7 +46,6 @@ a {
   color: #3aa7aa;
   -webkit-transition: all 0.4s ease-in-out;
   -moz-transition: all 0.4s ease-in-out;
-  -ms-transition: all 0.4s ease-in-out;
   -o-transition: all 0.4s ease-in-out;
 }
 
@@ -71,7 +72,6 @@ code {
 .btn, a.btn {
   -webkit-transition: all 0.4s ease-in-out;
   -moz-transition: all 0.4s ease-in-out;
-  -ms-transition: all 0.4s ease-in-out;
   -o-transition: all 0.4s ease-in-out;
   font-weight: 600;
   font-size: 14px;
@@ -496,8 +496,6 @@ select {
 }
 
 .question .svg-inline--fa {
-  -webkit-opacity: 0.6;
-  -moz-opacity: 0.6;
   opacity: 0.6;
   position: relative;
   top: -2px;
@@ -521,8 +519,6 @@ select {
   padding: 30px;
   -webkit-border-radius: 4px;
   -moz-border-radius: 4px;
-  -ms-border-radius: 4px;
-  -o-border-radius: 4px;
   border-radius: 4px;
   -moz-background-clip: padding;
   -webkit-background-clip: padding-box;
@@ -671,8 +667,6 @@ select {
   background: #fff;
   -webkit-border-radius: 4px;
   -moz-border-radius: 4px;
-  -ms-border-radius: 4px;
-  -o-border-radius: 4px;
   border-radius: 4px;
   -moz-background-clip: padding;
   -webkit-background-clip: padding-box;
@@ -712,8 +706,6 @@ select {
   border: 1px solid #e3e3e3;
   -webkit-border-radius: 4px;
   -moz-border-radius: 4px;
-  -ms-border-radius: 4px;
-  -o-border-radius: 4px;
   border-radius: 4px;
   -moz-background-clip: padding;
   -webkit-background-clip: padding-box;
@@ -833,9 +825,6 @@ select {
 
 .sticky {
   position: -webkit-sticky;
-  position: -moz-sticky;
-  position: -ms-sticky;
-  position: -o-sticky;
   position: sticky;
   top: 0;
 }
@@ -961,25 +950,6 @@ select {
   color: #8A40A7;
 }
 
-/*
-.affix-top {
-  position: absolute;
-  top: 15px;
-}
-
-.affix {
-  top: 15px;
-}
-
-.affix, 
-.affix-bottom {
-  width: 230px;
-}
-
-.affix-bottom {
-  position: absolute;
-}
-*/
 /* ===== Promo block ===== */
 .promo-block {
   background: #3aa7aa;
@@ -1019,8 +989,6 @@ select {
   color: #fff;
   -webkit-border-radius: 4px;
   -moz-border-radius: 4px;
-  -ms-border-radius: 4px;
-  -o-border-radius: 4px;
   border-radius: 4px;
   -moz-background-clip: padding;
   -webkit-background-clip: padding-box;
@@ -1268,8 +1236,6 @@ select {
   border: 1px solid #f0f0f0;
   -webkit-border-radius: 4px;
   -moz-border-radius: 4px;
-  -ms-border-radius: 4px;
-  -o-border-radius: 4px;
   border-radius: 4px;
   -moz-background-clip: padding;
   -webkit-background-clip: padding-box;
