@@ -4,6 +4,8 @@ YourSqlDb is just a very big T-SQL script that helps a lot in automating databas
 
 [YourSqlDba Online Documentation](https://pelsql.github.io/YourSqlDba/) gives excellent overview of what YourSqlDba is all about.
 
+An alternate, always up-to-date documentation is available through this [YourSqlDba One Note Online documentation](https://1drv.ms/u/s!Au3EQ1QlhcMStyhzaj33LkcvNzcw?e=cBk5t1).
+
 YourSqlDba script creates a database named YourSqlDba packed with T-SQL modules (function, stored procedures, and views) on the server where it is run. You don't need to be concerned by all of them, albeit some of them are interesting tools for exceptional day-to-day DBA tasks, out of regular maintenance tasks.
 
 YourSqlDba [Quick start](https://pelsql.github.io/YourSqlDba/#quickstart-section) introduction explains how it works.  
