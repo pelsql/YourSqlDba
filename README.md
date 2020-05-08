@@ -1,5 +1,15 @@
 # YourSqlDba
 
+Recent releases of YourSqlDba - [Lastest release here](YourSQLdba_InstallOrUpdateScript.sql)
+* 6.5.9.1 - Improvement about Sync logins 
+* 6.5.8.1 - Optimization of database index defrag
+* 6.5.8.0 - Exclude case sensitive database from YourSqlDba maintenace with reporting an error
+* 6.5.7.9 - Take into account possible invalid dbownership on some databases (handled properly in YourSqlDba) 
+* 6.5.7.8 - Improved parameter validation of parameters starting by "@Replace..." in mirroring feature  
+* 6.5.7.7 - At failover Restore database ownership after database recovery on mirror server  
+* 6.5.7.6 - Correction to improper test of database status   
+* 6.5.7.5 - Correction to error message for SetYourSqlDbaAccount
+
 YourSqlDb is just a very big T-SQL script that helps a lot in automating database maintenance. 
 
 [YourSqlDba Online Documentation](https://pelsql.github.io/YourSqlDba/) gives excellent overview of what YourSqlDba is all about.
