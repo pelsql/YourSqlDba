@@ -1,6 +1,7 @@
 # YourSqlDba
 
 Recent releases of YourSqlDba - [Lastest release here](YourSQLDba_InstallOrUpdateScript.sql?raw=true)
+* 6.5.9.2 - Minor bug fix synchronizing local windows user login
 * 6.5.9.1 - Improvement about Sync logins 
 * 6.5.8.1 - Optimization of database index defrag
 * 6.5.8.0 - Exclude case sensitive database from YourSqlDba maintenace with reporting an error
