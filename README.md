@@ -18,9 +18,10 @@ Recent releases of YourSqlDba - [Lastest release here](YourSQLDba_InstallOrUpdat
 
 YourSqlDb is just a very big T-SQL script that helps a lot in automating database maintenance. 
 
-[YourSqlDba Online Documentation](https://pelsql.github.io/YourSqlDba/) gives excellent overview of what YourSqlDba is all about.
+An up-to-date documentation is available through this [YourSqlDba One Note Online documentation](https://1drv.ms/u/s!Au3EQ1QlhcMStyhzaj33LkcvNzcw?e=cBk5t1).
 
-An alternate, always up-to-date documentation is available through this [YourSqlDba One Note Online documentation](https://1drv.ms/u/s!Au3EQ1QlhcMStyhzaj33LkcvNzcw?e=cBk5t1).
+A prettier documentation crafted by some collaborators is available here online, but its up-to-date status lag behind the one based on the shared OneNote Notebook above that is far easier to maintain. [YourSqlDba Online Documentation](https://pelsql.github.io/YourSqlDba/) gives excellent overview of what YourSqlDba is all about.
+
 
 YourSqlDba script creates a database named YourSqlDba packed with T-SQL modules (function, stored procedures, and views) on the server where it is run. You don't need to be concerned by all of them, albeit some of them are interesting tools for exceptional day-to-day DBA tasks, out of regular maintenance tasks.
 
