@@ -1,6 +1,8 @@
 # YourSqlDba
 
 Recent releases of YourSqlDba - [Lastest release here](YourSQLDba_InstallOrUpdateScript.sql?raw=true)
+
+* 6.5.9.4 - Specify default value for backup encryption parameters for SaveDbOnNewFileSet.
 * 6.5.9.3 - Many improvements related to security and very large databases handling (1TB and more). 
   1) Support of backup encryption (and a minor bug correction related to getting backup information to allow it)
   2) Instead of full checkdb, spreading checktables across the  week
