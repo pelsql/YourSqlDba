@@ -1,7 +1,16 @@
 # YourSqlDba
 
 Recent releases of YourSqlDba - [Lastest release here](YourSQLDba_InstallOrUpdateScript.sql?raw=true)
+* 6.6.0.1 -  This version implement a new parameter for mirroring called @migrationTestMode.
+  1) It's goal is just to set mirroring as a simple mean to backup/restore to another server
+  e.g. when migrating to a newer SQL version. In that mode, only full backups are restored to remote server, and put online
+  While they exist and are online, YourSqlDba do not attempt another restore of any kind.  
+  To restore normal YourSqlDba mirroring, just remove the @migrationTestMode=1 parameter and suppress 
+  test databases on target server.
 
+  2) In another field, Install.InitialSetupOfYourSqlDba was improved to send a email on successful install.  
+  If this email reach its destination, it proves that email configuration is ok.
+)
 * 6.5.9.4 - Specify default value for backup encryption parameters for SaveDbOnNewFileSet.
 * 6.5.9.3 - Many improvements related to security and very large databases handling (1TB and more). 
   1) Support of backup encryption (and a minor bug correction related to getting backup information to allow it)
