@@ -4,10 +4,10 @@ Recent releases of YourSqlDba - [Lastest release here](YourSQLDba_InstallOrUpdat
 YourSqlDba OneNote Online documentation https://tinyurl.com/YourSqlDba
 
 * 6.6.0.2 - This version solve some annoying bugs
-  1) When a full backup occurs on a given database, and the log backups job attempts a log shrink at the same time
+  1) When a backup occurs on a given database, and the log backups job attempts a log shrink at the same time
      the log of the same database, an error will be thrown for the Shrink log operation. This problem is solved by the mean
-     of application lock which signal that a backup operation is ongoing, so the shrink log for the same database
-     database is just skipped.
+     of application lock which signals that a backup operation is ongoing, so YourSqlDba log backups has a mean to knows 
+     when to defer the shrink operation.
   2) Two minor fix were done on Install.InitialSetupOfYourSqlDba. The email setup could be done improperly if another email
      profile already exists, and the test message sent to test mail setup was not properly sent.
   3) In yMirroring.MirrorLoginSync, when a login must be recreated, and the default language is not set, the 
