@@ -1,6 +1,18 @@
 # YourSqlDba
 
 Recent releases of YourSqlDba - [Lastest release here](YourSQLDba_InstallOrUpdateScript.sql?raw=true)
+YourSqlDba OneNote Online documentation https://tinyurl.com/YourSqlDba
+
+* 6.6.0.2 - This version solve some annoying bugs
+  1) When a full backup occurs on a given database, and the log backups job attempts a log shrink at the same time
+     the log of the same database, an error will be thrown for the Shrink log operation. This problem is solved by the mean
+     of application lock which signal that a backup operation is ongoing, so the shrink log for the same database
+     database is just skipped.
+  2) Two minor fix were done on Install.InitialSetupOfYourSqlDba. The email setup could be done improperly if another email
+     profile already exists, and the test message sent to test mail setup was not properly sent.
+  3) In yMirroring.MirrorLoginSync, when a login must be recreated, and the default language is not set, the 
+     create login command becomes null, returning an error. In a such context the option is simply removed.
+
 * 6.6.0.1 -  This version implement a new parameter for mirroring called @migrationTestMode.
   1) It's goal is just to set mirroring as a simple mean to backup/restore to another server
   e.g. when migrating to a newer SQL version. In that mode, only full backups are restored to remote server, and put online
@@ -10,7 +22,7 @@ Recent releases of YourSqlDba - [Lastest release here](YourSQLDba_InstallOrUpdat
 
   2) In another field, Install.InitialSetupOfYourSqlDba was improved to send a email on successful install.  
   If this email reach its destination, it proves that email configuration is ok.
-)
+
 * 6.5.9.4 - Specify default value for backup encryption parameters for SaveDbOnNewFileSet.
 * 6.5.9.3 - Many improvements related to security and very large databases handling (1TB and more). 
   1) Support of backup encryption (and a minor bug correction related to getting backup information to allow it)
