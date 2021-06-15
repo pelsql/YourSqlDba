@@ -1,9 +1,26 @@
 # YourSqlDba
 
 Recent releases of YourSqlDba - [Lastest release here](YourSQLDba_InstallOrUpdateScript.sql?raw=true)
-YourSqlDba OneNote Online documentation https://tinyurl.com/YourSqlDba
+See version history below.
 
-* 6.6.0.2 - This version solve some annoying bugs
+YourSqlDba (up-to-date) OneNote Online documentation https://tinyurl.com/YourSqlDba
+A prettier documentation crafted by some collaborators is available here online, but its up-to-date status lag behind the one based on the shared OneNote Notebook above that is far easier to maintain. [YourSqlDba Online Documentation](https://pelsql.github.io/YourSqlDba/) gives excellent overview of what YourSqlDba is all about.
+
+YourSqlDba is just a very big T-SQL script that helps a lot in automating database maintenance. 
+It creates a database named YourSqlDba packed with T-SQL modules (function, stored procedures, and views) on the server where it is run. You don't need to be concerned by all of them, albeit some of them are interesting tools for exceptional day-to-day DBA tasks, out of regular maintenance tasks.
+YourSqlDba main maintenance stored procedure must be launch from SQL Server Agent.
+
+YourSqlDba [Quick start](https://pelsql.github.io/YourSqlDba/#quickstart-section) introduction explains how it works.  
+
+YourSqlDba builds on SQL Agent and database mail, to schedule maintenance and reports how it goes everyday. 
+The stored procedure [Install.InitialSetupOfYourSQLDba](https://pelsql.github.io/YourSqlDba/#InitialSetupOfYourSQLDba) provides the necessary parameters to set up database mail, backup directories, and some default behaviors. 
+
+Mail parameters go to Database mail *YourSQLDba_EmailProfile* and other maintenance parameters appears as parameters of in two SQL Agent Jobs which call two T-SQL mainteance steps. 
+In each of this maintenance step there is a call to [Maint.YourSQLDba_DoMaint](https://pelsql.github.io/YourSqlDba/#YourSQLDba_DoMaint) stored procedure. Its parameters reflect some of the [Install.InitialSetupOfYourSQLDba](https://pelsql.github.io/YourSqlDba/#InitialSetupOfYourSQLDba) parameters value, and many are by default.  [Maint.YourSQLDba_DoMaint](https://pelsql.github.io/YourSqlDba/#YourSQLDba_DoMaint) parameters are explained in detail in YourSqlDba online documentation.
+
+## Version history:
+
+* 6.6.0.3 - This version solve some annoying bugs
   1) When a backup occurs on a given database, and the log backups job attempts a log shrink at the same time
      the log of the same database, an error will be thrown for the Shrink log operation. This problem is solved by the mean
      of application lock which signals that a backup operation is ongoing, so YourSqlDba log backups has a mean to knows 
@@ -39,19 +56,3 @@ YourSqlDba OneNote Online documentation https://tinyurl.com/YourSqlDba
 * 6.5.7.6 - Correction to improper test of database status   
 * 6.5.7.5 - Correction to error message for SetYourSqlDbaAccount
 
-YourSqlDb is just a very big T-SQL script that helps a lot in automating database maintenance. 
-
-An up-to-date documentation is available through this [YourSqlDba One Note Online documentation](https://1drv.ms/u/s!Au3EQ1QlhcMStyhzaj33LkcvNzcw?e=cBk5t1).
-
-A prettier documentation crafted by some collaborators is available here online, but its up-to-date status lag behind the one based on the shared OneNote Notebook above that is far easier to maintain. [YourSqlDba Online Documentation](https://pelsql.github.io/YourSqlDba/) gives excellent overview of what YourSqlDba is all about.
-
-
-YourSqlDba script creates a database named YourSqlDba packed with T-SQL modules (function, stored procedures, and views) on the server where it is run. You don't need to be concerned by all of them, albeit some of them are interesting tools for exceptional day-to-day DBA tasks, out of regular maintenance tasks.
-
-YourSqlDba [Quick start](https://pelsql.github.io/YourSqlDba/#quickstart-section) introduction explains how it works.  
-
-YourSqlDba builds on SQL Agent and database mail, to schedule maintenance and reports how it goes everyday. 
-The stored procedure [Install.InitialSetupOfYourSQLDba](https://pelsql.github.io/YourSqlDba/#InitialSetupOfYourSQLDba) provides the necessary parameters to set up database mail, backup directories, and some default behaviors. 
-
-Mail parameters go to Database mail *YourSQLDba_EmailProfile* and other maintenance parameters appears as parameters of in two SQL Agent Jobs which call two T-SQL mainteance steps. 
-In each of this maintenance step there is a call to [Maint.YourSQLDba_DoMaint](https://pelsql.github.io/YourSqlDba/#YourSQLDba_DoMaint) stored procedure. Its parameters reflect some of the [Install.InitialSetupOfYourSQLDba](https://pelsql.github.io/YourSqlDba/#InitialSetupOfYourSQLDba) parameters value, and many are by default.  [Maint.YourSQLDba_DoMaint](https://pelsql.github.io/YourSqlDba/#YourSQLDba_DoMaint) parameters are explained in detail in YourSqlDba online documentation.
