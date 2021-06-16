@@ -1,24 +1,33 @@
 # YourSqlDba
 
 Recent releases of YourSqlDba - [Lastest release here](YourSQLDba_InstallOrUpdateScript.sql?raw=true)
+
 See version history below.
 
-YourSqlDba (up-to-date) OneNote Online documentation https://tinyurl.com/YourSqlDba
-A prettier documentation crafted by some collaborators is available here online, but its up-to-date status lag behind the one based on the shared OneNote Notebook above that is far easier to maintain. [YourSqlDba Online Documentation](https://pelsql.github.io/YourSqlDba/) gives excellent overview of what YourSqlDba is all about.
+Everything about YourSqlDba can be found at [Online documentation](https://tinyurl.com/YourSqlDba)
+
+This YourSqlDba [Quick start](https://tinyurl.com/YSDQuickStart) documentation explains how it works.  
+
+YourSqlDba comes alive only through SQL Agent job and Database Mail that need to be configured. An helper stored procedure need to be lauched (see documentation of 
+ [Install.InitialSetupOfYourSQLDba](https://tinyurl.com/YSDInitSetup). This procedure  provides the necessary parameters to set up database mail, backup directories, and some default behaviors. It creates also two SQL Agent Jobs that schedule and launch them as needed.
+
+In each of theses jobs maintenance step there is a call to [Maint.YourSQLDba_DoMaint](https://tinyurl.com/YSDDoMaint) stored procedure. Its parameters reflect some of the [Install.InitialSetupOfYourSQLDba](https://tinyurl.com/YSDInitSetup) parameters value, and many are by default.  [Maint.YourSQLDba_DoMaint](https://tinyurl.com/YSDDoMaint) parameters are explained in detail in YourSqlDba online documentation.
 
 YourSqlDba is just a very big T-SQL script that helps a lot in automating database maintenance. 
 It creates a database named YourSqlDba packed with T-SQL modules (function, stored procedures, and views) on the server where it is run. You don't need to be concerned by all of them, albeit some of them are interesting tools for exceptional day-to-day DBA tasks, out of regular maintenance tasks.
-YourSqlDba main maintenance stored procedure must be launch from SQL Server Agent.
 
-YourSqlDba [Quick start](https://pelsql.github.io/YourSqlDba/#quickstart-section) introduction explains how it works.  
 
-YourSqlDba builds on SQL Agent and database mail, to schedule maintenance and reports how it goes everyday. 
-The stored procedure [Install.InitialSetupOfYourSQLDba](https://pelsql.github.io/YourSqlDba/#InitialSetupOfYourSQLDba) provides the necessary parameters to set up database mail, backup directories, and some default behaviors. 
 
-Mail parameters go to Database mail *YourSQLDba_EmailProfile* and other maintenance parameters appears as parameters of in two SQL Agent Jobs which call two T-SQL mainteance steps. 
-In each of this maintenance step there is a call to [Maint.YourSQLDba_DoMaint](https://pelsql.github.io/YourSqlDba/#YourSQLDba_DoMaint) stored procedure. Its parameters reflect some of the [Install.InitialSetupOfYourSQLDba](https://pelsql.github.io/YourSqlDba/#InitialSetupOfYourSQLDba) parameters value, and many are by default.  [Maint.YourSQLDba_DoMaint](https://pelsql.github.io/YourSqlDba/#YourSQLDba_DoMaint) parameters are explained in detail in YourSqlDba online documentation.
+
+
 
 ## Version history:
+
+* 6.7.0.1 - This version add a new feature [Maint.HistoryView](https://tinyurl.com/2byndy8d) that deprecate some others and solve a minor update bug
+  1) A new function called YourSQLDba.Maint.HistoryView allows inspection of YourSqlDba history in a much more readeable form. It accepts 3 parameters: a job Number, a step number, a flag to filter only reported errors. Email messages are adjusted accordingly. The stored procedures ShowHistory and ShowHistoryError are deprecated.
+
+  2) A minor update bug was deleting job history
+  3) A minor bug found when writing Maint.HistoryView. Single line queries having no ending linefeed weren't printed.The printing query function was corrected.
 
 * 6.6.0.3 - This version solve some annoying bugs
   1) When a backup occurs on a given database, and the log backups job attempts a log shrink at the same time
