@@ -23,7 +23,7 @@ It creates a database named YourSqlDba packed with T-SQL modules (function, stor
 
 ## Version history:
 
-* 6.7.0.4 - Fix to a change in 6.7.0.1 to correct false positive when searching error in Maint.HistoryView 
+* 6.7.0.4 - Improvement of Maint.HistoryView to reduce false positive when searching errors
 * 6.7.0.3 - Fix to a change in 6.6.0.3 for printing of code, which translated to string truncation error
 * 6.7.0.2 - Fix to a change in 6.6.0.3 for DBCC Shrink_Log.  
 
