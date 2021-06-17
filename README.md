@@ -23,6 +23,7 @@ It creates a database named YourSqlDba packed with T-SQL modules (function, stor
 
 ## Version history:
 
+* 6.7.0.3 - Fix to a change in 6.6.0.3 for printing of code
 * 6.7.0.2 - Fix to a change in 6.6.0.3 for DBCC Shrink_Log.  
 
 * 6.7.0.1 - This version add a new feature [Maint.HistoryView](https://tinyurl.com/2byndy8d) that deprecate some others and solve a minor update bug
