@@ -23,6 +23,7 @@ It creates a database named YourSqlDba packed with T-SQL modules (function, stor
 
 ## Version history:
 
+* 6.7.0.5 - Fix to 6.6.0.1 for DoRestore which needs a @migrationTestMode default value to 0 to make sense when used with Mirroring.FailOver
 * 6.7.0.4 - Improvement of Maint.HistoryView to reduce false positive when searching errors
 * 6.7.0.3 - Fix to a change in 6.6.0.3 for printing of code, which translated to string truncation error
 * 6.7.0.2 - Fix to a change in 6.6.0.3 for DBCC Shrink_Log.  
