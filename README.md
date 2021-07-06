@@ -1,6 +1,8 @@
 # YourSqlDba
 
-Recent releases of YourSqlDba - [Lastest release here](YourSQLDba_InstallOrUpdateScript.sql?raw=true)
+Recent releases of YourSqlDba - [Lastest release here 6.7.0.6](YourSQLDba_InstallOrUpdateScript.sql?raw=true)
+To display installed release of YourSqlDba, execute this query: 
+*select * from Install.VersionInfo()*
 
 See version history below.
 
@@ -9,20 +11,16 @@ Everything about YourSqlDba can be found at [Online documentation](https://tinyu
 This YourSqlDba [Quick start](https://tinyurl.com/YSDQuickStart) documentation explains how it works.  
 
 YourSqlDba comes alive only through SQL Agent job and Database Mail that need to be configured. An helper stored procedure need to be lauched (see documentation of 
- [Install.InitialSetupOfYourSQLDba](https://tinyurl.com/YSDInitSetup). This procedure  provides the necessary parameters to set up database mail, backup directories, and some default behaviors. It creates also two SQL Agent Jobs that schedule and launch them as needed.
+ [Install.InitialSetupOfYourSQLDba](https://tinyurl.com/YSDInitSetup)). This procedure  provides the necessary parameters to set up database mail, backup directories, and some default behaviors. It creates also two SQL Agent Jobs and scheduled them to be launched them as needed.
 
-In each of theses jobs maintenance step there is a call to [Maint.YourSQLDba_DoMaint](https://tinyurl.com/YSDDoMaint) stored procedure. Its parameters reflect some of the [Install.InitialSetupOfYourSQLDba](https://tinyurl.com/YSDInitSetup) parameters value, and many are by default.  [Maint.YourSQLDba_DoMaint](https://tinyurl.com/YSDDoMaint) parameters are explained in detail in YourSqlDba online documentation.
+In each of theses jobs, there is one maintenance step that calls [Maint.YourSQLDba_DoMaint](https://tinyurl.com/YSDDoMaint) stored procedure. Its parameters reflect some of the [Install.InitialSetupOfYourSQLDba](https://tinyurl.com/YSDInitSetup) parameters value, and many are by default.  [Maint.YourSQLDba_DoMaint](https://tinyurl.com/YSDDoMaint) parameters are explained in detail in YourSqlDba online documentation.
 
 YourSqlDba is just a very big T-SQL script that helps a lot in automating database maintenance. 
-It creates a database named YourSqlDba packed with T-SQL modules (function, stored procedures, and views) on the server where it is run. You don't need to be concerned by all of them, albeit some of them are interesting tools for exceptional day-to-day DBA tasks, out of regular maintenance tasks.
-
-
-
-
-
+It creates a database named YourSqlDba packed with T-SQL modules (function, stored procedures, and views) on the server where it is ran. You don't need to be concerned by all of them, albeit some of them are interesting tools for exceptional day-to-day DBA tasks, out of regular maintenance tasks.
 
 ## Version history:
 
+* 6.7.0.6 - On update or install, enabling Service broker on Msdb seems to hang. Now it is done with rollback immediate option which solves the problem.
 * 6.7.0.5 - Fix to 6.6.0.1 for DoRestore which needs a @migrationTestMode default value to 0 to make sense when used with Mirroring.FailOver
 * 6.7.0.4 - Improvement of Maint.HistoryView to reduce false positive when searching errors
 * 6.7.0.3 - Fix to a change in 6.6.0.3 for printing of code, which translated to string truncation error
@@ -69,4 +67,3 @@ It creates a database named YourSqlDba packed with T-SQL modules (function, stor
 * 6.5.7.7 - At failover Restore database ownership after database recovery on mirror server  
 * 6.5.7.6 - Correction to improper test of database status   
 * 6.5.7.5 - Correction to error message for SetYourSqlDbaAccount
-
