@@ -8,7 +8,7 @@ See version history below.
 
 Everything about YourSqlDba can be found at [Online documentation](https://tinyurl.com/YourSqlDba)
 
-This YourSqlDba [Quick start](https://tinyurl.com/YSDQuickStart) documentation explains how it works.  
+This YourSqlDba [Quick start](https://tinyurl.com/YSDBAQuickStart) documentation explains how it works.  
 
 YourSqlDba comes alive only through SQL Agent job and Database Mail that need to be configured. An helper stored procedure need to be lauched (see documentation of 
  [Install.InitialSetupOfYourSQLDba](https://tinyurl.com/YSDInitSetup)). This procedure  provides the necessary parameters to set up database mail, backup directories, and some default behaviors. It creates also two SQL Agent Jobs and scheduled them to be launched them as needed.
@@ -20,7 +20,7 @@ It creates a database named YourSqlDba packed with T-SQL modules (function, stor
 
 ## Version history:
 
-* 6.7.0.6 - On update or install, enabling Service broker on Msdb seems to hang. Now it is done with rollback immediate option which solves the problem.
+[6.7.0.6 - On update or install, enabling Service broker on Msdb seems to hang. Now it is done with rollback immediate option which solves the problem.](https://raw.githubusercontent.com/pelsql/YourSqlDba/0abcc636c9405e0ebefaadd93a71d85c8b7e9479/YourSQLDba_InstallOrUpdateScript.sql)
 * 6.7.0.5 - Fix to 6.6.0.1 for DoRestore which needs a @migrationTestMode default value to 0 to make sense when used with Mirroring.FailOver
 * 6.7.0.4 - Improvement of Maint.HistoryView to reduce false positive when searching errors
 * 6.7.0.3 - Fix to a change in 6.6.0.3 for printing of code, which translated to string truncation error
