@@ -1,6 +1,6 @@
 # YourSqlDba
 
-Recent releases of YourSqlDba - [Lastest release here 6.7.0.6](YourSQLDba_InstallOrUpdateScript.sql?raw=true)
+Recent releases of YourSqlDba - [Lastest release here 6.7.1.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)
 To display installed release of YourSqlDba, execute this query: 
 *select * from Install.VersionInfo()*
 
@@ -20,7 +20,10 @@ It creates a database named YourSqlDba packed with T-SQL modules (function, stor
 
 ## Version history:
 
-[6.7.0.6 - On update or install, enabling Service broker on Msdb seems to hang. Now it is done with rollback immediate option which solves the problem.](https://raw.githubusercontent.com/pelsql/YourSqlDba/0abcc636c9405e0ebefaadd93a71d85c8b7e9479/YourSQLDba_InstallOrUpdateScript.sql)
+[6.7.1.0 - Integrity testing may be delayed when number of databases selected is lower than parameter @SpreadCheckDb, and also with some other "too long to explain here" reasons. Some improvements were implemented to uniformize processing length for DBCC Checkdb from day to day](YourSQLDba_InstallOrUpdateScript.sql?raw=true).
+
+[6.7.0.6 - On update or install, enabling Service broker on Msdb seems to hang. Now it is done with rollback immediate option which solves the problem](https://raw.githubusercontent.com/pelsql/YourSqlDba/0abcc636c9405e0ebefaadd93a71d85c8b7e9479/YourSQLDba_InstallOrUpdateScript.sql).
+
 * 6.7.0.5 - Fix to 6.6.0.1 for DoRestore which needs a @migrationTestMode default value to 0 to make sense when used with Mirroring.FailOver
 * 6.7.0.4 - Improvement of Maint.HistoryView to reduce false positive when searching errors
 * 6.7.0.3 - Fix to a change in 6.6.0.3 for printing of code, which translated to string truncation error
