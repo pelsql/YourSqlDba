@@ -1,6 +1,6 @@
 # YourSqlDba
 
-Recent releases of YourSqlDba - [Lastest release here 6.7.1.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)
+Recent releases of YourSqlDba - [Lastest release here 6.7.2.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)
 To display installed release of YourSqlDba, execute this query: 
 *select * from Install.VersionInfo()*
 
