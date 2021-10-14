@@ -20,7 +20,9 @@ It creates a database named YourSqlDba packed with T-SQL modules (function, stor
 
 ## Version history:
 
-[6.7.1.0 - Integrity testing may be delayed when number of databases selected is lower than parameter @SpreadCheckDb, and also with some other "too long to explain here" reasons. Some improvements were implemented to uniformize processing length for DBCC Checkdb from day to day](YourSQLDba_InstallOrUpdateScript.sql?raw=true).
+[6.7.2.0 - In some cases Maint.HistoryView may cause excessive memory grants when handling whole historyDetails source table. A simple solution was to add reporting elements to a resulting Maint.JobHistoryLineDetails report table through a trigger on Maint.JobHistoryDetails. This minimize greatly the amount of data processed at once and simplify very much Maint.HistoryView function](YourSQLDba_InstallOrUpdateScript.sql?raw=true)
+
+[6.7.1.0 - Integrity testing may be delayed when number of databases selected is lower than parameter @SpreadCheckDb, and also with some other "too long to explain here" reasons. Some improvements were implemented to uniformize processing length for DBCC Checkdb from day to day](https://raw.githubusercontent.com/pelsql/YourSqlDba/e2d5e941169c3cefbeab4543f8ca8c978b3d400b/YourSQLDba_InstallOrUpdateScript.sql).
 
 [6.7.0.6 - On update or install, enabling Service broker on Msdb seems to hang. Now it is done with rollback immediate option which solves the problem](https://raw.githubusercontent.com/pelsql/YourSqlDba/0abcc636c9405e0ebefaadd93a71d85c8b7e9479/YourSQLDba_InstallOrUpdateScript.sql).
 
