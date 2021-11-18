@@ -1,6 +1,6 @@
 # YourSqlDba
 
-Recent releases of YourSqlDba - [Lastest release here 6.7.2.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)
+Recent releases of YourSqlDba - [Lastest release here 6.7.3.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)
 To display installed release of YourSqlDba, execute this query: 
 *select * from Install.VersionInfo()*
 
@@ -20,7 +20,10 @@ It creates a database named YourSqlDba packed with T-SQL modules (function, stor
 
 ## Version history:
 
-[6.7.2.0 - In some cases Maint.HistoryView may cause excessive memory grants when handling whole historyDetails source table. A simple solution was to add reporting elements to a resulting Maint.JobHistoryLineDetails report table through a trigger on Maint.JobHistoryDetails. This minimize greatly the amount of data processed at once and simplify very much Maint.HistoryView function](YourSQLDba_InstallOrUpdateScript.sql?raw=true)
+[6.7.3.0 - This version correct database size computing which affects integrity testing for very large databases. Now it works as intended. It also introduces as a new feature some interoperability with other external backup solution like CommVault backups. In this case you must modify YourSqlDba jobs to parameter to not perform neither full or log backups, but keep other optimization and integrity testing. ](YourSQLDba_InstallOrUpdateScript.sql?raw=true)
+Some minimal setup is needed with CommVault backups (full or logs); see (https://tinyurl.com/YourSqlDbaAndCommVault) for a more detailed overview.
+
+[6.7.2.0 - In some cases Maint.HistoryView may cause excessive memory grants when handling whole historyDetails source table. A simple solution was to add reporting elements to a resulting Maint.JobHistoryLineDetails report table through a trigger on Maint.JobHistoryDetails. This minimize greatly the amount of data processed at once and simplify very much Maint.HistoryView function](https://raw.githubusercontent.com/pelsql/YourSqlDba/2e6044f1f37ecdfe9086fcec141efa1d1d82747b/YourSQLDba_InstallOrUpdateScript.sql)
 
 [6.7.1.0 - Integrity testing may be delayed when number of databases selected is lower than parameter @SpreadCheckDb, and also with some other "too long to explain here" reasons. Some improvements were implemented to uniformize processing length for DBCC Checkdb from day to day](https://raw.githubusercontent.com/pelsql/YourSqlDba/e2d5e941169c3cefbeab4543f8ca8c978b3d400b/YourSQLDba_InstallOrUpdateScript.sql).
 
