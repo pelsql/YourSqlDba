@@ -21,7 +21,7 @@ It creates, on the SQL instance where it runs, a database named YourSqlDba packe
 **[Get script of 6.7.3.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
 > Introduces as a new feature some interoperability with other external backup solution like CommVault backups. In this case you must modify YourSqlDba jobs to not perform full backup, but keep other optimization and integrity testing; and disable or delete log backups. 
 
->Some minimal setup is needed with CommVault backups (full or logs); see (https://tinyurl.com/YourSqlDbaAndCommVault) for a more detailed overview. You must add for full backups a pre-job and for log backups a post job.
+>Some minimal setup is needed with CommVault backups jobs (full or logs); You must add for full backups a pre-job and for log backups a post job as instructed in **(https://tinyurl.com/YourSqlDbaAndCommVault)**. 
 
 > It also correct database size computing which affects integrity testing for very large databases. Now it works as intended.  
 
