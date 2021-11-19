@@ -1,17 +1,17 @@
 # YourSqlDba
 
-**To get the script of the most recent release of YourSqlDba** - [click here for lastest release here 6.7.3.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true) 
+**To get the script of the most recent release of YourSqlDba** - **[click here for lastest release here 6.7.3.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
 
 >**_Go to [Version History](#version-history) to details about changes and previous versions._**
 
->To display **currently installed release of YourSqlDba**, execute this query: *select * from Install.VersionInfo()*
+>To display **currently installed release of YourSqlDba**, execute this query: **select * from Install.VersionInfo()**
 
-**Everything about YourSqlDba** can be found in this One-Note [Online documentation](https://tinyurl.com/YourSqlDba)
-Here is a [Quick start](https://tinyurl.com/YSDBAQuickStart) documentation about what YourSqlDba does and works.  
+**Everything about YourSqlDba** can be found in this One-Note **[Online documentation](https://tinyurl.com/YourSqlDba)**
+Here is a **[Quick start](https://tinyurl.com/YSDBAQuickStart)** documentation about what YourSqlDba does and works.  
 
->YourSqlDba comes alive only through SQL Agent job and Database Mail that need to be configured. An helper stored procedure need to be lauched (see documentation of  [Install.InitialSetupOfYourSQLDba](https://tinyurl.com/YSDInitSetup)). This procedure  provides the necessary parameters to set up database mail, backup directories, and some default behaviors. It creates also two SQL Agent Jobs and scheduled them to be launched them as needed.
+>YourSqlDba comes alive only through SQL Agent job and Database Mail that need to be configured. An helper stored procedure need to be lauched (see documentation of  **[Install.InitialSetupOfYourSQLDba](https://tinyurl.com/YSDInitSetup)**). This procedure  provides the necessary parameters to set up database mail, backup directories, and some default behaviors. It creates also two SQL Agent Jobs and scheduled them to be launched them as needed.
 
->In each of theses jobs, there is one maintenance step that calls [Maint.YourSQLDba_DoMaint](https://tinyurl.com/YSDDoMaint) stored procedure. Its parameters reflect some of the [Install.InitialSetupOfYourSQLDba](https://tinyurl.com/YSDInitSetup) parameters values, and many are by default.  [Maint.YourSQLDba_DoMaint](https://tinyurl.com/YSDDoMaint) parameters are explained in detail in YourSqlDba online documentation.
+>In each of theses jobs, there is one maintenance step that calls **[Maint.YourSQLDba_DoMaint](https://tinyurl.com/YSDDoMaint)** stored procedure. Its parameters reflect some of the **[Install.InitialSetupOfYourSQLDba](https://tinyurl.com/YSDInitSetup)** parameters values, and many are by default. **[Maint.YourSQLDba_DoMaint](https://tinyurl.com/YSDDoMaint)** parameters are explained in detail in YourSqlDba online documentation.
 
 >YourSqlDba is just a **very big T-SQL script** that helps a lot about installing automating database maintenance for SQL Server. 
 It creates, on the SQL instance where it runs, a database named YourSqlDba packed with T-SQL modules (function, stored procedures, and views). You don't need to be concerned by all of them, albeit some of them are interesting tools for exceptional day-to-day DBA tasks, out of regular maintenance tasks.
