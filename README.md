@@ -1,33 +1,40 @@
 # YourSqlDba
 
-Recent releases of YourSqlDba - [Lastest release here 6.7.3.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)
-To display installed release of YourSqlDba, execute this query: 
-*select * from Install.VersionInfo()*
+To get the script of the most recent release of YourSqlDba - [click here for lastest release here 6.7.3.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true) 
 
-See version history below.
+See [Version History](#version-history) below about changes and previous versions.
 
-Everything about YourSqlDba can be found at [Online documentation](https://tinyurl.com/YourSqlDba)
+To display currently installed release of YourSqlDba, execute this query: *select * from Install.VersionInfo()*
 
-This YourSqlDba [Quick start](https://tinyurl.com/YSDBAQuickStart) documentation explains how it works.  
+**Everything about YourSqlDba** can be found in this One-Note [Online documentation](https://tinyurl.com/YourSqlDba)
+Here is a [Quick start](https://tinyurl.com/YSDBAQuickStart) documentation about what YourSqlDba does and works.  
 
-YourSqlDba comes alive only through SQL Agent job and Database Mail that need to be configured. An helper stored procedure need to be lauched (see documentation of 
- [Install.InitialSetupOfYourSQLDba](https://tinyurl.com/YSDInitSetup)). This procedure  provides the necessary parameters to set up database mail, backup directories, and some default behaviors. It creates also two SQL Agent Jobs and scheduled them to be launched them as needed.
+YourSqlDba comes alive only through SQL Agent job and Database Mail that need to be configured. An helper stored procedure need to be lauched (see documentation of  [Install.InitialSetupOfYourSQLDba](https://tinyurl.com/YSDInitSetup)). This procedure  provides the necessary parameters to set up database mail, backup directories, and some default behaviors. It creates also two SQL Agent Jobs and scheduled them to be launched them as needed.
 
-In each of theses jobs, there is one maintenance step that calls [Maint.YourSQLDba_DoMaint](https://tinyurl.com/YSDDoMaint) stored procedure. Its parameters reflect some of the [Install.InitialSetupOfYourSQLDba](https://tinyurl.com/YSDInitSetup) parameters value, and many are by default.  [Maint.YourSQLDba_DoMaint](https://tinyurl.com/YSDDoMaint) parameters are explained in detail in YourSqlDba online documentation.
+In each of theses jobs, there is one maintenance step that calls [Maint.YourSQLDba_DoMaint](https://tinyurl.com/YSDDoMaint) stored procedure. Its parameters reflect some of the [Install.InitialSetupOfYourSQLDba](https://tinyurl.com/YSDInitSetup) parameters values, and many are by default.  [Maint.YourSQLDba_DoMaint](https://tinyurl.com/YSDDoMaint) parameters are explained in detail in YourSqlDba online documentation.
 
-YourSqlDba is just a very big T-SQL script that helps a lot in automating database maintenance. 
-It creates a database named YourSqlDba packed with T-SQL modules (function, stored procedures, and views) on the server where it is ran. You don't need to be concerned by all of them, albeit some of them are interesting tools for exceptional day-to-day DBA tasks, out of regular maintenance tasks.
+YourSqlDba is just a **very big T-SQL script** that helps a lot about installing automating database maintenance for SQL Server. 
+It creates, on the SQL instance where it runs, a database named YourSqlDba packed with T-SQL modules (function, stored procedures, and views). You don't need to be concerned by all of them, albeit some of them are interesting tools for exceptional day-to-day DBA tasks, out of regular maintenance tasks.
 
-## Version history:
+### Version history
 
-[6.7.3.0 - This version correct database size computing which affects integrity testing for very large databases. Now it works as intended. It also introduces as a new feature some interoperability with other external backup solution like CommVault backups. In this case you must modify YourSqlDba jobs to parameter to not perform neither full or log backups, but keep other optimization and integrity testing. ](YourSQLDba_InstallOrUpdateScript.sql?raw=true)
-Some minimal setup is needed with CommVault backups (full or logs); see (https://tinyurl.com/YourSqlDbaAndCommVault) for a more detailed overview.
+[Version 6.7.3.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true) 
+> Introduces as a new feature some interoperability with other external backup solution like CommVault backups. In this case you must modify YourSqlDba jobs to not perform full backup, but keep other optimization and integrity testing; and disable or delete log backups. 
 
-[6.7.2.0 - In some cases Maint.HistoryView may cause excessive memory grants when handling whole historyDetails source table. A simple solution was to add reporting elements to a resulting Maint.JobHistoryLineDetails report table through a trigger on Maint.JobHistoryDetails. This minimize greatly the amount of data processed at once and simplify very much Maint.HistoryView function](https://raw.githubusercontent.com/pelsql/YourSqlDba/2e6044f1f37ecdfe9086fcec141efa1d1d82747b/YourSQLDba_InstallOrUpdateScript.sql)
+>Some minimal setup is needed with CommVault backups (full or logs); see (https://tinyurl.com/YourSqlDbaAndCommVault) for a more detailed overview. You must add for full backups a pre-job and for log backups a post job.
 
-[6.7.1.0 - Integrity testing may be delayed when number of databases selected is lower than parameter @SpreadCheckDb, and also with some other "too long to explain here" reasons. Some improvements were implemented to uniformize processing length for DBCC Checkdb from day to day](https://raw.githubusercontent.com/pelsql/YourSqlDba/e2d5e941169c3cefbeab4543f8ca8c978b3d400b/YourSQLDba_InstallOrUpdateScript.sql).
+> It also correct database size computing which affects integrity testing for very large databases. Now it works as intended.  
 
-[6.7.0.6 - On update or install, enabling Service broker on Msdb seems to hang. Now it is done with rollback immediate option which solves the problem](https://raw.githubusercontent.com/pelsql/YourSqlDba/0abcc636c9405e0ebefaadd93a71d85c8b7e9479/YourSQLDba_InstallOrUpdateScript.sql).
+[6.7.2.0](https://raw.githubusercontent.com/pelsql/YourSqlDba/2e6044f1f37ecdfe9086fcec141efa1d1d82747b/YourSQLDba_InstallOrUpdateScript.sql)
+>In some cases Maint.HistoryView may cause excessive memory grants when handling whole historyDetails source table. A simple solution was to add reporting elements to a resulting Maint.JobHistoryLineDetails report table through a trigger on Maint.JobHistoryDetails. This minimize greatly the amount of data processed at once and simplify very much Maint.HistoryView function
+
+[6.7.1.0](https://raw.githubusercontent.com/pelsql/YourSqlDba/e2d5e941169c3cefbeab4543f8ca8c978b3d400b/YourSQLDba_InstallOrUpdateScript.sql).
+>Integrity testing may be delayed when number of databases selected is lower than parameter @SpreadCheckDb, and also with some other "too long to explain here" reasons. Some improvements were implemented to uniformize processing length for DBCC Checkdb from day to day
+
+[6.7.0.6](https://raw.githubusercontent.com/pelsql/YourSqlDba/0abcc636c9405e0ebefaadd93a71d85c8b7e9479/YourSQLDba_InstallOrUpdateScript.sql). 
+>On update or install, enabling Service broker on Msdb seems to hang. Now it is done with rollback immediate option which solves the problem
+
+If you run any of these older versions go straigh to the latest one, with some attention to comments on versions 6.7.0.1, 6.5.9.3, and the ones above.
 
 * 6.7.0.5 - Fix to 6.6.0.1 for DoRestore which needs a @migrationTestMode default value to 0 to make sense when used with Mirroring.FailOver
 * 6.7.0.4 - Improvement of Maint.HistoryView to reduce false positive when searching errors
