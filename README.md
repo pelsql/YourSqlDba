@@ -1,6 +1,6 @@
 # YourSqlDba
 
-**To get the script of the most recent release of YourSqlDba** - **[click here for lastest release here 6.7.3.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+**To get the script of the most recent release of YourSqlDba** - **[click here for lastest release here 6.7.3.1](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
 
 >**_Go to [Version History](#version-history) to details about changes and previous versions._**
 
@@ -18,8 +18,9 @@ It creates, on the SQL instance where it runs, a database named YourSqlDba packe
 
 ### Version history
 
-**[Get script of 6.7.3.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
-> Introduces as a new feature providing some interoperability with other external backups solutions like CommVault backups. In this case you must modify YourSqlDba jobs by disabling or removing log backups job. Main maintenance parameter needs to be adjusted to not ask for full backups, leaving other maintenance actions, for other optimizations and integrity testing, with the same parameters ;  
+**[Get script of 6.7.3.1](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+>Fix of 6.7.3.0 (Integrity tests could report an error) 
+Introduces as a new feature providing some interoperability with other external backups solutions like CommVault backups. In this case you must modify YourSqlDba jobs by disabling or removing log backups job. Main maintenance parameter needs to be adjusted to not ask for full backups, leaving other maintenance actions, for other optimizations and integrity testing, with the same parameters ;  
 
 >Some minimal setup is needed with CommVault backups jobs (full or logs); You must add for full backups a pre-job and for log backups a post job as instructed in **(https://tinyurl.com/YourSqlDbaAndCommVault)**. 
 
