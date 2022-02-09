@@ -1,6 +1,6 @@
 # YourSqlDba
 
-**To get the script of the most recent release of YourSqlDba** - **[click here to display lastest release 6.7.3.1](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+**To get the script of the most recent release of YourSqlDba** - **[click here to display lastest release 6.7.3.2](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
 
 >**_Go to [Version History](#version-history) to details about changes and previous versions._**
 
@@ -18,7 +18,14 @@ It creates, on the SQL instance where it runs, a database named YourSqlDba packe
 
 ### Version history
 
-**[Get script of 6.7.3.1](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+**[Get script of 6.7.3.2](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+>This version has two set of unreleated feature changes. One is an improvment of the way to get exclusive access to a database by switching to single_user mode instead to offline. Using offline mode proved to be less reliable since latest SQL Server version, since going offline was blocked sometimes by SQL internal processes.
+
+The next modification related to Mirroring.FailOver. It is a follow up for external backups solutions performing directly SQL backups to their datastore and able to do some kind of warm standy server. For example CommVault supports some kind of standy-by server very similar to YourSqlDba "Mirroring" solution. Since CommVault handles also backups and restores, a last sync must be done through CommVault console. Mirroring.Failover connot attempt to do a last sync because it has no more control on backups. However remaining tasks of Mirroring.FailOver remain valuable (sync of logins, adjusting database owner, updating compatibility level, an recovering database on destination server). A new defaut parameter was than added to let know to Mirroring.Failover if some data sync must be done, and it is set to ON by default. For actual YourSqlDba users, use case remains the same by default. CommVault users must put this parameter to off if they want to use Mirroring.Failover procedure to automate the oter failOver tasks without data sync from the procedure.
+
+>Some other stuff very specific to CommVault direct handling of backups is explained there **(https://tinyurl.com/YourSqlDbaAndCommVault)**. An helper stored procedure was added to generate restores from a directory of .Bak files with a naming specific to CommVault. Restoring to a directory of on-disk equivalent of CommVault backups is an option offered by CommVault. So this helper stored proc is welcomed, as it avoids to write a lot of restore commands for each files. This procedure is provided as-is in the documentation, and is not part of YourSqlDba common code.
+
+**[Get script of 6.7.3.1](https://raw.githubusercontent.com/pelsql/YourSqlDba/22844466770e0f898eadc1ec28e7fcb7be10f2e0/YourSQLDba_InstallOrUpdateScript.sql)**
 >Fix of 6.7.3.0 (Integrity tests could report an error) 
 Introduces as a new feature providing some interoperability with other external backups solutions like CommVault backups. In this case you must modify YourSqlDba jobs by disabling or removing log backups job. Main maintenance parameter needs to be adjusted to not ask for full backups, leaving other maintenance actions, for other optimizations and integrity testing, with the same parameters ;  
 
