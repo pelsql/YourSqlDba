@@ -1,13 +1,13 @@
 # YourSqlDba
 
-**To get the script of the most recent release of YourSqlDba** - **[click here to display lastest release 6.8.0.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+**To get the script of the most recent release of YourSqlDba** - **[click here to display lastest release 6.8.0.1](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
 
 >**_Go to [Version History](#version-history) to details about changes and previous versions._**
 
 >To display **currently installed release of YourSqlDba**, execute this query:<br/> **select * from Install.VersionInfo()**
 
 **Everything about YourSqlDba** can be found in this **[One-Note Online documentation](https://tinyurl.com/YourSqlDba)**
-Here is a **[Quick start](https://tinyurl.com/YSDBAQuickStart)** documentation about what YourSqlDba does and how it works.  
+which doesn't requires no other thing than a browser to navigate. Here is a **[Quick start](https://tinyurl.com/YSDBAQuickStart)** documentation about what YourSqlDba does and how it works.  
 
 >YourSqlDba comes alive only through SQL Agent job and Database Mail that need to be configured. An helper stored procedure need to be lauched (see documentation of  **[Install.InitialSetupOfYourSQLDba](https://tinyurl.com/YSDInitSetup)**). This procedure  provides the necessary parameters to set up database mail, backup directories, and some default behaviors. It creates also two SQL Agent Jobs and schedules them to be launched them as needed.
 
@@ -20,8 +20,8 @@ It creates, on the SQL instance where it runs, a database named YourSqlDba packe
 
 
 
-**[Get script of 6.8.0.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
->This version is a significant rewrite of the YourSqlDba logging system, and reporting of code played and exceptions whenever they occur. Previous code evolved to become too complex to maintain. The new logging system relies on a different architecture for logging YourSqlDba actions and errors. It reduced code size, made it more modern with fewer code paths, and easier to follow. It considers that more than one job may run at a time. I changed Maint.HistoryView parameters to starting and ending times of the job. Output also includes other job events that happen in that period. Poor SQL Agent's job history output formatting required new methods to leave a more readable result. What led to this significant review was some deadlock reported in the logging table when doing YourSqlDba mirroring. Solutions brought with version 6.7.3.2 needed a better retrofit of the architecture to make it sounder. I decided it was time to review the whole thing, so it is.
+**[Get script of 6.8.0.1](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+>This version is a significant rewrite of the YourSqlDba logging system, and reporting of code played and exceptions whenever they occur. Previous code evolved to become too complex to maintain. The new logging system relies on a different architecture for logging YourSqlDba actions and errors. It reduced code size, made it more modern with fewer code paths, and easier to follow. It considers that more than one job may run at a time. I changed Maint.HistoryView parameters to starting and ending times of the job. Output also includes other job events that happen in that period. Poor SQL Agent's job history output formatting required new methods to leave a more readable result. What led to this significant review was some deadlock reported in the logging table when doing YourSqlDba mirroring. Solutions brought with version 6.7.3.2 needed a better retrofit of the architecture to make it sounder. I decided it was time to review the whole thing, so it is. A small correction 
 
 **[Get script of 6.7.3.2](https://raw.githubusercontent.com/pelsql/YourSqlDba/9d78b52824110221bb2e9d6314286decbc88f4ab/YourSQLDba_InstallOrUpdateScript.sql)**
 >This version has two set of unreleated feature changes. One is an improvment of the way to get exclusive access to a database by switching to single_user mode instead to offline. Using offline mode proved to be less reliable since latest SQL Server version, since going offline was blocked sometimes by SQL internal processes.
