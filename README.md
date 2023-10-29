@@ -1,6 +1,6 @@
 # YourSqlDba
 
-**To get the script of the most recent release of YourSqlDba** - **[click here to display lastest release 6.8.0.3](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+**To get the script of the most recent release of YourSqlDba** - **[click here to display lastest release 6.8.1.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
 
 >**_Go to [Version History](#version-history) to details about changes and previous versions._**
 
@@ -18,7 +18,13 @@ It creates, on the SQL instance where it runs, a database named YourSqlDba packe
 
 ### Version history
 
-**[Get script of 6.8.0.3](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+**[Get script of 6.8.1.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+>This version reduces the number of parameters to maintenance modules through the use of a context concept available from dbo.MainContextInfo().
+It generalizes the use of if exists clause of Drop object statement.
+If extend reporting capablities of YourSqlDba to help diagnosis in maintenance and harden exception trapping and reporting in it its own code.
+
+
+**[Get script of 6.8.0.3](https://raw.githubusercontent.com/pelsql/YourSqlDba/afa43da1be7f18d770a97a44b373901039db79db/YourSQLDba_InstallOrUpdateScript.sql)**
 >This version adds column SessionId to view Perfmon.SessionInfo 
 
 **[Get script of 6.8.0.2](https://raw.githubusercontent.com/pelsql/YourSqlDba/2e744db1731ac73749e1c32a4cffbf0e1c4c6084/YourSQLDba_InstallOrUpdateScript.sql)**
