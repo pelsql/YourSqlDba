@@ -19,10 +19,10 @@ It creates, on the SQL instance where it runs, a database named YourSqlDba packe
 ### Version history
 
 **[Get script of 6.8.1.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
->This version reduces the number of parameters to maintenance modules through the use of a context concept available from dbo.MainContextInfo().
-It generalizes the use of if exists clause of Drop object statement.
-If extend reporting capablities of YourSqlDba to help diagnosis in maintenance and harden exception trapping and reporting in it its own code.
-
+##This version
+>- If extend reporting capablities of YourSqlDba to help diagnosis in maintenance and harden exception trapping and reporting in it its own code.
+>- Internal Coding: generalizes the use of Drop ... if exists statement.
+>- Internal Coding : Reduction of the number of parameters to maintenance modules through the use of a context concept available from dbo.MainContextInfo().
 
 **[Get script of 6.8.0.3](https://raw.githubusercontent.com/pelsql/YourSqlDba/afa43da1be7f18d770a97a44b373901039db79db/YourSQLDba_InstallOrUpdateScript.sql)**
 >This version adds column SessionId to view Perfmon.SessionInfo 
