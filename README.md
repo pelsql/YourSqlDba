@@ -1,6 +1,6 @@
 # YourSqlDba
 
-**To get the script of the most recent release of YourSqlDba** - **[click here to display lastest release 6.8.1.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+**To get the script of the most recent release of YourSqlDba** - **[click here to display lastest release 6.8.2.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
 
 >**_Go to [Version History](#version-history) to details about changes and previous versions._**
 
@@ -18,7 +18,26 @@ It creates, on the SQL instance where it runs, a database named YourSqlDba packe
 
 ### Version history
 
-**[Get script of 6.8.1.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+**[Get script of 6.8.2.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+>This version corrects a parameter problem for YourSQLDba.Maint.HistoryView, when the default language setting of the connection is french. 
+Language setting can be "french" by being the default language for the login, or once connected, being set explicitely outside of the initial connetion process. 
+
+The expect date format for the date is the style 121 of the convert function which is yyyy-mm-dd hh:mm:ss.mmm. But as function date parameters were datetime, an implicit conversion occurs.
+
+When connection language setting is french, implicit date conversion swaps mm-dd to dd-mm. This give another date than the intended one or worst and invalid date leading to a runtime error (ex: a day value of 13 or greater being swapped to month isn't valid for a month value). 
+
+YourSQLDba.Maint.HistoryView date parameters were modified to received a string that is then internally explicitely converted to datetime with the 121 style option.
+
+Select cmdStartTime, JobNo, seq, Typ, line, Txt 
+From
+  (Select ShowErrOnly=1, ShowAll=NULL) as Enum
+  cross apply YourSQLDba.Maint.HistoryView('2024-04-20 22:25:01.297', '2024-04-20 22:25:09.223', ShowErrOnly) 
+Order By cmdStartTime, JobNo, Seq, TypSeq, Typ, Line
+
+Alongside some works are done to incorporate elements of an outside library (of mine), that I already started to use in part in previous versions. The goal is to allow a significant rewrite of YourSqlDba on the basis to make it much more compact and easy to read. I expect to "deflated" a lot YourSqlDba using elements of this new library, and eventually remove a lot of old routines from YourSqlDba.
+
+
+**[Get script of 6.8.1.0](https://raw.githubusercontent.com/pelsql/YourSqlDba/df2f7622aa5606d08d144f33ca6c3674a7166a81/YourSQLDba_InstallOrUpdateScript.sql)**
 >This version reduces the number of parameters to maintenance modules through the use of a context concept available from dbo.MainContextInfo().
 It generalizes the use of if exists clause of Drop object statement.
 If extend reporting capablities of YourSqlDba to help diagnosis in maintenance and harden exception trapping and reporting in it its own code.
