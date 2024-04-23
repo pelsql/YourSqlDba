@@ -2,7 +2,7 @@
 
 **YourSqlDba ia a free script that creates tools that automates SQL Server database maintenance.**
 
-For more info about YourSqlDba release goto 
+Find more about YourSqlDba releases [here](https://github.com/pelsql/YourSqlDba/blob/master/README.md)
 
 >YourSqlDba comes alive only through SQL Agent job and Database Mail that need to be configured. An helper stored procedure need to be lauched (see documentation of  **[Install.InitialSetupOfYourSQLDba](https://tinyurl.com/YSDInitSetup)**). This procedure  provides the necessary parameters to set up database mail, backup directories, and some default behaviors. It creates also two SQL Agent Jobs and schedules them to be launched them as needed.
 
