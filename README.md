@@ -18,7 +18,10 @@ It creates, on the SQL instance where it runs, a database named YourSqlDba packe
 
 ### Version history
 
-**[Get script of 6.8.2.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+**[Get script of 6.8.2.1](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+SQL2022 needed a small adjustment to the procedure YUtl.CollectBackupHeaderInfoFromBackupFile because 'Restore Header Only' output now 3 more columns. I just saw the issue (2024-04-23). This is new to me, that I'm informed through the Issue feature from Github, and it is welcome. I'll now check more often, and be more proactive with new versions.
+
+**[Get script of 6.8.2.0](https://raw.githubusercontent.com/pelsql/YourSqlDba/294f3f55dfebff31c6bb4079ab91ee6a7c9af08f/YourSQLDba_InstallOrUpdateScript.sql)**
 >This version corrects a parameter problem for YourSQLDba.Maint.HistoryView, when the default language setting of the connection is french. 
 Language setting can be "french" by being the default language for the login, or once connected, being set explicitely outside of the initial connetion process. 
 
