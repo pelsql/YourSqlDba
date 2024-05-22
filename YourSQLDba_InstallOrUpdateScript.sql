@@ -6696,7 +6696,6 @@ GO
 -- Cycle SQL Server error log
 -----------------------------------------------------------------------------
 create proc yMaint.LogCleanup 
-  @jobNo Int
 as
 Begin
   declare @d nvarchar(8)
@@ -10044,6 +10043,16 @@ Begin
     , @err = @err 
     , @Info = 'Case sensitive databases are not processed by YourSqlDba. Exclude them from maintenance by setting «@ExcDb» parameter of the «YourSQLDba_DoMaint» to exclude databases from the check'
   Delete From #Db Where DbIsCaseInsensitive = 0
+
+    -- ==============================================================================
+    -- Cleanup backup history, and log cleanup if it appears to be the big maintenance
+    -- integrity test and full backup are the only important maintenance parameters
+    -- that identify a full maintenance
+    -- ==============================================================================
+  If @DoInteg=1 And @DoBackup = 'F'
+  Begin
+    exec yMaint.LogCleanup 
+  End
 
   -- ==============================================================================
   -- perform integrity tests or not

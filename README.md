@@ -25,6 +25,8 @@ With version 7.0, several improvements have been added to YourSQLDba.Maint.Histo
 
 From my point of view, YourSQLDba.Maint.HistoryView is a crucial function for diagnosing maintenance problems.
 
+A piece a code invoking log cleanup was found missing since version 6.8.0.0­.  It is reintroduced in this version.
+
 **[Get script of 6.8.2.1](https://raw.githubusercontent.com/pelsql/YourSqlDba/6e7d1fbf53fb5344efae2b9640f551b78794d758/YourSQLDba_InstallOrUpdateScript.sql)**
 SQL2022 needed a small adjustment to the procedure YUtl.CollectBackupHeaderInfoFromBackupFile because 'Restore Header Only' output now 3 more columns. I just saw the issue (2024-04-23). This is new to me, that I'm informed through the Issue feature from Github, and it is welcome. I'll now check more often, and be more proactive with new versions.
 
