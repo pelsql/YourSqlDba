@@ -1,6 +1,6 @@
 # YourSqlDba
 
-**To get the script of the most recent release of YourSqlDba** - **[click here to display lastest release 6.8.2.1](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+**To get the script of the most recent release of YourSqlDba** - **[click here to display lastest release 7.0.0.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
 
 >**_Go to [Version History](#version-history) to details about changes and previous versions._**
 
