@@ -6210,7 +6210,7 @@ Return
 <b><font color='darkblue'; background:#CCCCCC;>
 Select cmdStartTime, JobNo, seq, Typ, line, Txt, MaintJobName, MainSqlCmd, Who, Prog, Host, SqlAgentJobName, JobId, JobStart, JobEnd
 From 
-  Maint.MaintenanceEnums as E -- E.MHV$ShowErrOnly=1, E.MHV$ShowAll=0
+  YourSQLDba.Maint.MaintenanceEnums as E -- E.MHV$ShowErrOnly=1, E.MHV$ShowAll=0
   cross apply YourSQLDba.Maint.HistoryView('#StartOfMaintTxt#', '#EndOfMaintTxt#', E.MHV$ShowAll) 
 Order By cmdStartTime, Seq, TypSeq, Typ, Line
 </font></b>
@@ -6224,7 +6224,7 @@ Order By cmdStartTime, Seq, TypSeq, Typ, Line
 <b><font color='darkred';>
 Select cmdStartTime, JobNo, seq, Typ, line, Txt, MaintJobName, MainSqlCmd, Who, Prog, Host, SqlAgentJobName, JobId, JobStart, JobEnd 
 From
-  Maint.MaintenanceEnums as E -- E.MHV$ShowErrOnly=1, E.MHV$ShowAll=0
+  YourSQLDba.Maint.MaintenanceEnums as E -- E.MHV$ShowErrOnly=1, E.MHV$ShowAll=0
   cross apply YourSQLDba.Maint.HistoryView('#StartOfMaintTxt#', '#EndOfMaintTxt#', E.MHV$ShowErrOnly) 
 Where JobNo=#JobNo# 
 Order By cmdStartTime, JobNo, Seq, TypSeq, Typ, Line
