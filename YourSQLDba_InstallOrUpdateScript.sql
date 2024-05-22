@@ -447,11 +447,15 @@ Select
 , MHV$FromMidnight
 , MHV$FromYesterdayMidnight
 , MHV$Since12Hours
+, MHV$Since10Min
+, MHV$Since1Hour
 From
   (Select MHV$Now=Getdate()) as Now
   CROSS APPLY (Select MHV$FromMidnight=DateAdd(Day, DateDiff(Day, 0, MHV$Now), 0)) as FromMidnight
   CROSS APPLY (Select MHV$FromYesterdayMidnight=DateAdd(Day, DateDiff(Day, 0, MHV$Now)-1, 0)) as FromYesterdayMidnight
   CROSS APPLY (Select MHV$Since12Hours=DateAdd(Hour, DateDiff(Hour, 0, MHV$Now)-12, 0)) as Since12Hours
+  CROSS APPLY (Select MHV$Since10min=DateAdd(Mi, DateDiff(Mi, 0, MHV$Now)-10, 0)) as Since10Min
+  CROSS APPLY (Select MHV$Since1Hour=DateAdd(hh, DateDiff(hh, 0, MHV$Now)-1, 0)) as Since1Hour
 GO
 Create Or Alter View S#.Enums -- alter extra is allowed from SQL2016
 as
@@ -4427,39 +4431,6 @@ Begin
 End
 Go
 If Db_name() <> 'YourSqlDba' Use YourSqlDba
-GO
--- yExecNLog.LogAndOrExecPrm and yExecNLog.LogAndOrExecTrc are used into yExecNLog.LogAndOrExec
--- adding content discriminated by spid and nestlevel allows yExecNLog.LogAndOrExec to be reentrant
--- as yExecNLog.LogAndOrExec may run a script that itself call yExecNLog.LogAndOrExec 
-
--- yExecNLog.LogAndOrExecPrm, memorize parameters, which make queries easier to maintain with intellisence
--- It also ease testing as variables do not need to be declared 
-Drop table if Exists yExecNLog.LogAndOrExecPrm
-Create table yExecNLog.LogAndOrExecPrm
-(
-  spid Int Default @@spid
-, nestLevel Int Default @@NestLevel
-, JobNo INT NULL
-, YourSqlDbaNo nvarchar(max) NULL
-, context nvarchar(4000) NULL
-, sql nvarchar(max) NULL
-, Info nvarchar(max)  NULL
-, err nvarchar(max)  NULL 
-, errorN Int NULL
-, [raiseError] int NULL
-, forDiagOnly  int NULL
-, Seq Int NULL
-)
--- for spid and nestlevel column see comment for yExecNLog.LogAndOrExecPrm
--- yExecNLog.LogAndOrExecTrc ease testing of the stored proc also.
--- Also sp Broker_AutoActivated_LaunchRestoreToMirrorCmd activated by
--- [dbo].[YourSQLDbaTargetQueueMirrorRestore] que, may invoke this proc, so spid may be different
-Drop Table If Exists yExecNLog.LogAndOrExecTrc
-Select Top 0 spid=@@spid, nestLevel=@@nestlevel, * 
-Into yExecNLog.LogAndOrExecTrc
-From Maint.JobHistoryLineDetails 
-GO
-If Db_name() <> 'YourSqlDba' Use YourSqlDba
 go
 Create or Alter proc yExecNLog.LogAndOrExec  
   @YourSqlDbaNo nvarchar(max) = NULL
@@ -4513,6 +4484,23 @@ Begin
     
   Set @errorN = 0 
   
+  --Drop table if Exists #Prm -- dont use this at run-time, just for debugging. Cause reentrancy problem, by clearing caller temporary table
+  Create table #prm
+  (
+    JobNo INT NULL
+  , YourSqlDbaNo nvarchar(max) NULL
+  , context nvarchar(4000) NULL
+  , sql nvarchar(max) NULL
+  , Info nvarchar(max)  NULL
+  , err nvarchar(max)  NULL 
+  , errorN Int NULL
+  , [raiseError] int NULL
+  , forDiagOnly  int NULL
+  , Seq Int NULL
+  )
+  -- create #trc on same model than Maint.JobHistoryLineDetails 
+  Select top 0 * Into #trc From Maint.JobHistoryLineDetails 
+
   Begin TRY
 
     -- special entries are logged for job start that describe the job and it parameters
@@ -4523,22 +4511,17 @@ Begin
     Select JobNo, @forDiagOnly From dbo.MainContextInfo(null)
     Set @Seq=SCOPE_IDENTITY()
 
-    -- memorize parameters into yExecNLog.LogAndOrExecPrm, which make queries easier to maintain with intellisence
-    -- this table discriminate info by spid default @@spid and nestlevel default @@nestlevel, 
-    -- so it allows yExecNLog.LogAndOrExecPrm to call itself from a script.
-    Delete From yExecNLog.LogAndOrExecPrm Where spid=@@spid And nestlevel = @@nestlevel
-    Insert into yExecNLog.LogAndOrExecPrm (spid, nestLevel, JobNo, YourSqlDbaNo, Context, sql, Info, err, errorN, [raiseError], forDiagOnly, seq)
-    Select @@spid, @@nestlevel, M.JobNo, @YourSqlDbaNo, @Context, @sql, @Info, @err, @errorN, @raiseError, @forDiagOnly, @seq
+    -- memorize parameters into #prm, which make queries easier to maintain with intellisence
+    Insert into #prm 
+    Select M.JobNo, @YourSqlDbaNo, @Context, @sql, @Info, @err, @errorN, @raiseError, @forDiagOnly, @seq
     From dbo.MainContextInfo(null) as M
 
     -- useful to trace, but select output can be returned when launched from 
     -- Broker_AutoActivated_LaunchRestoreToMirrorCmd activated by
     -- [dbo].[YourSQLDbaTargetQueueMirrorRestore] queue
-    Delete yExecNLog.LogAndOrExecTrc Where spid = @@spid And nestLevel = @@NESTLEVEL
-    insert into yExecNLog.LogAndOrExecTrc 
+    insert into #trc 
     Select 
-      @@Spid, @@nestLevel
-    , I.JobNo
+      I.JobNo
     , I.Seq
     , ToLog.TypSeq
     , ToLog.typ
@@ -4546,7 +4529,7 @@ Begin
     , ToLog.Txt 
     From 
       -- only happens once at job start
-      (Select * From yExecNLog.LogAndOrExecPrm as I Where spid = @@spid And nestLevel = @@NESTLEVEL) as I
+      (Select * From #prm as I) as I
       -- shred into columns JSonPrms of JobHistory for info that goes in messages
       -- parameter NULL could be used again, as before. But jobNo was recorded in yExecNLog.LogAndOrExecPrm table, so we take it there instead 
       CROSS APPLY Dbo.MainContextInfo (I.JobNo) as J 
@@ -4631,19 +4614,21 @@ Begin
       ) as ToLog
       -- if a real @sql command has to be run, try run it otherwise exit the proc
 
-    -- Select * from yExecNLog.LogAndOrExecTrc 
+    -- Select * from #trc 
     -- memorize into Maint.JobHistoryLineDetails, details of the job
     Insert into Maint.JobHistoryLineDetails (jobNo, Seq, TypSeq, Typ, Line, Txt)
-    Select jobNo, Seq, TypSeq, Typ, Line, Txt 
-    from yExecNLog.LogAndOrExecTrc Where spid = @@spid And nestLevel = @@NESTLEVEL
+    Select * from #trc
 
     -- always update event for log message only
     Update JH
     Set JobEnd = Getdate()
     From 
-      (select * From yExecNLog.LogAndOrExecTrc as t Where spid = @@spid And nestLevel = @@NESTLEVEL) as T -- I could use @Prc, but this code is more convenient for debugging as yExecNLog.LogAndOrExecPrm is volatile
+      #trc as t -- I could use #Trc, but this code is more convenient for debugging as #prm is volatile
       Join Maint.JobHistory as JH
       ON JH.JobNo = t.JobNo 
+
+    -- the same #trc is going to be reused for logging run-time execution error, if there are any
+    Truncate table #trc 
 
     If isnull(@sql, '') = '' 
       Return  -- nothing left to do
@@ -4656,7 +4641,7 @@ Begin
 
     -- always update in case of DBCC messages with errors which can't be trapped error
     -- always update event for log message only
-    -- Since here yExecNLog.LogAndOrExecTrc is empty switch back to dbo.MaintcontextInfo(null) method to get jobNo
+    -- Since here #trc is empty switch back to dbo.MaintcontextInfo(null) method to get jobNo
     Update JH
     Set JobEnd = Getdate()
     From 
@@ -4669,22 +4654,16 @@ Begin
     -- Logs messages, being informational (severity <=10) or not.
     -- As examples : prints, or dbcc checkdb output without error are informational messages. 
     -- The last line of the report on a global execution status
-
-    -- Since the same yExecNLog.LogAndOrExecTrc is going to be reused for logging run-time execution error
-    -- cleanup content
-    Delete yExecNLog.LogAndOrExecTrc Where spid = @@spid And nestLevel = @@NESTLEVEL
-    Insert into yExecNLog.LogAndOrExecTrc
+    Insert into #trc
     Select 
-      I.Spid
-    , I.nestLevel
-    , I.JobNo
+      I.JobNo
     , I.Seq
     , ToLog.TypSeq
     , ToLog.typ
     , Line=ToLog.LineOrd
     , ToLog.Txt
     From 
-      (Select * From yExecNLog.LogAndOrExecPrm as I Where spid = @@spid And nestLevel = @@NESTLEVEL) as I
+      (Select * From #prm as I) as I
       CROSS APPLY -- log informational messages from SQL severity <=10
       ( 
       -- @maxSeverity is a value returned by ExecWithProfilerTrace. Smaller than 10, this is a print.
@@ -4722,9 +4701,10 @@ Begin
         ) as Ok
       ) as ToLog
 
-    -- copy yExecNLog.LogAndOrExecTrc if it has run-time execution error logged into it into Maint.JobHistoryLineDetails 
+    -- copy #trc if it has run-time execution error logged into it into Maint.JobHistoryLineDetails 
     Insert into Maint.JobHistoryLineDetails (jobNo, Seq, TypSeq, Typ, Line, Txt)
-    Select jobNo, Seq, TypSeq, Typ, Line, Txt from yExecNLog.LogAndOrExecTrc Where spid = @@spid And nestLevel = @@NESTLEVEL
+    Select * from #trc
+
 
     -- Update Maint.JobHistoryDetails for query duration
     -- otherwise secs remains null as it was when the row was created
@@ -4733,7 +4713,7 @@ Begin
       secs = Datediff(ss, cmdStartTime, getdate())
     , forDiagOnly = Case When @maxSeverity > 10 Then 0 Else @forDiagOnly End
     From
-      (Select * From yExecNLog.LogAndOrExecPrm Where spid = @@spid And nestLevel = @@NESTLEVEL) as P
+      #prm as P
       JOIN Maint.JobHistoryDetails JD
       ON JD.JobNo = P.JobNo And JD.seq = P.Seq
 
@@ -4762,16 +4742,14 @@ Begin
     -- write it into Maint.JobHistoryLineDetails 
     Insert Into Maint.JobHistoryLineDetails (jobNo, Seq, TypSeq, Typ, Line, Txt)
     Select I.JobNo, I.Seq, TypSeq=99, typ='ErrLog', lineOrd=1, line=@Msg
-    From yExecNLog.LogAndOrExecPrm as I
-    Where spid = @@spid And nestLevel = @@NESTLEVEL
-
+    From #Prm as I
     -- always update event for log message only
     Update JH
     Set JobEnd = Getdate()
     From 
-      (Select * From yExecNLog.LogAndOrExecTrc Where spid = @@spid And nestLevel = @@NESTLEVEL) as t 
+      dbo.MainContextInfo(NULL) as M
       Join Maint.JobHistory as JH
-      ON JH.JobNo = t.JobNo;
+      ON JH.JobNo = M.JobNo;
 
   End CATCH
 
@@ -6633,7 +6611,7 @@ Begin
     CROSS APPLY dbo.ScriptSetGlobalAccessToPrm (JsonPrm) as S
   Exec (@Sql) -- Execute SQL generated by previous query
 
-  Drop Table IF Exists #Db
+  --Drop Table IF Exists #Db  --avoid this in production, cause reentrancy problem
   Select DbName=name Into #Db
   From sys.databases 
   Where user_access_desc IN ('MULTI_USER','SINGLE_USER')
@@ -13701,10 +13679,10 @@ as
 Begin
   Set nocount on
 
-  Drop Table If Exists #Prm
+  --Drop Table If Exists #Prm
   Select SrcDb = QUOTENAME(@SrcDb), DestDb = QUOTENAME(@DestDb) Into #Prm
     
-  Drop Table If Exists #ModuleDefInSrcDb
+  --Drop Table If Exists #ModuleDefInSrcDb
   -- Select top 0 to template #ModuleDefInSrcDb  from Sys.Sys_SqlModules + extra cols
   Select Top 0 M.*, Names.* Into #ModuleDefInSrcDb 
   From 
@@ -13757,7 +13735,7 @@ Begin
   Print @SqlGetObj
   Exec (@SqlGetObj )
 
-  Drop Table If Exists #DropsAndCreates
+  --Drop Table If Exists #DropsAndCreates
   -- #DropAndCreates is created by the select into below
   ;With 
     MatchTypToDropTypAndTypSequence as 
@@ -17436,3 +17414,4 @@ GO
 If Schema_id('utl') is NOT NULL drop schema utl
 GO
 Exec Install.PrintVersionInfo
+
