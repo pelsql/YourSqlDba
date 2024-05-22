@@ -18,7 +18,16 @@ It creates, on the SQL instance where it runs, a database named YourSqlDba packe
 
 ### Version history
 
-**[Get script of 6.8.2.1](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+**[Get script of 7.0.0.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+Version 7.0.0.0 lays the foundation for elements of a new architecture for YourSqlDba. These elements will be introduced gradually, maintaining parallel elements of both the original and the new architecture.
+
+With version 7.0, several improvements have been added to YourSQLDba.Maint.HistoryView to better visualize multi-job interactions. When events are listed between two moments, they are ordered by time and include events from simultaneous jobs. Each time the log history events switch jobs, a list of columns containing the job pedigree is set, making it easy to spot the change.
+
+From my point of view, YourSQLDba.Maint.HistoryView is a crucial function for diagnosing maintenance problems.
+
+A piece a code invoking log cleanup was found missing since version 6.8.0.0­.  It is reintroduced in this version.
+
+**[Get script of 6.8.2.1](https://raw.githubusercontent.com/pelsql/YourSqlDba/6e7d1fbf53fb5344efae2b9640f551b78794d758/YourSQLDba_InstallOrUpdateScript.sql)**
 SQL2022 needed a small adjustment to the procedure YUtl.CollectBackupHeaderInfoFromBackupFile because 'Restore Header Only' output now 3 more columns. I just saw the issue (2024-04-23). This is new to me, that I'm informed through the Issue feature from Github, and it is welcome. I'll now check more often, and be more proactive with new versions.
 
 **[Get script of 6.8.2.0](https://raw.githubusercontent.com/pelsql/YourSqlDba/294f3f55dfebff31c6bb4079ab91ee6a7c9af08f/YourSQLDba_InstallOrUpdateScript.sql)**
