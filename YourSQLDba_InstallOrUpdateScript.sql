@@ -11,7 +11,7 @@
 Drop Table if Exists #version
 create table #Version (version nvarchar(40), VersionDate datetime)
 set nocount on
-insert into #Version Values ('7.0.0.0', convert(datetime, '2024-05-21', 120))  
+insert into #Version Values ('7.0.0.1', convert(datetime, '2024-05-21', 120))  
 
 --Alter database yoursqldba set single_user with rollback immediate
 --go
