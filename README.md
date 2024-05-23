@@ -1,6 +1,6 @@
 # YourSqlDba
 
-**To get the script of the most recent release of YourSqlDba** - **[click here to display lastest release 7.0.0.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+**To get the script of the most recent release of YourSqlDba** - **[click here to display lastest release 7.0.0.1](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
 
 >**_Go to [Version History](#version-history) to details about changes and previous versions._**
 
@@ -21,9 +21,9 @@ It creates, on the SQL instance where it runs, a database named YourSqlDba packe
 **[Get script of 7.0.0.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
 Version 7.0.0.0 lays the foundation for elements of a new architecture for YourSqlDba. These elements will be introduced gradually, maintaining parallel elements of both the original and the new architecture.
 
-With version 7.0, several improvements have been added to YourSQLDba.Maint.HistoryView to better visualize multi-job interactions. When events are listed between two moments, they are ordered by time and include events from simultaneous jobs. Each time the log history events switch jobs, a list of columns containing the job pedigree is set, making it easy to spot the change.
+With version 7.0, several improvements have been added to **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView) to better visualize multi-job interactions. When events are listed between two moments, they are ordered by time and include events from simultaneous jobs. Each time the log history events switch jobs, a list of columns containing the job pedigree is set, making it easy to spot the change.
 
-From my point of view, YourSQLDba.Maint.HistoryView is a crucial function for diagnosing maintenance problems.
+From my point of view, **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView) is a crucial function for diagnosing maintenance problems. A set of pre-computed datetime values may be used from MaintenanceEnums, to query current or past YourSqlDba activity in those range. See updated documentation about **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView).
 
 A piece a code invoking log cleanup was found missing since version 6.8.0.0­.  It is reintroduced in this version.
 
@@ -92,7 +92,7 @@ If you run any of these older versions go straigh to the latest one, with some a
 * 6.7.0.3 - Fix to a change in 6.6.0.3 for printing of code, which translated to string truncation error
 * 6.7.0.2 - Fix to a change in 6.6.0.3 for DBCC Shrink_Log.  
 
-* 6.7.0.1 - This version add a new feature [Maint.HistoryView](https://tinyurl.com/2byndy8d) that deprecate some others and solve a minor update bug
+* 6.7.0.1 - This version add a new feature Maint.HistoryView that deprecate some others and solve a minor update bug
   1) A new function called YourSQLDba.Maint.HistoryView allows inspection of YourSqlDba history in a much more readeable form. It accepts 3 parameters: a job Number, a step number, a flag to filter only reported errors. Email messages are adjusted accordingly. The stored procedures ShowHistory and ShowHistoryError are deprecated.
 
   2) A minor update bug was deleting job history

@@ -439,23 +439,23 @@ GO
 Create or Alter View Maint.MaintenanceEnums AS
 Select 
   -- useful, general use constants to describe maintenance parameters
-  -- Those prefixed by MHV$ are for function Maint.HistoryView
-  MHV$ShowErrOnly = 1
-, MHV$ShowAll = 0 
-, MHV$ShowOnlyErrorOfJobFromSessionContext = 2
-, MHV$Now
-, MHV$FromMidnight
-, MHV$FromYesterdayMidnight
-, MHV$Since12Hours
-, MHV$Since10Min
-, MHV$Since1Hour
+  -- Those prefixed by HV$ are for function Maint.HistoryView
+  HV$ShowErrOnly = 1
+, HV$ShowAll = 0 
+, HV$ShowOnlyErrorOfJobFromSessionContext = 2
+, HV$Now
+, HV$FromMidnight
+, HV$FromYesterdayMidnight
+, HV$Since12Hours
+, HV$Since10Min
+, HV$Since1Hour
 From
-  (Select MHV$Now=Getdate()) as Now
-  CROSS APPLY (Select MHV$FromMidnight=DateAdd(Day, DateDiff(Day, 0, MHV$Now), 0)) as FromMidnight
-  CROSS APPLY (Select MHV$FromYesterdayMidnight=DateAdd(Day, DateDiff(Day, 0, MHV$Now)-1, 0)) as FromYesterdayMidnight
-  CROSS APPLY (Select MHV$Since12Hours=DateAdd(Hour, DateDiff(Hour, 0, MHV$Now)-12, 0)) as Since12Hours
-  CROSS APPLY (Select MHV$Since10min=DateAdd(Mi, DateDiff(Mi, 0, MHV$Now)-10, 0)) as Since10Min
-  CROSS APPLY (Select MHV$Since1Hour=DateAdd(hh, DateDiff(hh, 0, MHV$Now)-1, 0)) as Since1Hour
+  (Select HV$Now=Getdate()) as Now
+  CROSS APPLY (Select HV$FromMidnight=DateAdd(Day, DateDiff(Day, 0, HV$Now), 0)) as FromMidnight
+  CROSS APPLY (Select HV$FromYesterdayMidnight=DateAdd(Day, DateDiff(Day, 0, HV$Now)-1, 0)) as FromYesterdayMidnight
+  CROSS APPLY (Select HV$Since12Hours=DateAdd(Hour, DateDiff(Hour, 0, HV$Now)-12, 0)) as Since12Hours
+  CROSS APPLY (Select HV$Since10min=DateAdd(Mi, DateDiff(Mi, 0, HV$Now)-10, 0)) as Since10Min
+  CROSS APPLY (Select HV$Since1Hour=DateAdd(hh, DateDiff(hh, 0, HV$Now)-1, 0)) as Since1Hour
 GO
 Create Or Alter View S#.Enums -- alter extra is allowed from SQL2016
 as
@@ -5906,7 +5906,7 @@ Create OR Alter Function maint.HistoryView (@StartDateTime Nvarchar(23), @EndDat
 -- 3) List only job entries that have an error in the time range
 --
 -- The function is intended to be used by YourSqlDba reporting, but can be used by any user with the proper rights.
--- YourSqlDba reporting use parameter MHV$ShowOnlyErrorOfJobFromSessionContext to get only the errors of the current job
+-- YourSqlDba reporting use parameter HV$ShowOnlyErrorOfJobFromSessionContext to get only the errors of the current job
 -- so yMaint.InstructionsToGetJobHistory uses it to find if an error occured in the job and produces a report
 -- that is different depening the occurence of an error or not.
 --
@@ -5968,7 +5968,7 @@ From
       CROSS APPLY (Select NonNullEndDateTime=ISNULL(@EndDateTime, '9999-12-31 23:59:59.997')) as NonNullEndDateTime
       -- assume default value in replacement of NULL param for FilterOption
       CROSS JOIN Maint.MaintenanceEnums as E
-      CROSS APPLY (Select FilterOption=ISNULL(@FilterOption, E.MHV$ShowAll)) as FilterOption
+      CROSS APPLY (Select FilterOption=ISNULL(@FilterOption, E.HV$ShowAll)) as FilterOption
       -- check if date parameters are valid
       CROSS APPLY (Select ChkStartDateTime=TRY_CONVERT(Datetime, NonNullStartDateTime,121)) as StartDateTime
       CROSS APPLY (Select ChkEndDateTime=TRY_CONVERT(Datetime, NonNullEndDateTime,121)) as EndDateTime
@@ -5994,8 +5994,8 @@ From
     -- JobNoFromExecutionContext is intended to be used to find out presence of errors only by InstructionsToGetJobHistory
     -- which is called itself through yMaint.SendExecReports and Maint.YourSqlDba_DoMaint if you go up into the call stack
     --
-    -- This jobNo and is valid only for to be used when FilterOption = E.MHV$ShowOnlyErrorOfJobFromSessionContext 
-    -- as (FilterOption = E.MHV$ShowOnlyErrorOfJobFromSessionContext And JobNo = JobNoFromExecutionContext)
+    -- This jobNo and is valid only for to be used when FilterOption = E.HV$ShowOnlyErrorOfJobFromSessionContext 
+    -- as (FilterOption = E.HV$ShowOnlyErrorOfJobFromSessionContext And JobNo = JobNoFromExecutionContext)
     OUTER APPLY (Select JobNoFromExecutionContext=JobNo From Dbo.MainContextInfo(NULL)) as JobNoFromExecutionContext
 
     -- This OUTER APPLY return NULLS columns if an error message about date format is there
@@ -6096,7 +6096,7 @@ From
   -- Decides what to output from lineDetails
   Where 
     -- show all in the time range
-    JA.FilterOption = E.MHV$ShowAll
+    JA.FilterOption = E.HV$ShowAll
     -- show only errors in the time range
   OR 
      (    
@@ -6104,13 +6104,13 @@ From
            Or (JA.ErrFound=1) -- Operational issue error explicitely flagged by YourSqlDba (i.e. check on database recovery to full)
           )
       And ( -- 1st situation : Exercice error detection only on job from Execution context.
-            --                 E.MHV$ShowOnlyErrorOfJobFromSessionContext is only valid when maintenance execution context
+            --                 E.HV$ShowOnlyErrorOfJobFromSessionContext is only valid when maintenance execution context
             --                 is set on the current session id.
-              (JA.FilterOption = E.MHV$ShowOnlyErrorOfJobFromSessionContext And JA.JobNo = JA.JobNoFromExecutionContext)
+              (JA.FilterOption = E.HV$ShowOnlyErrorOfJobFromSessionContext And JA.JobNo = JA.JobNoFromExecutionContext)
 
             -- 2nd : Display ALL errors in the time range, may it belongs to the current job or not.
             -- Job may overlap in time, but also interesting to report previous errors in all jobs.
-          Or  JA.FilterOption = E.MHV$ShowErrOnly 
+          Or  JA.FilterOption = E.HV$ShowErrOnly 
           )
      )
      -- show error if date format appears invalid (121 format of convert)
@@ -6126,12 +6126,12 @@ From
 --   CROSS APPLY
 --   (
 --   Values 
---     --('2021-04-30 13:26:06.630', '2024-04-30 13:26:06.833', E.MHV$ShowErrOnly)
---     --('2024-04-29 18:39:06.510', '2024-04-29 18:43:33.017', E.MHV$ShowAll)
---     --('2024-04-29 18:48:10.900', '2024-04-29 18:48:13.623', E.MHV$ShowErrOnly)
---     --('2024-04-30 10:27:06.763', '2024-04-30 10:30:11.490', E.MHV$ShowErrOnly)
---     --('2024-05-01 12:10:34.477', '2024-05-01 12:10:41.297', E.MHV$ShowAll)
---     (E.MHV$FromYesterdayMidnight, E.MHV$Now, E.MHV$ShowAll)
+--     --('2021-04-30 13:26:06.630', '2024-04-30 13:26:06.833', E.HV$ShowErrOnly)
+--     --('2024-04-29 18:39:06.510', '2024-04-29 18:43:33.017', E.HV$ShowAll)
+--     --('2024-04-29 18:48:10.900', '2024-04-29 18:48:13.623', E.HV$ShowErrOnly)
+--     --('2024-04-30 10:27:06.763', '2024-04-30 10:30:11.490', E.HV$ShowErrOnly)
+--     --('2024-05-01 12:10:34.477', '2024-05-01 12:10:41.297', E.HV$ShowAll)
+--     (E.HV$FromYesterdayMidnight, E.HV$Now, E.HV$ShowAll)
 --   ) as t(startDate, EndDate, FilterOption)
 --   CROSS APPLY Maint.HistoryView (startDate, EndDate, FilterOption) as H
 -- Order by CmdStartTime, seq, typSeq, Line
@@ -6186,7 +6186,7 @@ Return
     -- JobSuccess is true when HistoryView reports no error in maintenance time interval, when asked to do so (1 as trd param)
     -- Maint.HistoryView expect datetime parameters formatted as datetime with format 121, to avoid language setting effect on datetime parameter interpretation
     CROSS APPLY (Select * From Maint.MaintenanceEnums) as Enum
-    CROSS APPLY (Select JobSuccess=IIF(Not Exists(Select * From MAINT.HistoryView(Prm.StartOfMaintTxt, Prm.EndOfMaintTxt, Enum.MHV$ShowOnlyErrorOfJobFromSessionContext)),1,0)) as JobSuccess
+    CROSS APPLY (Select JobSuccess=IIF(Not Exists(Select * From MAINT.HistoryView(Prm.StartOfMaintTxt, Prm.EndOfMaintTxt, Enum.HV$ShowOnlyErrorOfJobFromSessionContext)),1,0)) as JobSuccess
     CROSS JOIN  (Select shortResultMessTmp='<b><font #ErrColor# size="3">#shortResultMess#</font></b>') as shortResultMessTmp
     Cross Apply (Select shortResultMess=IIF(JobSuccess=1, 'Maintenance succeeded', 'Error detected by maintenance process')) as shortResultMess
     Cross Apply (Select ErrColor=IIF(JobSuccess=1, 'color="Green"', 'color="Red"')) as ErrColor
@@ -6210,8 +6210,9 @@ Return
 <b><font color='darkblue'; background:#CCCCCC;>
 Select cmdStartTime, JobNo, seq, Typ, line, Txt, MaintJobName, MainSqlCmd, Who, Prog, Host, SqlAgentJobName, JobId, JobStart, JobEnd
 From 
-  Maint.MaintenanceEnums as E -- E.MHV$ShowErrOnly=1, E.MHV$ShowAll=0
-  cross apply YourSQLDba.Maint.HistoryView('#StartOfMaintTxt#', '#EndOfMaintTxt#', E.MHV$ShowAll) 
+  -- set of constants for the function below (& precomputed date range constants) 
+  YourSQLDba.Maint.MaintenanceEnums as E -- HV$Now, HV$FromMidnight, HV$FromYesterdayMidnight, HV$Since12Hours, HV$Since10Min, HV$Since1Hour
+  cross apply YourSQLDba.Maint.HistoryView('#StartOfMaintTxt#', '#EndOfMaintTxt#', E.HV$ShowAll) -- E.HV$ShowErrOnly=1, E.HV$ShowAll=0
 Order By cmdStartTime, Seq, TypSeq, Typ, Line
 </font></b>
 </pre>
@@ -6224,8 +6225,9 @@ Order By cmdStartTime, Seq, TypSeq, Typ, Line
 <b><font color='darkred';>
 Select cmdStartTime, JobNo, seq, Typ, line, Txt, MaintJobName, MainSqlCmd, Who, Prog, Host, SqlAgentJobName, JobId, JobStart, JobEnd 
 From
-  Maint.MaintenanceEnums as E -- E.MHV$ShowErrOnly=1, E.MHV$ShowAll=0
-  cross apply YourSQLDba.Maint.HistoryView('#StartOfMaintTxt#', '#EndOfMaintTxt#', E.MHV$ShowErrOnly) 
+  -- set of constants for the function below (& precomputed date range constants) 
+  YourSQLDba.Maint.MaintenanceEnums as E -- HV$Now, HV$FromMidnight, HV$FromYesterdayMidnight, HV$Since12Hours, HV$Since10Min, HV$Since1Hour
+  cross apply YourSQLDba.Maint.HistoryView('#StartOfMaintTxt#', '#EndOfMaintTxt#', E.HV$ShowErrOnly) -- E.HV$ShowErrOnly=1, E.HV$ShowAll=0
 Where JobNo=#JobNo# 
 Order By cmdStartTime, JobNo, Seq, TypSeq, Typ, Line
 </font></b>
@@ -11069,8 +11071,8 @@ Begin
   Print 'Job info is displayed from a datetime range that must be compatible with format 120, 121'
   print 'Select cmdStartTime, JobNo, seq, Typ, line, Txt, MaintJobName, MainSqlCmd, Who, Prog, Host, SqlAgentJobName, JobId, JobStart, JobEnd '
   print 'From '
-  print '  Maint.MaintenanceEnums as E -- E.MHV$ShowErrOnly=1, E.MHV$ShowAll=0'
-  print '  cross apply YourSQLDba.Maint.HistoryView(''2022-11-21 00:00:00.690'', ''2022-11-21 00:03:14.980'', E.MHV$ShowAll) '
+  print '  Maint.MaintenanceEnums as E -- E.HV$ShowErrOnly=1, E.HV$ShowAll=0'
+  print '  cross apply YourSQLDba.Maint.HistoryView(''2022-11-21 00:00:00.690'', ''2022-11-21 00:03:14.980'', E.HV$ShowAll) '
   print 'Order By cmdStartTime, Seq, TypSeq, Typ, Line'
 End -- Maint.ShowHistory 
 GO
