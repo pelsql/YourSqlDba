@@ -21,9 +21,9 @@ It creates, on the SQL instance where it runs, a database named YourSqlDba packe
 **[Get script of 7.0.0.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
 Version 7.0.0.0 lays the foundation for elements of a new architecture for YourSqlDba. These elements will be introduced gradually, maintaining parallel elements of both the original and the new architecture.
 
-With version 7.0, several improvements have been added to **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView) to better visualize multi-job interactions. When events are listed between two moments, they are ordered by time and include events from simultaneous jobs. Each time the log history events switch jobs, a list of columns containing the job pedigree is set, making it easy to spot the change.
+With version 7.0, several improvements have been added to **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)** to better visualize multi-job interactions. When events are listed between two moments, they are ordered by time and include events from simultaneous jobs. Each time the log history events switch jobs, a list of columns containing the job pedigree is set, making it easy to spot the change.
 
-From my point of view, **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView) is a crucial function for diagnosing maintenance problems. A set of pre-computed datetime values may be used from MaintenanceEnums, to query current or past YourSqlDba activity in those range. See updated documentation about **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView).
+From my point of view, **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)** is a crucial function for diagnosing maintenance problems. A set of pre-computed datetime values may be used from MaintenanceEnums, to query current or past YourSqlDba activity in those range. See updated documentation about **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)**.
 
 A piece a code invoking log cleanup was found missing since version 6.8.0.0­.  It is reintroduced in this version.
 
@@ -38,7 +38,7 @@ The expect date format for the date is the style 121 of the convert function whi
 
 When connection language setting is french, implicit date conversion swaps mm-dd to dd-mm. This give another date than the intended one or worst and invalid date leading to a runtime error (ex: a day value of 13 or greater being swapped to month isn't valid for a month value). 
 
-YourSQLDba.Maint.HistoryView date parameters were modified to received a string that is then internally explicitely converted to datetime with the 121 style option.
+**[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)** date parameters were modified to received a string that is then internally explicitely converted to datetime with the 121 style option.
 
 Select cmdStartTime, JobNo, seq, Typ, line, Txt 
 From
