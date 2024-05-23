@@ -18,11 +18,12 @@ It creates, on the SQL instance where it runs, a database named YourSqlDba packe
 
 ### Version history
 
-**[Get script of 7.0.0.0](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
-Version 7.0.0.0 lays the foundation for elements of a new architecture for YourSqlDba. These elements will be introduced gradually, maintaining parallel elements of both the original and the new architecture.
+**[Get script of 7.0.0.1](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+Version 7.0.0.1 lays the foundation for elements of a new architecture for YourSqlDba. These elements will be introduced gradually, maintaining parallel elements of both the original and the new architecture.
 
 With version 7.0, several improvements have been added to **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)** to better visualize multi-job interactions. When events are listed between two moments, they are ordered by time and include events from simultaneous jobs. Each time the log history events switch jobs, a list of columns containing the job pedigree is set, making it easy to spot the change.
 
+From my point of view, **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)** is a crucial tool of YourSqlDba function for diagnosing maintenance problems. A set of pre-computed datetime values may be used from MaintenanceEnums, to query current or past YourSqlDba activity in those range. See updated documentation about **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)**.
 From my point of view, **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)** is a crucial function for diagnosing maintenance problems. A set of pre-computed datetime values may be used from MaintenanceEnums, to query current or past YourSqlDba activity in those range. See updated documentation about **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)**.
 
 A piece a code invoking log cleanup was found missing since version 6.8.0.0­.  It is reintroduced in this version.
