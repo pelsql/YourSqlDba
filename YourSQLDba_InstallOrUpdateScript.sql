@@ -5920,15 +5920,18 @@ From
 --   CROSS APPLY Maint.HistoryView (startDate, EndDate, FilterOption) as H
 -- Order by CmdStartTime, seq, typSeq, Line
 go
+-- ---------------------------------------------------------------------------------------
+-- Function that returns a part of the message to instruct the user
+-- on how to get the job history for a given job number, or for all jobs
+-- it also returns some columns of data where the tags match columns names
+-- and are replaced by the data of the matching columns.
+-- This replacement is done by the caller.
+-- ---------------------------------------------------------------------------------------
 Create Or Alter Function yMaint.InstructionsToGetJobHistory 
 (
   @StartOfMaint datetime
 , @JobNo Int
 )
--- ---------------------------------------------------------------------------------------
--- Function that returns a part of the message to instruct the user
--- on how to get the job history for a given job number, or for all jobs
--- ---------------------------------------------------------------------------------------
 Returns Table
 as
 Return
@@ -5977,45 +5980,48 @@ Return
     CROSS JOIN  WhoCalledWhat as ctx --extract the full predigree of the call, who, which program, and the query at the top of the stack
     -- have <br> for Html crlf
     Cross Apply (Select MainSqlCmdWithBreak=Replace(Ctx.MainSqlCmd, crlf, '<br>')) as MainSqlCmdWithBreak
-    -- add crlf to <br> to improve readability of html code
-    Cross Apply (Select MainSqlCmdWithBreakAndCrLf=Replace(MainSqlCmdWithBreak, '<br>', '<br>' + crLf)) as MainSqlCmdWithBreakAndCrLf
+    -- add crlf to <br> to improve readability of html code, crlf has no effect on rendering of html
+    Cross Apply (Select MainSqlCmdWithBreakAndCrLf=Replace(MainSqlCmdWithBreak, '<br>', '<br>'+crlf)) as MainSqlCmdWithBreakAndCrLf
     Cross Apply (Select mailPriority = IIF(JobSuccess=1, 'Normal', 'High')) as MailPriority
     Cross Apply (Select reportSource = IIF(ctx.Prog NOT Like 'SqlAgent%', 'Manual Maintenance Job', 'SQL Server Agent Job:')) as reportSource
     Cross Apply (Select InstructionBlocTag=IIF(JobSuccess=1, '===TemplateJobOk===', '===TemplateJobErr====')) as InstructionBlocTag
+    Cross Apply (Select kw='</span><span class="kw">') as Kw
+    Cross Apply (Select id='</span><span class="id">') as id
+    Cross Apply (Select cm='</span><span class="cm">') as cm
     -- get the instruction bloc, and replace constants to display with values
     Cross Apply (Select HowToShowHistory=c.TxtInCmt From S#.GetCmtBetweenDelim(InstructionBlocTag, 'yMaint.InstructionsToGetJobHistory') as C ) as ActionToTakeIf
 
 /*===TemplateJobOk=== 
 <br>
-<i><b><br>To list ALL maintenance commands ran by the maintenance process, 
-<br>execute the following command in a query window connected to the 
-<br>SQL Server instance that ran the maintenance:</b></i>
+<i><b>To list ALL maintenance commands ran by the maintenance process, execute the following 
+<br>command in a query window connected to the SQL Server instance that ran the maintenance:</b></i>
+<div style="background-color: #ADD8E6;">
 <pre>
-<b><font color='darkblue'; background:#CCCCCC;>
-Select cmdStartTime, JobNo, seq, Typ, line, Txt, MaintJobName, MainSqlCmd, Who, Prog, Host, SqlAgentJobName, JobId, JobStart, JobEnd
-From 
-  -- set of constants for the function below (& precomputed date range constants) 
-  YourSQLDba.Maint.MaintenanceEnums as E -- HV$Now, HV$FromMidnight, HV$FromYesterdayMidnight, HV$Since12Hours, HV$Since10Min, HV$Since1Hour
-  cross apply YourSQLDba.Maint.HistoryView('#StartOfMaintTxt#', '#EndOfMaintTxt#', E.HV$ShowAll) -- E.HV$ShowErrOnly=1, E.HV$ShowAll=0
-Order By cmdStartTime, Seq, TypSeq, Typ, Line
-</font></b>
+#kw#Select
+#id#  cmdStartTime, JobNo, seq, Typ, line, Txt, MaintJobName, MainSqlCmd, Who, Prog, Host, SqlAgentJobName, JobId, JobStart, JobEnd
+#kw#From 
+#cm#  -- set of constants for the function below (& precomputed date range constants) 
+#id#  YourSQLDba.Maint.MaintenanceEnums #kw#as #id#E #cm#-- HV$Now, HV$FromMidnight, HV$FromYesterdayMidnight, HV$Since12Hours, HV$Since10Min, HV$Since1Hour
+#kw#  cross apply#id# YourSQLDba.Maint.HistoryView('#StartOfMaintTxt#', '#EndOfMaintTxt#', E.HV$ShowAll) #cm#-- E.HV$ShowErrOnly=1, E.HV$ShowAll=0
+#id#Order By #id#cmdStartTime, Seq, TypSeq, Typ, Line
 </pre>
+</div>
 ===TemplateJobOk===*/
 
 /*===TemplateJobErr==== 
 <i><b>To list only the errors, copy & paste the following command in a query window
 <br>connected to the SQL Server instance that ran the maintenance.</b></i>
+<div style="background-color: #F9DEDD;">
 <pre>
-<b><font color='darkred';>
-Select cmdStartTime, JobNo, seq, Typ, line, Txt, MaintJobName, MainSqlCmd, Who, Prog, Host, SqlAgentJobName, JobId, JobStart, JobEnd 
-From
-  -- set of constants for the function below (& precomputed date range constants) 
-  YourSQLDba.Maint.MaintenanceEnums as E -- HV$Now, HV$FromMidnight, HV$FromYesterdayMidnight, HV$Since12Hours, HV$Since10Min, HV$Since1Hour
-  cross apply YourSQLDba.Maint.HistoryView('#StartOfMaintTxt#', '#EndOfMaintTxt#', E.HV$ShowErrOnly) -- E.HV$ShowErrOnly=1, E.HV$ShowAll=0
-Where JobNo=#JobNo# 
-Order By cmdStartTime, JobNo, Seq, TypSeq, Typ, Line
-</font></b>
+#kw#Select #id#cmdStartTime, JobNo, seq, Typ, line, Txt, MaintJobName, MainSqlCmd, Who, Prog, Host, SqlAgentJobName, JobId, JobStart, JobEnd </span> 
+#kw#From
+#cm#  -- set of constants for the function below (& precomputed date range constants) 
+#id#  YourSQLDba.Maint.MaintenanceEnums #kw#AS #id#E #cm# -- HV$Now, HV$FromMidnight, HV$FromYesterdayMidnight, HV$Since12Hours, HV$Since10Min, HV$Since1Hour
+#kw#  cross apply#id# YourSQLDba.Maint.HistoryView('#StartOfMaintTxt#', '#EndOfMaintTxt#', E.HV$ShowErrOnly) #cm#-- E.HV$ShowErrOnly=1, E.HV$ShowAll=0
+#kw#Where #id#JobNo=#JobNo# 
+#kw#Order By #id#cmdStartTime, JobNo, Seq, TypSeq, Typ, Line
 </pre>
+</div>
 <br>
 <br>To bring back quickly any databases online from offline, run this command:
 <br>
@@ -6034,7 +6040,7 @@ Order By cmdStartTime, JobNo, Seq, TypSeq, Typ, Line
    , JobSuccess, shortResultMessTmp, shortResultMess, ErrColor
    , HowToShowHistory, YourSqlDbaVersion, StartOfMaintTxt, EndOfMaintTxt, ServerInstance
    , Ctx.Prog, Ctx.Host, MainSqlCmdWithBreakAndCrLf 
-   , Subject=ServerInstance+', '+ReportSource+', '+JobNameSource
+   , Subject=ServerInstance+', '+ReportSource+', '+JobNameSource, kw, id, cm
    ) as InstructionsToGetJobHistory
 
 -- code to test
@@ -6098,31 +6104,57 @@ Begin
     CROSS APPLY (Select JsonReportElements=(Select ReportElements.* FOR JSON PATH)) as jsonReportElements
     CROSS APPLY (Select MsgBody=g.Code From S#.GetTemplateFromCmtAndReplaceTags ('===MsgBody===', NULL, jsonReportElements) as g) as MsgBody
 /*===MsgBody===
+<head>
+  <style type="text/css">
+    .kw { color:darkblue;}
+    .id { color:darkred; }
+    .cm { color:darkgreen; }
+  </style>  
+
+  <style>
+  /* global style for all cells */
+    table {
+      border-collapse: collapse;
+      width: auto;
+      table-layout: auto;
+    }
+    th, td {
+      border: 1px solid #000; /* Bordure pour les cellules */
+      padding: 5px;           /* Espacement intérieur de 5 pixels */
+      height: 25px;           /* Hauteur fixe de 50 pixels */
+      line-height: 20px;      /* Hauteur de ligne de 50 pixels pour centrer verticalement le texte */
+      text-align: left;       /* Alignement du texte à gauche (modifiable selon les besoins) */
+      vertical-align: middle; /* Centrage vertical du contenu */
+    }
+    /* Style to reduce vertical space before text */
+    .reduce-space {
+      margin-top: 0; /* Réduit la marge supérieure */
+    }
+    .no-margin {
+      margin: 0; /* Réinitialise toutes les marges */
+    }
+  </style>  
+</head>
+
   <body style="font-family:verdana;font-size:9pt">
-  <font size="3"><b>Maintenance report from YourSqlDba <span color="#777777">#YourSqlDbaVersion#</span></b></font><br>
+  <font size="3"><b>Maintenance report from YourSqlDba <span color="#777777">#YourSqlDbaVersion#</span></b></font>
   <br>
-  <br>
-  <table border="0" CELLPADDING="5" style="font-size:9pt">
-    <tr>
-      <td style="padding-right:10px">Server:</td><td>#ServerInstance#</td>
-    </tr>
-    <tr><td style="padding-right:10px">#reportSource#</td><td>#JobNameSource#</td></tr>
-    <tr><td style="padding-right:10px">Start, end: </td><td>#StartOfMaintTxt#, &nbsp;&nbsp;#EndOfMaintTxt#</td></tr>
-    <tr><td style="padding-right:10px">Result:</td><td>#shortResultMessTmp#</td></tr>
+  <table border="0" style="font-size:9pt">
+    <tr><td> Server:</td> <td>#ServerInstance#</td></tr>
+    <tr><td> #reportSource#</td> <td>#JobNameSource#</td></tr>
+    <tr><td> Start, end: </td> <td>#StartOfMaintTxt#, &nbsp;&nbsp;#EndOfMaintTxt#</td></tr>
+    <tr><td> Result:</td> <td>#shortResultMessTmp#</td></tr>
   </Table>
-#HowToShowHistory#
-  <font size="2"><b>Command lauched from #Host# by #reportSource# #JobNameSource#</b></font><br>
+<Strong>#HowToShowHistory#</Strong>
+  <font size="2"><b>Command launched from #Host# by #reportSource# #JobNameSource#</b></font>
   <br>
-  <table width="100%" border=1 cellspacing=0 cellpadding=5 style="background:#CCCCCC;border-collapse:collapse;border:none">
+  <table border=1 cellspacing=0 style="background:#CCCCCC;border-collapse:collapse;border:none">
     <tr>
-      <td width="100%" valign=top style="border:solid windowtext 1.0pt">
-        <font face="Courier New" size="2">
-<span style="color:navy">#MainSqlCmdWithBreakAndCrLf#</span></font>
+      <td valign=top style="border:solid windowtext 1.0pt">
+<Strong><span style="font-family: Courier New; font-size: 0.8em;">#MainSqlCmdWithBreakAndCrLf#</span></Strong>
       </td>
     </tr>
   </table>
-  <br>
-  <br>
   </body>  
 ===MsgBody===*/
 
@@ -6137,6 +6169,10 @@ Begin
   , @subject = @Subject
   , @body = @MsgBody
   , @body_format = 'HTML'
+
+  --useful to review html 
+  Drop table if exists dbo.DumpHtml
+  --Select msgBody=@msgBody into dbo.DumpHtml
 
 End -- yMaint.SendExecReports
 GO
