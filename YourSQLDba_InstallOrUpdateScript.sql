@@ -9273,7 +9273,8 @@ Begin
       Set @body =  -- link couldn't be repaired send email to ask for it
       '
       <br>
-      <b>First and foremost, ensure that the destination server for the YourSqlDba mirroring feature is up and running. If it is not, start it and ignore the rest of this message!</b>
+      <b>First and foremost, ensure that the destination server for the YourSqlDba mirroring feature is up and running. 
+      If it is not, start it and ignore the rest of this message!</b>
       <br>
       <br>Ensure that you are granted admin access to every remote linked server defined for your mirror servers
       and execute the following command on corresponding local servers:
