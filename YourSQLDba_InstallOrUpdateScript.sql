@@ -11,7 +11,7 @@
 Drop Table if Exists #version
 create table #Version (version nvarchar(40), VersionDate datetime)
 set nocount on
-insert into #Version Values ('7.0.0.1', convert(datetime, '2024-05-21', 120))  
+insert into #Version Values ('7.0.0.2', convert(datetime, '2024-05-21', 120))  
 
 --Alter database yoursqldba set single_user with rollback immediate
 --go
@@ -1539,62 +1539,62 @@ From
     UNION -- perform some distinct operation especially on the next query for which I do not know there is some message reported twice
 
     -- extended events if it exists, while have some of the messages from T-SQL to eliminate
-    Select 
-      ISNULL(Fmt.ErrMsg, 'Error from SQL ErrorLog: ' + X.ErrMessage)  -- formatted msg or message from SQL error log
-    , X.ErrMessage -- data for standard error messages
-    , X.ErrNumber
-    , X.ErrSeverity
-    , X.ErrState
-    , PlaceHolderColsForUnion.ErrLine
-    , PlaceHolderColsForUnion.ErrProcedure
-    , X.EventTime
-    , isAnExtendedError
-    , X.TotalEventsProcessed -- let know if events details are there yet (delay between catch and event session reporting)
-    , EventSessionName
-    , X.EventName
-    --, XEdata
-    FROM 
-      sys.server_event_sessions as Se
-      JOIN 
-      sys.dm_xe_sessions AS xe
-      On Xe.name = Se.name
-      JOIN 
-      sys.dm_xe_session_targets AS xet
-      ON (xet.event_session_address=xe.address)
+      Select 
+        ISNULL(Fmt.ErrMsg, 'Error from SQL ErrorLog: ' + X.ErrMessage)  -- formatted msg or message from SQL error log
+      , X.ErrMessage -- data for standard error messages
+      , X.ErrNumber
+      , X.ErrSeverity
+      , X.ErrState
+      , PlaceHolderColsForUnion.ErrLine
+      , PlaceHolderColsForUnion.ErrProcedure
+      , X.EventTime
+      , isAnExtendedError
+      , X.TotalEventsProcessed -- let know if events details are there yet (delay between catch and event session reporting)
+      , EventSessionName
+      , X.EventName
+      --, XEdata
+      FROM 
+        sys.server_event_sessions as Se
+        JOIN 
+        sys.dm_xe_sessions AS xe
+        On Xe.name = Se.name
+        JOIN 
+        sys.dm_xe_session_targets AS xet
+        ON (xet.event_session_address=xe.address)
 
-      CROSS APPLY (Select XEdata=S#.EaseOptimizerJobByMaterializingXmlExpression(CAST(xet.target_data AS XML)) ) as vXEdata
-      CROSS APPLY XEData.nodes('//RingBufferTarget/event') AS xnode(c)
-      CROSS APPLY
-      (
-      Select *
-      From
-        (Select TotalEventsProcessed = xnode.c.value(N'(/RingBufferTarget/@totalEventsProcessed)[1]', 'INT') ) as TotalEventsProcessed
-        CROSS APPLY (Select SessionId = xnode.c.value(N'(action[@name="session_id"]/value)[1]', N'SMALLINT') ) AS SessionId
-        CROSS APPLY (Select EventName = xnode.c.value(N'(@name)[1]', N'NVARCHAR(MAX)') ) AS EventName
-        CROSS APPLY (Select EventTime = xnode.c.value(N'(@timestamp)[1]', N'datetime') ) AS EventTime
-        CROSS APPLY (Select ErrMessage = xnode.c.value(N'(data[@name="message"]/value)[1]', N'NVARCHAR(MAX)') ) AS ErrMessage
-        CROSS APPLY (Select ErrNumber = xnode.c.value(N'(data[@name="error_number"]/value)[1]', N'INT') ) AS ErrNumber
-        CROSS APPLY (Select ErrSeverity = xnode.c.value(N'(data[@name="severity"]/value)[1]', N'INT') ) AS ErrSeverity
-        CROSS APPLY (Select ErrState = xnode.c.value(N'(data[@name="state"]/value)[1]', N'INT') ) AS ErrState
-        CROSS APPLY (Select IsIntercepted = xnode.c.value(N'(data[@name="is_intercepted"]/value)[1]', N'NVARCHAR(MAX)') ) AS IsIntercepted
-        -- this info in never reported in event session error reporting, but must match the next select in union
-        CROSS APPLY (Select ErrLine=Cast(Null as Int) ) AS ErrLine 
-        -- this info in never reported in event session error reporting, but must match the next select in union
-        CROSS APPLY (Select ErrProcedure=Cast(Null as sysname) ) As ErrProcedure 
-      ) as X
-      CROSS JOIN  S#.Enums As E
-      OUTER APPLY S#.FormatRunTimeMsg (E.RunScript@ErrMsgTemplate, ErrNumber, ErrSeverity, ErrState, X.ErrLine, X.ErrProcedure, X.ErrMessage) as Fmt
-      CROSS APPLY (Select EventSessionName='S#_RunscriptErrors'+CAST(@@spid as Nvarchar)) as vEventSessionName
-      -- unapplicable columns for this error source, but necessary for union of the two sources
-      CROSS APPLY (Select isAnExtendedError=1, ErrLine=Cast(Null as Int), ErrProcedure=Cast(Null as sysname) ) as PlaceHolderColsForUnion
-      -- Get event from "errorlog_written" event only for DBCC for which error_reported event do not report some interesting info
-      CROSS APPLY (Select LikeInfoFmtDBCCMsg='[0-9][0-9][0-9][0-9]% spid'+CONVERT(nvarchar, @@spid)+' %DBCC CHECKDB%') as LikeInfoFmtDBCCMsg
-      OUTER APPLY (Select GetErrorFromErrLog=1 where X.ErrMessage Like LikeInfoFmtDBCCMsg) as GetErrorFromErrLog
+        CROSS APPLY (Select XEdata=S#.EaseOptimizerJobByMaterializingXmlExpression(CAST(xet.target_data AS XML)) ) as vXEdata
+        CROSS APPLY XEData.nodes('//RingBufferTarget/event') AS xnode(c)
+        CROSS APPLY
+        (
+        Select *
+        From
+          (Select TotalEventsProcessed = xnode.c.value(N'(/RingBufferTarget/@totalEventsProcessed)[1]', 'INT') ) as TotalEventsProcessed
+          CROSS APPLY (Select SessionId = xnode.c.value(N'(action[@name="session_id"]/value)[1]', N'SMALLINT') ) AS SessionId
+          CROSS APPLY (Select EventName = xnode.c.value(N'(@name)[1]', N'NVARCHAR(MAX)') ) AS EventName
+          CROSS APPLY (Select EventTime = xnode.c.value(N'(@timestamp)[1]', N'datetime') ) AS EventTime
+          CROSS APPLY (Select ErrMessage = xnode.c.value(N'(data[@name="message"]/value)[1]', N'NVARCHAR(MAX)') ) AS ErrMessage
+          CROSS APPLY (Select ErrNumber = xnode.c.value(N'(data[@name="error_number"]/value)[1]', N'INT') ) AS ErrNumber
+          CROSS APPLY (Select ErrSeverity = xnode.c.value(N'(data[@name="severity"]/value)[1]', N'INT') ) AS ErrSeverity
+          CROSS APPLY (Select ErrState = xnode.c.value(N'(data[@name="state"]/value)[1]', N'INT') ) AS ErrState
+          CROSS APPLY (Select IsIntercepted = xnode.c.value(N'(data[@name="is_intercepted"]/value)[1]', N'NVARCHAR(MAX)') ) AS IsIntercepted
+          -- this info in never reported in event session error reporting, but must match the next select in union
+          CROSS APPLY (Select ErrLine=Cast(Null as Int) ) AS ErrLine 
+          -- this info in never reported in event session error reporting, but must match the next select in union
+          CROSS APPLY (Select ErrProcedure=Cast(Null as sysname) ) As ErrProcedure 
+        ) as X
+        CROSS JOIN  S#.Enums As E
+        OUTER APPLY S#.FormatRunTimeMsg (E.RunScript@ErrMsgTemplate, ErrNumber, ErrSeverity, ErrState, X.ErrLine, X.ErrProcedure, X.ErrMessage) as Fmt
+        CROSS APPLY (Select EventSessionName='S#_RunscriptErrors'+CAST(@@spid as Nvarchar)) as vEventSessionName
+        -- unapplicable columns for this error source, but necessary for union of the two sources
+        CROSS APPLY (Select isAnExtendedError=1, ErrLine=Cast(Null as Int), ErrProcedure=Cast(Null as sysname) ) as PlaceHolderColsForUnion
+        -- Get event from "errorlog_written" event only for DBCC for which error_reported event do not report some interesting info
+        CROSS APPLY (Select LikeInfoFmtDBCCMsg='[0-9][0-9][0-9][0-9]% spid'+CONVERT(nvarchar, @@spid)+' %DBCC CHECKDB%') as LikeInfoFmtDBCCMsg
+        OUTER APPLY (Select GetErrorFromErrLog=1 where X.ErrMessage Like LikeInfoFmtDBCCMsg) as GetErrorFromErrLog
 
-    Where se.name = EventSessionName 
-      And (X.EventName = 'error_reported' Or GetErrorFromErrLog = 1) -- we get stuff from errorLog only for DBCC which do not report some error through normal SQL ERROR
-    ) as MostSignificantMessages
-  ) as SortedMsg
+      Where se.name = EventSessionName 
+        And (X.EventName = 'error_reported' Or GetErrorFromErrLog = 1) -- we get stuff from errorLog only for DBCC which do not report some error through normal SQL ERROR
+      ) as MostSignificantMessages
+    ) as SortedMsg
   Where DecideBetweenTSqlOrExtended=1
   /*
   -- get the stuff to create 
@@ -9272,7 +9272,9 @@ Begin
     If Exists (Select * From Sys.servers Where name = @MirrorServer And is_linked = 1) -- real server
       Set @body =  -- link couldn't be repaired send email to ask for it
       '
-      <bFirst and foremost, ensure that the destination server for the YourSqlDba mirroring feature is up and running. If it is not, start it and ignore the rest of this message!</b>
+      <br>
+      <b>First and foremost, ensure that the destination server for the YourSqlDba mirroring feature is up and running. 
+      If it is not, start it and ignore the rest of this message!</b>
       <br>
       <br>Ensure that you are granted admin access to every remote linked server defined for your mirror servers
       and execute the following command on corresponding local servers:

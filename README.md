@@ -18,7 +18,9 @@ It creates, on the SQL instance where it runs, a database named YourSqlDba packe
 
 ### Version history
 
-**[Get script of 7.0.0.1](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+**[Get script of 7.0.0.2](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+Intérim versions 7.0.0.0 to 7.0.0.1 are discarded. Below are messages related to interim versions.
+
 Version 7.0.0.1 lays the foundation for elements of a new architecture for YourSqlDba. These elements will be introduced gradually, maintaining parallel elements of both the original and the new architecture.
 
 With version 7.0, several improvements have been added to **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)** to better visualize multi-job interactions. When events are listed between two moments, they are ordered by time and include events from simultaneous jobs. Each time the log history events switch jobs, a list of columns containing the job pedigree is set, making it easy to spot the change.
@@ -26,7 +28,9 @@ With version 7.0, several improvements have been added to **[YourSQLDba.Maint.Hi
 From my point of view, **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)** is a crucial tool of YourSqlDba function for diagnosing maintenance problems. A set of pre-computed datetime values may be used from MaintenanceEnums, to query current or past YourSqlDba activity in those range. See updated documentation about **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)**.
 From my point of view, **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)** is a crucial function for diagnosing maintenance problems. A set of pre-computed datetime values may be used from MaintenanceEnums, to query current or past YourSqlDba activity in those range. See updated documentation about **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)**.
 
-A piece a code invoking log cleanup was found missing since version 6.8.0.0­.  It is reintroduced in this version.
+A piece a code invoking log cleanup was found missing since version 6.8.0.0­.  It is reintroduced with version 7.0.0.1.
+
+Version 7.0.0.2 correct message issued when a mirror server is down or not accessible for other reasons.
 
 **[Get script of 6.8.2.1](https://raw.githubusercontent.com/pelsql/YourSqlDba/6e7d1fbf53fb5344efae2b9640f551b78794d758/YourSQLDba_InstallOrUpdateScript.sql)**
 SQL2022 needed a small adjustment to the procedure YUtl.CollectBackupHeaderInfoFromBackupFile because 'Restore Header Only' output now 3 more columns. I just saw the issue (2024-04-23). This is new to me, that I'm informed through the Issue feature from Github, and it is welcome. I'll now check more often, and be more proactive with new versions.
