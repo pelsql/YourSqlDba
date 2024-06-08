@@ -11,7 +11,7 @@
 Drop Table if Exists #version
 create table #Version (version nvarchar(40), VersionDate datetime)
 set nocount on
-insert into #Version Values ('7.0.0.2', convert(datetime, '2024-05-21', 120))  
+insert into #Version Values ('7.0.0.3', convert(datetime, '2024-06-07', 120))  
 
 --Alter database yoursqldba set single_user with rollback immediate
 --go
@@ -195,6 +195,24 @@ Begin
   Drop table if Exists ##TargetServer;
   Drop table if Exists ##JobSeqUpdStat;
   Drop table if Exists ##NetworkDrivesToSetOnStartup;
+
+  -- perform some cleanup for YourSqlDba Maint.JobHistory table
+  While (1=1)
+  Begin
+    Print 'Cleanup YourSqlDba job history for jobs older than 30 days'
+    Delete top (50) H -- drop 50 jobs at the time to let the log file clear itself, cascading deletes does the rest of the job
+    From 
+      (
+      Select distinct JobNo -- 
+      From  YourSqlDba.Maint.JobHistory
+      Where JobStart < dateadd(dd, -30, getdate())
+      ) as T
+      join
+      YourSqlDba.Maint.JobHistory H  
+      On H.JobNo = T.JobNo
+
+    If @@rowcount = 0 Break
+  End
 
   -- If table exists in previous version save its content
   If Object_id('YourSqlDba.Maint.JobHistory') IS NOT NULL
@@ -6470,6 +6488,7 @@ GO
 -- Mail logs
 -- Backup history logs
 -- Job history
+-- Job History in YourSqlDba Tables
 -- Cycle SQL Server error log
 -----------------------------------------------------------------------------
 Create Or Alter Proc yMaint.LogCleanup 
@@ -6533,17 +6552,25 @@ Begin
   , @info = 'Recycle Sql Server error log, start a new one'
   , @sql = @sql
 
-  -- cleanup YourSqlDba's job history (keep no more than 30 days)
-  Delete H
-  From 
-    (
-    Select distinct JobNo -- 
-    From  Maint.JobHistory
-    Where JobStart < dateadd(dd, -30, getdate())
-    ) as T
-    join
-    Maint.JobHistory H  
-    On H.JobNo = T.JobNo
+-- cleanup YourSqlDba's job history (keep no more than 30 days behind)
+-- I limit the drop to 100 jobs at a time so the log file can clear itself between each batch and avoid log growth.
+-- Under the new logging system, each run (including log backups) has a different job number.
+-- Therefore, log backups account for approximately 96 jobs (24 hours * 4 times per hour)
+  While (1=1)
+  Begin 
+    Delete top (100) H 
+    From 
+      (
+      Select distinct JobNo -- 
+      From  Maint.JobHistory
+      Where JobStart < dateadd(dd, -30, getdate())
+      ) as T
+      join
+      Maint.JobHistory H  
+      On H.JobNo = T.JobNo
+
+    If @@rowcount = 0 Break
+  End
 
   End try
   Begin catch
