@@ -16,24 +16,28 @@ It creates, on the SQL instance where it runs, a database named YourSqlDba packe
 
 ### Version history
 
-**[Get script of 7.0.0.3](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
-Interim versions 7.0.0.0 to 7.0.0.2 are discarded. Version 7.0.0.3 encompasses all their changes. 
+**[Get script for version 7.0.0.4](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
 
-Here they are:
+Interim versions 7.0.0.0 to 7.0.0.3 have been deprecated, as version 7.0.0.4 consolidates all of their changes. These minor updates were deemed unnecessary to retain individually, though they remain accessible on GitHub for comparison. Additionally, several bugs from versions preceding 7.0 have been resolved. Here are the primary updates:
 
-Version 7.0.0.1 lays the foundation for elements of a new architecture for YourSqlDba. These elements will be introduced gradually, maintaining parallel elements of both the original and the new architecture.
+Version 7.x establishes a foundation for the new architecture of YourSqlDba, introducing these elements gradually to allow the original and new architectures to coexist, ensuring code quality remains uncompromised. Upgrading is especially recommended to benefit from bug fixes introduced in version 7.0.0.3.
 
-With version 7.0, several improvements have been added to **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)**. To acheive better visualization of multi-job interactions, events within a specified period are ordered by time and include simultaneous job events. Each time the log history switches jobs, a list of columns displaying job pedigree is set, making the switch easily visible
+With version 7.0, **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)** has received several improvements to enhance the visualization of multi-job interactions. Events within a specific period are now chronologically ordered and display simultaneous job events. Each time the log history switches jobs, columns indicating job pedigree are set to make these transitions easily identifiable.
 
-**[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)** is a crucial tool within the YourSqlDba function for diagnosing maintenance problems. When searching outside the realm of a single jon, pre-computed datetime values from Maint.MaintenanceEnums can be used to query current or past YourSqlDba activity within relative time ranges. For more details, see the updated documentation on **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)**. These choices are documented in the message that displays the query to use for querying the SQL executed during the maintenance process.
+**[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)** is an essential tool within YourSqlDba for diagnosing maintenance issues. When investigating outside a single job's scope, pre-computed datetime values from `Maint.MaintenanceEnums` allow querying of YourSqlDba activity within relative time frames. More details are available in the updated documentation on **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)**, including instructions on querying SQL executed during maintenance.
 
-A piece of code invoking log cleanup has been missing since version 6.8.0.0. It is reintroduced in version 7.0.0.1.
+**Version 7.0.0.4:**
+A divide-by-zero error may occur in integrity testing when database filtering excludes all databases. This is because table selection is based on `@SpreadCheckDd` job parameter. When computing this selection, the number of databases is taken into account to calculate a modulo value, set either to `@SpreadCheckDd` or the total number of databases.
 
-Version 7.0.0.2:
-Corrects the message related to issues preventing access to the mirror server. It now includes the possibility that the mirror instance may simply be down.
+**Version 7.0.0.3:**
+Upon upgrading from a previous version, YourSqlDba maintenance logs may expand significantly, potentially causing log size issues. To mitigate this, cleanup operations are performed prior to the upgrade, with the DELETE statement broken into smaller statements (using `TOP()`) to prevent log oversizing. On upgrade from version below 7.0.0.2 upgrading may take a sensible time,so just be more patient.
 
-Version 7.0.0.3:
-When upgrading from a previous version, YourSqlDba Maintenance logs appear larger. Migrating them may cause issues with YourSqlDba log size. To address this, cleanup operations are performed before the upgrade. The DELETE statement is broken into multiple smaller statements (using TOP()) to avoid log oversizing.
+**Version 7.0.0.2:**
+The message for access issues with the mirror server has been updated to indicate that the mirror instance may simply be down.
+
+**Version 7.0.0.1:**
+Code for log cleanup, omitted since version 6.8.0.0, has been reintroduced in version 7.0.0.1. 
+
 
 **[Get script of 6.8.2.1](https://raw.githubusercontent.com/pelsql/YourSqlDba/6e7d1fbf53fb5344efae2b9640f551b78794d758/YourSQLDba_InstallOrUpdateScript.sql)**
 SQL2022 needed a small adjustment to the procedure YUtl.CollectBackupHeaderInfoFromBackupFile because 'Restore Header Only' output now 3 more columns. I just saw the issue (2024-04-23). This is new to me, that I'm informed through the Issue feature from Github, and it is welcome. I'll now check more often, and be more proactive with new versions.

@@ -11,7 +11,7 @@
 Drop Table if Exists #version
 create table #Version (version nvarchar(40), VersionDate datetime)
 set nocount on
-insert into #Version Values ('7.0.0.3', convert(datetime, '2024-06-07', 120))  
+insert into #Version Values ('7.0.0.4', convert(datetime, '2024-06-07', 120))  
 
 --Alter database yoursqldba set single_user with rollback immediate
 --go
@@ -2068,6 +2068,594 @@ Scripting,Logging
 ===KeyWords===*/
 End
 GO
+-- --------------------------------------------------------------------
+-- start of section and tools about deploying native c# code into CLR
+-- --------------------------------------------------------------------
+--
+-- This function generate code to perform all aspects of CLR code deployment
+-- When invoked, is does all those steps, but it is possible to filter output on "action" column
+-- made equal to one of those columns
+--
+--  DropAssembly
+--  CompileAssembly
+--  CreateAssembly
+--  AuthorizeAssembly
+--
+--
+Create Or Alter Function S#.ScriptAssemblyMgmt (@assemblyName Sysname, @Db sysname, @AssemblySourceCodeView sysname, @Silent int = 1)
+Returns Table
+as
+Return
+  -------------------------------------------------------------------------------------
+  -- Build code parts for assembly management (drop, compile, create, authorize)
+  -- Thank you very much Solomon Rutzky<srutzky@gmail.com> for your expertise
+  -- and helping me about setting security over assemblies
+  -- see ===AuthorizeAssembly=== template.
+  -------------------------------------------------------------------------------------
+Select 
+  Prm.*, CodeLines.* --,ToReplaceInName, CertName, CertNameM, LoginName, AssemblyCertAndLoginNames, CodeLines.*
+From 
+  (Select
+    db=@Db, aName=@assemblyName, Silent=ISNULL(@Silent, '1')
+  , assemblySourceCodeView = @AssemblySourceCodeView
+  , DropAssembly='DropAssembly'
+  , CompileAssembly='CompileAssembly'
+  , CreateAssembly='CreateAssembly'
+  , AuthorizeAssembly='AuthorizeAssembly'
+  , ThisFunction='S#.ScriptAssemblyMgmt'
+  ) as Prm
+  CROSS APPLY (Select ToReplaceInName=(select Db, aName for Json path)) as ToReplaceInName
+  -- this certificate is local to the DB so db name is not useful in the name
+  -- it is used to sign the assembly
+  CROSS APPLY (Select CertName= replacedTxt from S#.MultipleReplaces('CertToSign_#aName#', ToReplaceInName)) as CertName
+  -- this certificate in master is created from public key of the certificate used to sign the assembly
+  CROSS APPLY (Select CertNameM=replacedTxt from S#.MultipleReplaces('#Db#CertFor_#aName#', ToReplaceInName)) as CertNameM
+  -- this credential (login) is created from the the certificate created in master
+  CROSS APPLY (Select LoginName=replacedTxt from S#.MultipleReplaces('#Db#CredFor_#aName#', ToReplaceInName)) as LoginName
+  -- these parameters are used to name objects needed to authorize assembly execution
+  CROSS APPLY (Select AssemblyCertAndLoginNames=(Select aName, Db, CertName, CertNameM, LoginName For JSON PATH)) as  AssemblyCertAndLoginNames
+
+  -- compute files name and appropriate CSC compiler (that match SQL.Net for this server) 
+  CROSS APPLY
+  (
+  Select *
+  From 
+    ( -- get errorLog parameter
+    Select *
+    From 
+      sys.dm_server_registry 
+      CROSS APPLY (Select InstancePathPrms=convert(nvarchar(max),value_data) ) as InstancePathPrms
+      -- Remove NUL char that wreak avoc in SQL string functions
+      CROSS APPLY (Select InstanceErrorLogPrm=Left(InstancePathPrms, Len(InstancePathPrms)-1) Where InstancePathPrms Like '-e%') as InstanceErrorLogPrm 
+      CROSS APPLY (Select RevInstanceErrorLogPrm=REVERSE(InstanceErrorLogPrm)) as RevInstanceErrorLogPrm
+      CROSS APPLY (Select lastBkSlashPos=CHARINDEX('\', RevInstanceErrorLogPrm)-1) as lastBkSlashPos
+      -- remove the file name after the path and remove -e parameter identifier in front of it
+      CROSS APPLY (Select pathErrLog=Stuff(LEFT(InstanceErrorLogPrm, LEN(InstanceErrorLogPrm)-lastBkSlashPos),1,2,'')) as pathErrLog
+    Where value_name Like 'SqlArg%' And InstanceErrorLogPrm Like '-e%'
+    ) as pathErrorLog
+    CROSS APPLY (Select pathAssemblySourceCode=pathErrLog+aName+'.cs') as pathAssemblySourceCode
+    CROSS APPLY (Select pathAssemblyDll=pathErrLog+aName+'.Dll') as pathAssemblyDll
+    CROSS APPLY (Select pathAssemblyDirAll=pathErrLog+aName+'.*') as pathAssemblyDirAll
+  ) as Path
+  CROSS APPLY (Select ServerName =CONVERT(sysname, ServerProperty ('Servername'))) as ServerName 
+  CROSS APPLY (Select SqlDotNetDirValue=Value from sys.dm_clr_properties Where name = 'directory') as SqlDotNetDirValue 
+  -- remove nul char at the end of the string, problematic in SQL replaces
+  CROSS APPLY (Select SqlDotNetDirBs=IIF(unicode(right(SqlDotNetDirValue,1))=0, Substring(SqlDotNetDirValue , 1, len(SqlDotNetDirValue )-1), SqlDotNetDirValue )) as SqlDotNetDirBs
+  -- ensure path ends with '\'
+  CROSS APPLY (Select SqlDotNetDir=SqlDotNetDirBs+IIF(RIGHT(SqlDotNetDirBs,1)<>'\', '\', '')) as SqlDotNetDir
+  CROSS APPLY (Select AssemblySrcCodeViewAndDll=
+                 (
+                 Select Prm.*, AssemblyName=AName, pathAssemblySourceCode, pathAssemblyDll, pathAssemblyDirAll
+                      , ServerName, AssemblySourceCodeView, SqlDotNetDir, CurrentDb=DB_NAME()
+                      , Csharp='C#', Sql='Sql'
+                 for Json Path, INCLUDE_NULL_VALUES
+                 )
+               ) as AssemblySrcCodeViewAndDll
+  CROSS APPLY S#.GetTemplateFromCmtAndReplaceTags ('===CompileAssembly===', ThisFunction, AssemblySrcCodeViewAndDll) as CCompileAssembly
+
+  /*===CompileAssembly===
+  -- -----------------------------------------------------------------------------------------------------
+  -- Code that compile an assembly using xp_cmdshell to invoke proper CSC (csharp) compiler
+  -- that match .NET clr level of SQL
+
+  -- Source code parts of assembly for both C# and SQL are supplied by a callback function 
+  -- See S#.ReturnClrDefFor_FileOps. It can be taked as an example of a generic mean to define C# and SQL code source parts
+  -- from a function that returns everything necessary to define an assembly from pure SQL code.
+
+  -- See S#.CompileAssemblyAndCreateSql to see the mean to compile an assembly from any source provided
+  -- a similar S#.ReturnClrDefFor_... function is defined
+
+  -- See S#.ScriptDeployAllClrDef as an exemple to have many assembly defined in this script
+  -- and to be compiled as a batch. Their names must start with "S#.ReturnClrDefFor_"
+
+  -- S#.ScriptDeployAllClrDef attempts to call S#.CompileAssemblyAndCreateSql 
+  -- For every function starting with this name
+  -- ------------------------------------------------------------------------------------------------------
+  Set Nocount on
+
+  If Not Exists(Select * from Sys.configurations Where name = 'show advanced options' And value = '1')
+  Begin
+    exec sp_configure 'show advanced options', '1'
+    RECONFIGURE
+  End
+  If Object_id('S#.XpCmdShellWasOn') IS NULL And Object_id('S#.XpCmdShellWasOff') IS NULL
+  Begin
+    If Exists(Select * From sys.Configurations Where name = 'xp_cmdshell' And value_in_Use=1)
+      Create Table S#.XpCmdShellWasOn (i Int)
+    Else
+      Create Table S#.XpCmdShellWasOff (i Int)
+  End
+  If Object_id('S#.XpCmdShellWasOff') IS NOT NULL
+  Begin
+    Exec sp_configure 'Xp_CmdShell', '1'
+    Reconfigure
+  End
+
+  Drop table if exists #xp_cmdShellOutput 
+  create table #xp_cmdShellOutput (l nvarchar(max))
+  delete #xp_cmdShellOutput 
+  insert into #xp_cmdShellOutput 
+  exec xp_cmdShell 'Del  /q /f "#pathAssemblyDirAll#"  1> NUL 2>&1'
+  --
+  -- Just compile if Dll file isn't there to prevent hacking techniques
+  -- 
+  delete #xp_cmdShellOutput 
+  insert into #xp_cmdShellOutput 
+  exec xp_cmdShell ' dir /b "#pathAssemblyDirAll#"'
+  If Exists(Select * From #xp_cmdShellOutput Where l like '#AssemblyName#.%')
+  Begin
+    RAISERROR ('See why "#pathAssemblyDirAll#" cannot be deleted, remove it and try again',11,1)
+    Return
+  End
+  Else
+  Begin
+    Delete #xp_cmdShellOutput 
+    insert into #xp_cmdShellOutput 
+    -- produce .Cs file from SQLCMD that reads the view with proper params to avoir line header, line truncation
+    Exec xp_cmdshell 'Sqlcmd -E -S #ServerName# -d #CurrentDb# -y 0 -Q "set nocount on;select code from #AssemblySourceCodeView# (null) where language=CSharp Order by seq" -o "#pathAssemblySourceCode#" '
+    If exists (select top 1 * from #xp_cmdShellOutput Where l is not null) 
+    Begin
+      Select [error msg from SqlCmd while writing #AssemblyName# C# .cs file to disk]=l from #xp_cmdShellOutput 
+      Raiserror ('#AssemblyName# .cs file failed to be overwritten, check with command: attrib "#pathAssemblyDirAll#" if there is not an abnormal attribute read-only, hidden or system .cs file ',11,1)
+      Return
+    End
+
+    Delete #xp_cmdShellOutput 
+    insert into #xp_cmdShellOutput 
+    -- compile the assembly
+    Exec xp_cmdshell 'Call "#SqlDotNetDir#\csc" /target:library /out:"#pathAssemblyDll#" "#pathAssemblySourceCode#"'
+    If Exists(Select * From #xp_cmdShellOutput Where l like '%.cs(%,%): error CS%:%')
+    Begin
+      -- in case of error printout what the compiler said
+      -- and the file name so it is easy to spot as : error CS(line:col) the error'
+      Insert into S#.ScriptToRun (Sql, seq)
+      Select Sql=C.clean, 1
+      From 
+        (Select Lf From S#.Enums) as E 
+        CROSS APPLY (Select compilerOutputXml= (Select '-- '+l+E.lf as [text()] From #xp_cmdShellOutput Where l is not null For XML Path(''),TYPE) ) as compilerOutput
+        CROSS APPLY (Select compilerOutput=compilerOutputXml.value('.','NVARCHAR(MAX)')) as compilerOutput -- convert xml back to nvarchar(max) making escapes back to original chars.
+        CROSS APPLY 
+        (
+        Select Sql =
+          '-- '+replicate('=',80)+E.lf+
+        + '-- Compiler output for compile of #AssemblyName#'+E.Lf
+        + '-- see generated source at "#pathAssemblySourceCode#"'+E.lf
+        + '-- '+replicate('=',80)+E.Lf
+        + compilerOutput
+        + '-- '+replicate('=',80)+E.Lf
+        ) as C
+      Exec S#.RunScript @printOnly=0, @Silent=#Silent#
+    End 
+  End
+  Delete #xp_cmdShellOutput 
+  insert into #xp_cmdShellOutput exec xp_cmdShell 'dir /b "#pathAssemblyDll#"'
+  -- the DLL could not be created
+  If Not Exists(Select * From #xp_cmdShellOutput Where l like '#AssemblyName#.%')
+  Begin
+    Raiserror ('#AssemblyName# failed to compile, check with with: dir -a-d "#pathAssemblyDirAll#" if there is not a matching hidden or system .cs or .dll file ',11,1)
+    Return
+  End
+
+  -- If here job is done, erase memory of the process
+  If    Object_id('S#.XpCmdShellWasOn') IS NOT NULL 
+    And Exists(Select * From sys.Configurations Where name = 'xp_cmdshell' And value_in_Use=1)
+    Return -- was 'on' and leave it as it is
+  If Object_id('S#.XpCmdShellWasOff') IS NOT NULL 
+    And Exists(Select * From sys.Configurations Where name = 'xp_cmdshell' And value_in_Use=1)
+  Begin
+    Exec sp_configure 'Xp_Cmdshell', 0 -- put if back off
+    Reconfigure
+  End
+  Drop Table if Exists S#.XpCmdShellWasOn
+  Drop Table if Exists S#.XpCmdShellWasOff
+  ===CompileAssembly===*/
+
+  CROSS APPLY S#.GetTemplateFromCmtAndReplaceTags('===DropAssembly===', ThisFunction, AssemblyCertAndLoginNames) as CDropAssembly
+  /*===DropAssembly===
+  Use [#Db#];
+  Drop Assembly IF EXISTS [#Aname#]
+  If Exists (Select * From Sys.server_Principals Where Name='#LoginName#') Drop Login [#LoginName#]
+  If Exists (Select * From Sys.certificates Where Name='#CertName#') Drop Certificate [#CertName#]
+  Use master; If Exists (Select * From Sys.certificates Where Name='#CertNameM#') Drop Certificate [#CertNameM#]
+  Use [#Db#];
+  ===DropAssembly===*/
+
+  CROSS APPLY S#.GetTemplateFromCmtAndReplaceTags('===CreateAssembly===', ThisFunction, AssemblySrcCodeViewAndDll) as CCreateAssembly
+  /*===CreateAssembly===
+  -- Create Sql modules from function that returns their DDL
+  Declare @OriginalTrustWorthyState NVARCHAR(3)
+  Select @OriginalTrustWorthyState=IIF(is_trustworthy_on=1,'ON', 'OFF') 
+  from sys.databases 
+  Where name = IIF('#Db#'='', Db_name(), '#Db#')
+
+  Alter database [#Db#] Set TRUSTWORTHY On;
+  Insert into S#.ScriptToRun (Sql, Seq)
+  Select Sql=Code, Seq 
+  From #AssemblySourceCodeView#('#pathAssemblyDll#') 
+  Where Language=Sql
+  -- note the param @RunOnThisDb='#Db#' which make commands redirected to the destination database which may be the current or not
+  Exec S#.RunScript @printOnly=0, @Silent=#Silent#,  @RunOnThisDb='#Db#'
+  Exec ('Alter database [#Db#] Set TRUSTWORTHY '+@OriginalTrustWorthyState);
+  ===CreateAssembly===*/
+
+  CROSS APPLY S#.GetTemplateFromCmtAndReplaceTags ('===AuthorizeAssembly===', ThisFunction, AssemblyCertAndLoginNames) as CAuthorizeAssembly
+  /*===AuthorizeAssembly===
+  Use [#Db#];
+  Declare @CertPassword nvarchar(64) = replace(replace(convert(nvarchar(100), newid()), 'D', 'A'), '2','8')
+  DECLARE @SQL NVARCHAR(MAX);
+  Set @sql = N'
+  CREATE CERTIFICATE [#CertName#]
+      ENCRYPTION BY PASSWORD = "'+@CertPassword+'"
+      WITH SUBJECT = "Mean to sign and protect #Db# Assemblies from unauthorized modification",
+      EXPIRY_DATE = "2099-12-31";
+   ADD SIGNATURE
+       TO Assembly::[#aName#]
+       BY CERTIFICATE [#CertName#]
+       WITH PASSWORD = "'+@CertPassword+'";
+  ' 
+  Set @Sql=replace(@Sql,'"', '''')
+  Exec sp_executeSql @sql
+
+  DECLARE @PublicKey VARBINARY(MAX)
+  SET @PublicKey = CERTENCODED(CERT_ID(N'#CertName#'));
+  SET @SQL = N'Use master; CREATE CERTIFICATE [#CertNameM#] FROM BINARY = ' + CONVERT(NVARCHAR(MAX), @PublicKey, 1) + N';';
+  EXEC [master].[sys].[sp_executesql] @SQL;
+  EXEC [master].[sys].[sp_executesql] N'Create Login [#LoginName#] From CERTIFICATE [#CertNameM#]'
+  EXEC [master].[sys].[sp_executesql] N'GRANT UNSAFE ASSEMBLY TO [#LoginName#];' -- REQUIRED!!!!
+  ===AuthorizeAssembly===*/
+  Cross Apply 
+  (
+  Select Action=CompileAssembly, seq=1, Code='Raiserror(''AssemblySourceCodeView param '+assemblySourceCodeView+' must valid when CompileAssembly is required'',11,1)' Where Object_id(assemblySourceCodeView) IS NULL
+  UNION ALL
+  Select Action=CreateAssembly, seq=2, Code='Raiserror(''AssemblySourceCodeView param '+assemblySourceCodeView+' must valid when CreateAssembly action is required'',11,1)' Where Object_id(assemblySourceCodeView) IS NULL
+  UNION ALL
+  Select Action=DropAssembly, Seq=3, CDropAssembly.Code
+  UNION ALL
+  Select Action=CompileAssembly, Seq=4, CCompileAssembly.Code Where Object_id(assemblySourceCodeView) IS NOT NULL
+  UNION ALL
+  Select Action=CreateAssembly, seq=5, CCreateAssembly.Code Where Object_id(assemblySourceCodeView) IS NOT NULL
+  UNION ALL
+  Select Action=AuthorizeAssembly, seq=6, CAuthorizeAssembly.Code
+  ) as CodeLines
+
+  /*
+  --
+  -- displays output of the function that supplies assembly C# code and assembly SQL code 
+  --
+  Select * 
+  From 
+    (select top 1 AssemblyName From  S#.ReturnClrDefFor_FileOps(null)) as A 
+    CROSS APPLY S#.ScriptAssemblyMgmt(A.AssemblyName, 'Regard', NULL, null) 
+  Where action = DropAssembly
+  union all
+  Select * 
+  From 
+    (select top 1 AssemblyName From  S#.ReturnClrDefFor_FileOps(null)) as A 
+    CROSS APPLY S#.ScriptAssemblyMgmt(A.AssemblyName, 'Regard', 'S#.ReturnClrDefFor_FileOps', null) 
+  Where action = CompileAssembly
+  union all
+  Select * 
+  From 
+    (select top 1 AssemblyName From  S#.ReturnClrDefFor_FileOps(null)) as A 
+    CROSS APPLY S#.ScriptAssemblyMgmt(A.AssemblyName, 'Regard', 'S#.ReturnClrDefFor_FileOps', null) 
+  Where action = CreateAssembly
+  union all
+  Select * 
+  From 
+    (select top 1 AssemblyName From  S#.ReturnClrDefFor_FileOps(null)) as A 
+    CROSS APPLY S#.ScriptAssemblyMgmt(A.AssemblyName, 'Regard', NULL, null) 
+  Where action = AuthorizeAssembly
+  union all
+  --
+  -- displays output function that supplies assembly C# code and assembly SQL code 
+  -- are misnamed
+  --
+  Select * 
+  From 
+    (select top 1 AssemblyName From  S#.ReturnClrDefFor_FileOps(null)) as A 
+    CROSS APPLY S#.ScriptAssemblyMgmt(A.AssemblyName, 'Regard', 'S#.NotGoodReturnClrDefFor_FileOps', null) 
+  Where action = CreateAssembly
+  union all
+  Select * 
+  From 
+    (select top 1 AssemblyName From  S#.ReturnClrDefFor_FileOps(null)) as A 
+    CROSS APPLY S#.ScriptAssemblyMgmt(A.AssemblyName, 'Regard', 'S#.NotGoodReturnClrDefFor_FileOps', null) 
+  Where action = CompileAssembly
+  */
+Go
+Create Or Alter Function S#.ReturnClrDefFor_FileOps (@pathAssemblyDll nvarchar(512))
+-- ==========================================================================================
+-- all functions defined to feed the SQL CLR compiler Sp in this script
+-- must start with S#.ReturnClrDefFor_
+-- and must be defined on this model, so read the comments inside to take this one as a model
+-- ==========================================================================================
+Returns Table
+As
+Return
+(
+  Select code.*, Prm.*
+  From 
+    (Select -- Some set of constants that can be used in the view and when querying the view
+            -- to improve self explaing code
+       CSharp='C#', SQL='SQL', ThisFunction='S#.ReturnClrDefFor_FileOps'
+     , AssemblyName='SomeFileOps',Namespace='Clr_FileOperations', Class='FileOpCs'
+     , pathAssemblyDll=@PathAssemblyDll
+     ) as Prm
+    CROSS APPLY
+    (
+    Select 
+      Language=Prm.Sql, Code=SqlForAssembly.Sql, Seq
+    From 
+      (
+      Select Sql, Seq -- given with each template
+      From 
+        (values 
+          (1,'Assembly', 'SomeFileOps')
+          /*===SomeFileOps===
+          CREATE ASSEMBLY #AssemblyName# AUTHORIZATION [dbo]
+          FROM '#pathAssemblyDll#'
+          WITH PERMISSION_SET = EXTERNAL_ACCESS
+          ===SomeFileOps===*/
+        , (2,'Function', 'S#.clr_FileExists')
+          /*===S#.clr_FileExists===
+          Create Or Alter Function S#.clr_FileExists (@FilePath nvarchar(4000))
+          RETURNS TABLE ([FilePath] nvarchar(512), [ExistsFlag] TinyInt) 
+          AS EXTERNAL NAME [#AssemblyName#].[#NameSpace#.#Class#].[Clr_FileExists];
+          ===S#.clr_FileExists===*/
+        , (3,'Function', 'S#.clr_GetFolderListDetailed')
+          /*===S#.clr_GetFolderListDetailed===
+          Create Or Alter Function S#.clr_GetFolderListDetailed (@FolderPath nvarchar(4000), @SearchPattern nvarchar(4000)) 
+          RETURNS TABLE ([FileName] nvarchar(255), [FileExtension] nvarchar(255), [Size] bigint, [ModifiedDate] datetime, [CreatedDate] datetime, ErrMessage Nvarchar(4000))
+          AS EXTERNAL NAME [#AssemblyName#].[#NameSpace#.#Class#].[Clr_GetFolderListDetailed];
+          ===S#.clr_GetFolderListDetailed===*/
+        , (4,'Proc'    , 'S#.clr_DeleteFile')
+          /*===S#.clr_DeleteFile===
+          CREATE PROC S#.clr_DeleteFile (@FolderPath nvarchar(4000), @ErrorMessage nvarchar(4000) OUTPUT) 
+          AS EXTERNAL NAME [#AssemblyName#].[#NameSpace#.#Class#].[Clr_DeleteFile];
+          ===S#.clr_DeleteFile===*/
+        , (5,'Proc'    , 'S#.clr_DeleteFiles')
+          /*===S#.clr_DeleteFiles===
+          CREATE PROC S#.clr_DeleteFiles (@FolderPath nvarchar(4000), @SearchPattern nvarchar(4000), @ErrorMessage nvarchar(4000) OUTPUT) 
+          AS EXTERNAL NAME [#AssemblyName#].[#NameSpace#.#Class#].[Clr_DeleteFiles];
+          ===S#.clr_DeleteFiles===*/
+        ) as F(Seq, Type, ObjName)
+        CROSS APPLY 
+        (
+        Select Sql
+        From 
+          -- Compute comment delimiter for each object name
+          (Select TemplateTag='==='+ObjName+'===') as TemplateTag
+          -- put elements to replace in each template
+          CROSS APPLY (Select J=(Select AssemblyName, pathAssemblyDll, NameSpace, Class for Json Path, INCLUDE_NULL_VALUES)) as j
+          -- each different template is delimited by each computed templateTag, in this view source code
+          CROSS APPLY (Select Sql=Code From S#.GetTemplateFromCmtAndReplaceTags (TemplateTag, ThisFunction, j)) as Sql
+        ) as Creates
+      ) As SqlForAssembly
+      UNION ALL
+      Select Language=Prm.CSharp, code=Line, Seq=L.LineNum
+      From 
+        (select code=TxtInCmt From s#.GetCmtBetweenDelim('===C#===', ThisFunction)) as C
+        CROSS APPLY s#.SplitSqlCodeInRowLines (c.Code) as L
+    ) as Code
+
+/*===C#===
+// about using yield in C# https://www.infoworld.com/article/3122592/my-two-cents-on-the-yield-keyword-in-c.html
+// about using yield in SqlClr TVF https://www.c-sharpcorner.com/UploadFile/5ef30d/understanding-yield-return-in-C-Sharp/
+using System;
+using System.IO;
+using Microsoft.SqlServer.Server;
+using System.Data.SqlTypes;
+using System.Collections;
+using System.Reflection;
+
+// Set version number for the assembly.
+[assembly:AssemblyVersionAttribute("1.0.0.0")]
+[assembly:AssemblyCulture("en")]
+
+[assembly:AssemblyTitle("FileOpCs")]
+[assembly:AssemblyDescription("SQL CLR Assembly to allows minor file operations from SQL")]
+[assembly:AssemblyCompany("S#")]
+[assembly:AssemblyProduct("S#")]
+
+struct FileDetails {
+    public string FileName; 
+    public string FileExtension; 
+    public long FileSizeByte; 
+    public DateTime ModifiedDate;
+    public DateTime CreatedDate; 
+    public string ErrMessage;
+}
+struct FileExists {
+    public string FilePath;
+    public byte ExistsFlag;
+}
+
+namespace CLR_SomeFileOps
+{
+    // implements reduced set of file operations that are and could be useful to YourSqlDba (to reduce surface area):
+    // GetFolderListDetailed, Deletefile, Deletefiles, and AppendStringTofile
+    // stored procedure and function names are self explanatory
+    public class FileOpCs
+    {
+
+      [SqlFunction(Name = "Clr_GetFolderListDetailed", TableDefinition = "FileName nvarchar(255), FileExtension nvarchar(255), FileSizeByte bigint, ModifiedDate datetime, CreatedDate datetime, ErrMsg nvarchar(4000)", FillRowMethodName = "Clr_GetFolderListDetailedFillRow")]
+         public static IEnumerable Clr_GetFolderListDetailed(string FolderPath, string SearchPattern) 
+         {
+            string[] FilesIn;
+            ArrayList FilesOut = new ArrayList();
+            FileDetails fd;
+            FileInfo fi;
+
+            char[] charsToTrim = {'\\'};
+
+            if (FolderPath.EndsWith("\\"))
+                FolderPath = FolderPath.TrimEnd(charsToTrim);
+            try 
+            {
+                FilesIn = System.IO.Directory.GetFiles(FolderPath, SearchPattern);
+                foreach (string f in FilesIn)
+                {
+                    fi = new FileInfo(f);
+                    fd = new FileDetails();
+                    fd.FileName = fi.Name;
+                    fd.FileExtension = fi.Extension;
+                    fd.FileSizeByte = fi.Length;
+                    fd.ModifiedDate = fi.LastWriteTime;
+                    fd.CreatedDate = fi.CreationTime;
+                    FilesOut.Add(fd);
+                }
+            }
+            catch (Exception ex) 
+            {
+                FilesOut.Clear();
+                fd = new FileDetails();
+                fd.FileName = "<ERROR>";
+                fd.FileExtension = "ERR";
+                fd.FileSizeByte = 0;
+                fd.ModifiedDate = Convert.ToDateTime("1900-01-01");
+                fd.CreatedDate = Convert.ToDateTime("1900-01-01");
+                fd.ErrMessage = ex.Message;
+                FilesOut.Add(fd);
+            }
+            return FilesOut;
+         }
+
+         // method defined for the above function
+         public static void Clr_GetFolderListDetailedFillRow(Object obj, out SqlChars FileName, out SqlChars FileExtension, out SqlInt64 FileSizeByte, out SqlDateTime ModifiedDate, out SqlDateTime CreatedDate, out SqlChars ErrMsg)
+         {
+            FileDetails fd = (FileDetails)obj;
+
+            FileName = new SqlChars(fd.FileName);
+            FileExtension = new SqlChars(fd.FileExtension);
+            FileSizeByte = new SqlInt64(fd.FileSizeByte);
+            ModifiedDate = new SqlDateTime(fd.ModifiedDate);
+            CreatedDate = new SqlDateTime(fd.CreatedDate);
+            ErrMsg = new SqlChars(fd.ErrMessage);
+         }
+
+        [SqlFunction(Name = "Clr_FileExists", TableDefinition = "FilePath nvarchar(512), ExistsFlag TinyInt", FillRowMethodName = "Clr_FileExistsFillRow")]
+        public static IEnumerable Clr_FileExists(string FilePath) 
+        {
+           FileExists fe;
+           fe.FilePath = FilePath;
+           fe.ExistsFlag = (Byte)(System.IO.File.Exists(FilePath) ? 1 : 0); // this function never raise error, even for access denied, so false is returned in case of error
+           yield return fe;
+        }
+        //
+        // method defined for the above function
+        //
+        public static void Clr_FileExistsFillRow(Object obj, out SqlChars FileName, out SqlByte ExistsFlag)
+        {
+           FileExists fe = (FileExists)obj;
+           FileName = new SqlChars (fe.FilePath);
+           ExistsFlag = new SqlByte (fe.ExistsFlag);
+        }
+
+        [SqlProcedure(Name = "Clr_DeleteFile")]
+        public static void Clr_DeleteFile(string FilePath, out string ErrorMessage)
+        {
+           try 
+           {
+               System.IO.File.Delete(FilePath);
+               ErrorMessage = "";
+           }
+           catch (Exception ex)
+           {
+               ErrorMessage = ex.Message;
+           }
+        }
+
+        [SqlProcedure(Name = "Clr_DeleteFiles")]
+        public static void Clr_DeleteFiles(string FolderPath, string SearchPattern, out string ErrorMessage)
+        {
+           string[] Files;
+           char[] charsToTrim = {'\\'};
+           //
+           if (FolderPath.EndsWith("\\"))
+               FolderPath = FolderPath.TrimEnd(charsToTrim);
+           try {
+               Files = System.IO.Directory.GetFiles(FolderPath, SearchPattern);
+               foreach(string f in Files)
+                   System.IO.File.Delete(f);
+               ErrorMessage = "";
+           }
+           catch (Exception ex)
+           {
+               ErrorMessage = ex.Message;
+           }
+        }
+    }
+}
+===C#===*/
+-- both queries below test code output. The one that returns C# and the one that link SQL to C#.
+-- select * from S#.ReturnClrDefFor_FileOps (null) where language=CSharp Order by seq
+-- select * from S#.ReturnClrDefFor_FileOps (null) where language=Sql Order by seq
+) -- S#.ReturnClrDefFor_FileOps
+GO
+Create Or Alter Proc S#.CompileAssemblyAndCreateSql (@SourceCodeView sysname, @AssemblyName sysname, @Silent Int, @destDb Sysname)
+as
+  Insert Into S#.ScriptToRun(Sql, Seq)
+  Select Sql, seq From S#.ScriptCompileAssemblyAndCreateSql (@SourceCodeView, @AssemblyName, @Silent, @destDb)
+  Select * from S#.scripttorun
+  Exec S#.RunScript @printOnly=0, @silent=@silent
+-- Exec S#.CompileAssemblyAndCreateSql @SourceCodeView = 'S#.ReturnClrDefFor_FileOps', @AssemblyName ='ClrFileOp_DirAndDel', @Silent=0
+GO
+Create Or Alter Function S#.ScriptDeployAllClrDef(@Silent Int, @DestDb Sysname = NULL)
+Returns table
+as
+return
+(
+Select Sql, Seq=ROW_NUMBER() Over (Order by ClrDefFct), j
+From
+  (
+  Select ClrDefFct=S#.FullObjName(object_id), Silent=@Silent, ThisFunction='S#.ScriptDeployAllClrDef', DestDb=ISNULL(@destDb, Db_Name())
+  From sys.objects 
+  Where S#.FullObjName(object_id) Like '\[S#\].\[ReturnClrDefFor_%' Escape '\'
+  ) as ClrDef
+  CROSS APPLY (Select j=(Select ClrDef.* for Json Path, INCLUDE_NULL_VALUES)) as j
+  CROSS APPLY (Select Sql=Code From S#.GetTemplateFromCmtAndReplaceTags ('===DeployAnAssembly===', ThisFunction, j)) as Sql
+  /*===DeployAnAssembly===
+  declare @SourceCodeView sysname = '#ClrDefFct#'; 
+  Declare @AssemblyName sysname
+  Select Top 1 @AssemblyName = AssemblyName From #ClrDefFct#(null)
+  Insert into S#.ScriptToRun (Sql, Seq)
+  Select Sql, seq
+  From S#.ScriptCompileAssemblyAndCreateSql (@SourceCodeView, @AssemblyName, #Silent#, '#DestDb#')
+  Exec S#.RunScript @printOnly=0, @Silent=#Silent#
+  ===DeployAnAssembly===*/
+)
+GO
+-- =========================================================================
+-- Deploy CSharp code defined in this script
+-- =========================================================================
+Declare @silent Int = 1
+Insert into S#.ScriptToRun (Sql, Seq)
+Select Sql, seq
+From 
+  S#.ScriptDeployAllClrDef(@Silent, DB_NAME()) -- can change param to 0 to verbose generated code
+Exec S#.RunScript @printOnly=0, @silent=@silent -- can change silent to 0 to verbose generated code
+GO
+-- end of section about deploying native c# code into CLR
 
 ---------------------------------------------------------------------------------------------------------
 -- This function is useful to deduplicate duplicated sequence of char into a string
@@ -2367,16 +2955,6 @@ Create Or Alter ProcEDURE yExecNLog.Clr_ExecAndLogAllMsgs
 	@Msgs nvarchar(max) OUTPUT
 AS EXTERNAL NAME [YourSqlDba_ClrExec].[ExecuteYourSqlDbaCmdsThroughCLR].[Clr_ExecAndLogAllMsgs]
 GO
-Create Or Alter Function yExecNLog.Clr_RemoveCtlChar (@beforeEscape nvarchar(max)) 
-returns nvarchar(max)
-as  EXTERNAL NAME [YourSqlDba_ClrExec].[ExecuteYourSqlDbaCmdsThroughCLR].[Clr_RemoveCtlChar]
-GO
--- no more in use
-Create Or Alter Function yExecNLog.Clr_XmlPrettyPrint (@Xml Xml) 
-returns nvarchar(max)
-as  EXTERNAL NAME [YourSqlDba_ClrExec].[ExecuteYourSqlDbaCmdsThroughCLR].Clr_XmlPrettyPrint
-GO
-
 -- Create assemblies and procedure and function that points to them
 IF  EXISTS (SELECT * FROM sys.assemblies asms WHERE asms.name = N'YourSqlDba_ClrFileOp')
   DROP ASSEMBLY [YourSqlDba_ClrFileOp]
@@ -2386,61 +2964,15 @@ CREATE ASSEMBLY [YourSqlDba_ClrFileOp] AUTHORIZATION [dbo]
 FROM 0x4D5A90000300000004000000FFFF0000B800000000000000400000000000000000000000000000000000000000000000000000000000000000000000800000000E1FBA0E00B409CD21B8014CCD21546869732070726F6772616D2063616E6E6F742062652072756E20696E20444F53206D6F64652E0D0D0A2400000000000000504500004C0103000894D5520000000000000000E00002210B010B000020000000060000000000001E3F0000002000000040000000000010002000000002000004000000000000000400000000000000008000000002000000000000030040850000100000100000000010000010000000000000100000000000000000000000D03E00004B00000000400000E803000000000000000000000000000000000000006000000C000000983D00001C0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000080000000000000000000000082000004800000000000000000000002E74657874000000241F0000002000000020000000020000000000000000000000000000200000602E72737263000000E8030000004000000004000000220000000000000000000000000000400000402E72656C6F6300000C0000000060000000020000002600000000000000000000000000004000004200000000000000000000000000000000003F0000000000004800000002000500C8290000D013000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001B3003004B0000000100001100178D1A0000010C08161F5C9D080A0272010000706F1100000A16FE010D092D0902066F1200000A10000002281300000A260372050000705100DE0D0B0003076F1400000A5100DE00002A000110000000002A00123C000D1E0000011B3003004B0000000100001100178D1A0000010C08161F5C9D080A0272010000706F1100000A16FE010D092D0902066F1200000A10000002281500000A000372050000705100DE0D0B0003076F1400000A5100DE00002A000110000000002A00123C000D1E0000011B3004005C0000000100001100178D1A0000010C08161F5C9D080A0272010000706F1100000A16FE010D092D0902066F1200000A1000000202281600000A720100007003281700000A281800000A000472050000705100DE0D0B0004076F1400000A5100DE00002A0110000000002A00234D000D1E0000011B300300A10000000200001100731A00000A0B178D1A00000113061106161F5C9D11060C0272010000706F1100000A16FE01130711072D0902086F1200000A1000000203281B00000A0A000613081613092B19110811099A0D0709281C00000A6F1D00000A26110917581309110911088E69FE04130711072DD900DE27130400076F1E00000A000772070000706F1D00000A260711046F1400000A6F1D00000A2600DE00000713052B0011052A00000001100000000035003C7100271E0000011330020016000000030000110002281F00000A0A0306282000000A732100000A512A00001B300300400100000400001100731A00000A0B178D1A00000113081108161F5C9D110813040272010000706F1100000A16FE01130911092D0A0211046F1200000A1000000203281B00000A0A0006130A16130B2B65110A110B9A1305001105732200000A0D1202096F2300000A7D010000041202096F2400000A7D020000041202096F2500000A7D030000041202096F2600000A7D040000041202096F2700000A7D0500000407088C020000026F1D00000A2600110B1758130B110B110A8E69FE04130911092D8D00DE78130600076F1E00000A00120272070000707D01000004120272170000707D020000041202166A7D030000041202721F000070282800000A7D040000041202721F000070282800000A7D0500000407088C020000026F1D00000A26120211066F1400000A7D0100000407088C020000026F1D00000A2600DE00000713072B0011072A011000000000370088BF00781E0000011330020067000000050000110002A5020000020A0312007B01000004282000000A732100000A510412007B02000004282000000A732100000A510512007B03000004732900000A81060000010E0412007B04000004732A00000A81070000010E0512007B05000004732A00000A81070000012A001B300200260000000600001100000302282B00000A520472050000705100DE100A0003165204066F1400000A5100DE00002A00000110000000000100131400101E0000011B3002002200000006000011000002282C00000A000372050000705100DE0D0A0003066F1400000A5100DE00002A000001100000000001001213000D1E0000011B3003007B0000000700001100178D1A00000113041104161F5C9D11040B0272010000706F1100000A16FE01130511052D0902076F1200000A1000000203281B00000A0A000613061613072B13110611079A0C08282C00000A00110717581307110711068E69FE04130511052DDF0472050000705100DE0D0D0004096F1400000A5100DE00002A000110000000002F003D6C000D1E0000011B300400BA0000000800001100178D1A00000113041104161F5C9D11040B0272010000706F1100000A16FE01130511052D0902076F1200000A10000002723500007003282D00000A281B00000A0A000613061613072B48110611079A0C081B8D1B000001130811081602A21108177201000070A211081808282E00000AA2110819723B000070A211081A04A21108282F00000A283000000A00110717581307110711068E69FE04130511052DAA0572050000705100DE0D0D0005096F1400000A5100DE00002A00000110000000002F007CAB000D1E0000011B3004002F000000060000110000020202281C00000A036F3100000A283000000A000472050000705100DE0D0A0004066F1400000A5100DE00002A0001100000000001001F20000D1E0000011B300300310000000900001100178D1A0000010C08161F5C9D080A000203283200000A000472050000705100DE0D0B0004076F1400000A5100DE00002A0000000110000000000F001322000D1E0000011B3004005C0000000100001100178D1A0000010C08161F5C9D080A0372010000706F1100000A16FE010D092D0903066F1200000A1001000203720100007002281C00000A281700000A283000000A000472050000705100DE0D0B0004076F1400000A5100DE00002A0110000000002A00234D000D1E0000011B300400A90000000700001100178D1A00000113041104161F5C9D11040B0272010000706F1100000A16FE01130511052D0902076F1200000A10000472010000706F1100000A16FE01130511052D0904076F1200000A1002000203281B00000A0A000613061613072B24110611079A0C0804720100007008281C00000A281700000A283000000A00110717581307110711068E69FE04130511052DCE0572050000705100DE0D0D0005096F1400000A5100DE00002A0000000110000000004C004E9A000D1E0000011B3002002E0000000A000011000002732200000A0A03066F2500000A550472050000705100DE110B0003166A5504076F1400000A5100DE00002A000001100000000001001A1B00111E0000011B3002004D0000000B0000110003721F000070282800000A8103000001047205000070510002282B00000A16FE010B072D0E0302283300000A81030000012B0704723F0000705100DE0D0A0004066F1400000A5100DE00002A0000000110000000001800263E000D1E0000011B3002004D0000000B0000110003721F000070282800000A8103000001047205000070510002282B00000A16FE010B072D0E0302283400000A81030000012B0704723F0000705100DE0D0A0004066F1400000A5100DE00002A0000000110000000001800263E000D1E0000011B30020023000000060000110004720500007051000203283500000A0000DE0D0A0004066F1400000A5100DE00002A0001100000000008000C14000D1E0000011B30020023000000060000110004720500007051000203283600000A0000DE0D0A0004066F1400000A5100DE00002A0001100000000008000C14000D1E0000011E02283700000A2A42534A4201000100000000000C00000076322E302E35303732370000000005006C00000050060000237E0000BC0600006007000023537472696E6773000000001C0E000060000000235553007C0E00001000000023475549440000008C0E00004405000023426C6F620000000000000002000001571502000900000000FA25330016000001000000260000000300000005000000150000003B000000370000001D0000000B000000010000000200000000000A0001000000000006005B0054000600650054000600900054000600F800E5000A00370122010A00730122010A007C0122010600D402B5020600970385030600AE0385030600CB0385030600EA03850306000304850306001C04850306003704850306005204850306006B04B50206007F0485030600AB0498044F00BF0400000600EE04CE0406000E05CE0406004105B50206005705B5020A007D0562050600930554000600980554000600BA05B0050600C405B0050600E20554000600FF05B0050A002106620506003606E50006005F0654000A007006220106008606B00506008F06B0050600EE06B00500000000010000000000010001000801100023000000050001000100010010002F00380009000600010006006C000A00060075000A00060083000D000600990010000600A60010005020000000009600B20014000100B820000000009600C300140003002021000000009600D4001B0005009821000000009600040123000800582200000000960040012A000A007C22000000009600590123000C00D823000000009600880132000E004C24000000009600A901460014009024000000009600B80114001700D024000000009600C7011B0019006825000000009600D7014F001C004026000000009600F0011B0020008C26000000009600FF011B002300DC260000000096000C021B002600542700000000960019024F0029001C28000000009600270258002D0068280000000096003B0261003000D42800000000960053026100330040290000000096006A021B003600802900000000960081021B003900C02900000000861897026B003C00000001009D0202000200A802000001009D0202000200A802000001009D0200000200E10202000300A802000001009D0200000200EF0200000100FD02020002006C00000001009D0200000200EF0200000100FD02020002006C0002000300750002000400830002000500990002000600A600000001000103020002000A0302000300A80200000100010302000200A802000001009D0200000200EF0202000300A802000001009D0200000200190300000300260302000400A80200000100010300000200330302000300A802000001003F03000002004E0302000300A802000001003F0300000200620302000300A802000001009D0200000200EF0200000300620302000400A80200000100010302000200830002000300A80200000100010302000200990002000300A80200000100010302000200A60002000300A80200000100010300000200780302000300A80200000100010300000200780302000300A802410097026B00490097026F00510097026F00590097026F00610097026F00690097026F00710097026F00790097026F00810097026F00890097027400910097026F00990097027900A90097027F00B10097026B00B90097028400C90097026B00D9009F05A700D900A805AC00E100D205B200F100EC05B800E100F805E300F90004060501D90015060A01E1001C061101010197026B00090197026B00E10040068B01F90049060501090155069201090159066B0011016706AC0119017A06B10129009702B801210197026F0029019E06B8002901A706B8002101B506A7022901C006AB022901D206AB021101E306B00231009702D00239009702D5023101F306FB023101F805E300D90015067103F900FA060501D9001506770331011C061101D9001607AA0331011E07110131012307B00231013407B002310144071101310152071101110097026B00200083008A002E005300D9042E006B001C052E004300D9042E00630013052E00730025052E002300D9042E003B00EE042E001B00D9042E001300BF042E002B00DF042E003300BF0440008300C60060008300E8008000CB001701C000CB00C30100018300E002200183000503400183002003600183004C03800183008F03A0018300B003C0018300D203E0018300EB03000283000504200283002D04400283005704600283007A04800283009D04BC009701BF01B602DB0200033C037D03C9032504510404800000010000000714DC670000000000002C05000002000000000000000000000001004B000000000002000000000000000000000001001601000000000000003C4D6F64756C653E00596F757253716C4462615F436C7246696C654F702E646C6C0046696C6544657461696C730046696C654F70437300436C725F46696C654F7065726174696F6E73006D73636F726C69620053797374656D0056616C756554797065004F626A6563740046696C654E616D650046696C65457874656E73696F6E0046696C6553697A6542797465004461746554696D65004D6F6469666965644461746500437265617465644461746500436C725F437265617465466F6C64657200436C725F44656C657465466F6C64657200436C725F52656E616D65466F6C6465720053797374656D2E436F6C6C656374696F6E730049456E756D657261626C6500436C725F476574466F6C6465724C6973740053797374656D2E446174610053797374656D2E446174612E53716C54797065730053716C436861727300436C725F476574466F6C6465724C69737446696C6C526F7700436C725F476574466F6C6465724C69737444657461696C65640053716C496E7436340053716C4461746554696D6500436C725F476574466F6C6465724C69737444657461696C656446696C6C526F7700436C725F46696C6545786973747300436C725F44656C65746546696C6500436C725F44656C65746546696C657300436C725F4368616E676546696C65457874656E73696F6E7300436C725F52656E616D6546696C6500436C725F436F707946696C6500436C725F4D6F766546696C6500436C725F4D6F766546696C657300436C725F47657446696C6553697A654279746500436C725F47657446696C65446174654D6F64696669656400436C725F47657446696C65446174654372656174656400436C725F417070656E64537472696E67546F46696C6500436C725F5772697465537472696E67546F46696C65002E63746F7200466F6C64657250617468004572726F724D6573736167650053797374656D2E52756E74696D652E496E7465726F705365727669636573004F7574417474726962757465004E6577466F6C6465724E616D65005365617263685061747465726E006F626A0046696C65506174680046696C65457869737473466C6167004F6C64457874656E73696F6E004E6577457874656E73696F6E004E657746696C654E616D6500536F7572636546696C65506174680044657374696E6174696F6E46696C65506174680044657374696E6174696F6E466F6C646572506174680046696C65436F6E74656E74730053797374656D2E5265666C656374696F6E00417373656D626C795469746C6541747472696275746500417373656D626C794465736372697074696F6E41747472696275746500417373656D626C79436F6E66696775726174696F6E41747472696275746500417373656D626C79436F6D70616E7941747472696275746500417373656D626C7950726F6475637441747472696275746500417373656D626C79436F7079726967687441747472696275746500417373656D626C7954726164656D61726B41747472696275746500417373656D626C7943756C7475726541747472696275746500436F6D56697369626C6541747472696275746500417373656D626C7956657273696F6E4174747269627574650053797374656D2E446961676E6F73746963730044656275676761626C6541747472696275746500446562756767696E674D6F6465730053797374656D2E52756E74696D652E436F6D70696C6572536572766963657300436F6D70696C6174696F6E52656C61786174696F6E734174747269627574650052756E74696D65436F6D7061746962696C69747941747472696275746500596F757253716C4462615F436C7246696C654F70005374727563744C61796F7574417474726962757465004C61796F75744B696E64004D6963726F736F66742E53716C5365727665722E5365727665720053716C50726F636564757265417474726962757465004368617200537472696E6700456E647357697468005472696D456E640053797374656D2E494F004469726563746F7279004469726563746F7279496E666F004372656174654469726563746F727900457863657074696F6E006765745F4D6573736167650044656C6574650050617468004765744469726563746F72794E616D6500436F6E636174004D6F76650053716C46756E6374696F6E4174747269627574650041727261794C6973740047657446696C65730047657446696C654E616D650041646400436C65617200436F6E7665727400546F537472696E670053716C537472696E67006F705F496D706C696369740046696C65496E666F0046696C6553797374656D496E666F006765745F4E616D65006765745F457874656E73696F6E006765745F4C656E677468006765745F4C617374577269746554696D65006765745F4372656174696F6E54696D6500546F4461746554696D650046696C65004578697374730047657446696C654E616D65576974686F7574457874656E73696F6E005265706C61636500436F7079004765744C617374577269746554696D65004765744372656174696F6E54696D6500417070656E64416C6C54657874005772697465416C6C54657874000000035C000001000F3C004500520052004F0052003E000007450052005200001531003900300030002D00300031002D003000310001052A002E0000032E00001F500061007400680020006E006F007400200066006F0075006E0064002E00000069F35BF5DADA714CB3CAEB2028898EE90008B77A5C561934E08902060E02060A0306110D060002010E100E070003010E0E100E06000212110E0E070002011C101215130006011C10121510121510111910111D10111D080003010E1002100E080004010E0E0E100E080003010E100A100E090003010E10110D100E03200001042001010E042001010205200101115104200101080520010111611C01000100540E044E616D6510436C725F437265617465466F6C646572042001020E0520010E1D0305000112750E0320000E0907041D0312791D03021C01000100540E044E616D6510436C725F44656C657465466F6C646572040001010E1C01000100540E044E616D6510436C725F52656E616D65466F6C6465720400010E0E0600030E0E0E0E050002010E0E7301000300540E044E616D6511436C725F476574466F6C6465724C697374540E0F5461626C65446566696E6974696F6E1646696C654E616D65206E766172636861722832353529540E1146696C6C526F774D6574686F644E616D6518436C725F476574466F6C6465724C69737446696C6C526F770600021D0E0E0E042001081C14070A1D0E1280851D030E127912111D03021D0E080400010E1C06000111808D0E0620010111808D0307010E80E201000300540E044E616D6519436C725F476574466F6C6465724C69737444657461696C6564540E0F5461626C65446566696E6974696F6E7546696C654E616D65206E7661726368617228323535292C2046696C65457874656E73696F6E206E7661726368617228323535292C2046696C6553697A654279746520626967696E742C204D6F64696669656444617465206461746574696D652C204372656174656444617465206461746574696D65540E1146696C6C526F774D6574686F644E616D6520436C725F476574466F6C6465724C69737444657461696C656446696C6C526F770320000A042000110D050001110D0E19070C1D0E12808511081280911D030E127912111D03021D0E08042001010A05200101110D04070111081A01000100540E044E616D650E436C725F46696C65457869737473040001020E04070112791A01000100540E044E616D650E436C725F44656C65746546696C651B01000100540E044E616D650F436C725F44656C65746546696C65730F07081D0E1D030E12791D03021D0E082401000100540E044E616D6518436C725F4368616E676546696C65457874656E73696F6E730500020E0E0E0500010E1D0E1107091D0E1D030E12791D03021D0E081D0E1A01000100540E044E616D650E436C725F52656E616D6546696C650520020E0E0E1801000100540E044E616D650C436C725F436F707946696C650807031D0312791D031801000100540E044E616D650C436C725F4D6F766546696C651901000100540E044E616D650D436C725F4D6F766546696C65731F01000100540E044E616D6513436C725F47657446696C6553697A654279746507070212809112792301000100540E044E616D6517436C725F47657446696C65446174654D6F6469666965640507021279022201000100540E044E616D6516436C725F47657446696C6544617465437265617465642201000100540E044E616D6516436C725F417070656E64537472696E67546F46696C652101000100540E044E616D6515436C725F5772697465537472696E67546F46696C6519010014596F757253716C4462615F436C7246696C654F7000000501000000000E0100094D6963726F736F667400002401001F436F7079726967687420C2A920536F6369657465204752494353203230313100000801000701000000000801000800000000001E01000100540216577261704E6F6E457863657074696F6E5468726F777301000000000894D55200000000020000001C010000B43D0000B41F0000525344535294223278304D449CFDBA5847D2D19101000000633A5C45717569706553716C5C596F757253716C4462615C596F757253716C4462615F436C7246696C654F705C6F626A5C44656275675C596F757253716C4462615F436C7246696C654F702E70646200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000F83E000000000000000000000E3F0000002000000000000000000000000000000000000000000000003F00000000000000005F436F72446C6C4D61696E006D73636F7265652E646C6C0000000000FF25002000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100100000001800008000000000000000000000000000000100010000003000008000000000000000000000000000000100000000004800000058400000900300000000000000000000900334000000560053005F00560045005200530049004F004E005F0049004E0046004F0000000000BD04EFFE0000010000000100DC67071400000100DC6707143F000000000000000400000002000000000000000000000000000000440000000100560061007200460069006C00650049006E0066006F00000000002400040000005400720061006E0073006C006100740069006F006E00000000000000B004F0020000010053007400720069006E006700460069006C00650049006E0066006F000000CC020000010030003000300030003000340062003000000034000A00010043006F006D00700061006E0079004E0061006D006500000000004D006900630072006F0073006F00660074000000540015000100460069006C0065004400650073006300720069007000740069006F006E000000000059006F0075007200530071006C004400620061005F0043006C007200460069006C0065004F0070000000000040000F000100460069006C006500560065007200730069006F006E000000000031002E0030002E0035003100320037002E00320036003500380038000000000054001900010049006E007400650072006E0061006C004E0061006D006500000059006F0075007200530071006C004400620061005F0043006C007200460069006C0065004F0070002E0064006C006C000000000064001F0001004C006500670061006C0043006F007000790072006900670068007400000043006F0070007900720069006700680074002000A900200053006F006300690065007400650020004700520049004300530020003200300031003100000000005C00190001004F0072006900670069006E0061006C00460069006C0065006E0061006D006500000059006F0075007200530071006C004400620061005F0043006C007200460069006C0065004F0070002E0064006C006C00000000004C0015000100500072006F0064007500630074004E0061006D0065000000000059006F0075007200530071006C004400620061005F0043006C007200460069006C0065004F0070000000000044000F000100500072006F006400750063007400560065007200730069006F006E00000031002E0030002E0035003100320037002E00320036003500380038000000000048000F00010041007300730065006D0062006C0079002000560065007200730069006F006E00000031002E0030002E0035003100320037002E003200360035003800380000000000000000000000000000000000000000000000000000000000003000000C000000203F00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 WITH PERMISSION_SET = EXTERNAL_ACCESS
 GO
-Create Or Alter Proc yUtl.clr_CreateFolder (@FolderPath nvarchar(4000), @ErrorMessage nvarchar(4000) OUTPUT) 
-AS EXTERNAL NAME [YourSqlDba_ClrFileOp].[Clr_FileOperations.FileOpCs].[Clr_CreateFolder];
-GO
-Create Or Alter Proc yUtl.clr_DeleteFolder (@FolderPath nvarchar(4000), @ErrorMessage nvarchar(4000) OUTPUT) 
-AS EXTERNAL NAME [YourSqlDba_ClrFileOp].[Clr_FileOperations.FileOpCs].[Clr_DeleteFolder];
-GO
-Create Or Alter Proc yUtl.clr_RenameFolder (@FolderPath nvarchar(4000), @NewFolderName nvarchar(4000), @ErrorMessage nvarchar(4000) OUTPUT) 
-AS EXTERNAL NAME [YourSqlDba_ClrFileOp].[Clr_FileOperations.FileOpCs].[Clr_RenameFolder];
-GO
 Create Or Alter Function yUtl.clr_GetFolderList (@FolderPath nvarchar(4000), @SearchPattern nvarchar(4000)) 
 RETURNS TABLE ([FileName] nvarchar(255))
 AS EXTERNAL NAME [YourSqlDba_ClrFileOp].[Clr_FileOperations.FileOpCs].[Clr_GetFolderList];
-GO
-Create Or Alter Function yUtl.clr_GetFolderListDetailed (@FolderPath nvarchar(4000), @SearchPattern nvarchar(4000)) 
-RETURNS TABLE ([FileName] nvarchar(255), [FileExtension] nvarchar(255), [Size] bigint, [ModifiedDate] datetime, [CreatedDate] datetime)
-AS EXTERNAL NAME [YourSqlDba_ClrFileOp].[Clr_FileOperations.FileOpCs].[Clr_GetFolderListDetailed];
 GO
 Create Or Alter Proc yUtl.clr_FileExists (@FilePath nvarchar(4000), @FileExistsFlag bit OUTPUT, @ErrorMessage nvarchar(4000) OUTPUT) 
 AS EXTERNAL NAME [YourSqlDba_ClrFileOp].[Clr_FileOperations.FileOpCs].[Clr_FileExists];
 GO
 Create Or Alter Proc yUtl.clr_DeleteFile (@FolderPath nvarchar(4000), @ErrorMessage nvarchar(4000) OUTPUT) 
 AS EXTERNAL NAME [YourSqlDba_ClrFileOp].[Clr_FileOperations.FileOpCs].[Clr_DeleteFile];
-GO
-Create Or Alter Proc yUtl.clr_DeleteFiles (@FolderPath nvarchar(4000), @SearchPattern nvarchar(4000), @ErrorMessage nvarchar(4000) OUTPUT) 
-AS EXTERNAL NAME [YourSqlDba_ClrFileOp].[Clr_FileOperations.FileOpCs].[Clr_DeleteFiles];
-GO
-Create Or Alter Proc yUtl.clr_ChangeFileExtensions (@FolderPath nvarchar(4000), @OldExtension nvarchar(4000), @NewExtension nvarchar(4000), @ErrorMessage nvarchar(4000) OUTPUT) 
-AS EXTERNAL NAME [YourSqlDba_ClrFileOp].[Clr_FileOperations.FileOpCs].[Clr_ChangeFileExtensions];
-GO
-Create Or Alter Proc yUtl.clr_RenameFile (@FilePath nvarchar(4000), @NewFileName nvarchar(4000), @ErrorMessage nvarchar(4000) OUTPUT) 
-AS EXTERNAL NAME [YourSqlDba_ClrFileOp].[Clr_FileOperations.FileOpCs].[Clr_RenameFile];
-GO
-Create Or Alter Proc yUtl.clr_CopyFile (@SourceFilePath nvarchar(4000), @DestinationFilePath nvarchar(4000), @ErrorMessage nvarchar(4000) OUTPUT) 
-AS EXTERNAL NAME [YourSqlDba_ClrFileOp].[Clr_FileOperations.FileOpCs].[Clr_CopyFile];
-GO
-Create Or Alter Proc yUtl.clr_MoveFile (@SourceFilePath nvarchar(4000), @DestinationFolderPath nvarchar(4000), @ErrorMessage nvarchar(4000) OUTPUT) 
-AS EXTERNAL NAME [YourSqlDba_ClrFileOp].[Clr_FileOperations.FileOpCs].[Clr_MoveFile];
-GO
-Create Or Alter Proc yUtl.clr_MoveFiles (@FolderPath nvarchar(4000), @SearchPattern nvarchar(4000), @DestinationFolderPath nvarchar(4000), @ErrorMessage nvarchar(4000) OUTPUT) 
-AS EXTERNAL NAME [YourSqlDba_ClrFileOp].[Clr_FileOperations.FileOpCs].[Clr_MoveFiles];
-GO
-Create Or Alter Proc yUtl.clr_GetFileSizeByte (@FilePath nvarchar(4000), @FileSizeByte bigint OUTPUT, @ErrorMessage nvarchar(4000) OUTPUT) 
-AS EXTERNAL NAME [YourSqlDba_ClrFileOp].[Clr_FileOperations.FileOpCs].[Clr_GetFileSizeByte];
-GO
-Create Or Alter Proc yUtl.clr_GetFileDateModified (@FilePath nvarchar(4000), @ModifiedDate datetime OUTPUT, @ErrorMessage nvarchar(4000) OUTPUT) 
-AS EXTERNAL NAME [YourSqlDba_ClrFileOp].[Clr_FileOperations.FileOpCs].[Clr_GetFileDateModified];
-GO
-Create Or Alter Proc yUtl.clr_GetFileDateCreated (@FilePath nvarchar(4000), @CreatedDate datetime OUTPUT, @ErrorMessage nvarchar(4000) OUTPUT) 
-AS EXTERNAL NAME [YourSqlDba_ClrFileOp].[Clr_FileOperations.FileOpCs].[Clr_GetFileDateCreated];
-go
-Create Or Alter Proc yUtl.clr_AppendStringToFile (@FilePath nvarchar(4000), @FileContents nvarchar(MAX), @ErrorMessage nvarchar(4000) OUTPUT) 
-AS EXTERNAL NAME [YourSqlDba_ClrFileOp].[Clr_FileOperations.FileOpCs].[Clr_AppendStringToFile];
-GO
-Create Or Alter Proc yUtl.clr_WriteStringToFile (@FilePath nvarchar(4000), @FileContents nvarchar(MAX), @ErrorMessage nvarchar(4000) OUTPUT) 
-AS EXTERNAL NAME [YourSqlDba_ClrFileOp].[Clr_FileOperations.FileOpCs].[Clr_WriteStringToFile];
 GO
 Create Or Alter Function yInstall.SqlVersionNumber ()
 Returns Int
@@ -6611,7 +7143,8 @@ Begin
     Select MinSpread=Min(MaxSpread) 
       From 
       ( -- do not let seq get higher than the number of databases
-      Select MaxSpread=(Select NbOfDb=Count(*) From #Db)
+        -- and avoid divide by zero error if database filter gives no db
+      Select MaxSpread=ISNULL((Select NbOfDb=Count(*) From #Db),1)
       UNION ALL
       Select MaxSpread=@SpreadCheckDb
       ) as MinPrm
