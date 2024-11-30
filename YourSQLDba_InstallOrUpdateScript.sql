@@ -11,7 +11,7 @@
 Drop Table if Exists #version
 create table #Version (version nvarchar(40), VersionDate datetime)
 set nocount on
-insert into #Version Values ('7.0.0.4', convert(datetime, '2024-06-07', 120))  
+insert into #Version Values ('7.1.0.0', convert(datetime, '2024-11-06', 120))  
 
 --Alter database yoursqldba set single_user with rollback immediate
 --go
@@ -7922,6 +7922,7 @@ Begin
       join sys.objects OBJ  on IDX.object_id = OBJ.object_id 
       join sys.schemas S    on S.schema_id = OBJ.schema_id
     Where OBJ.type_desc = "User_Table" 
+      And IDX.Is_Disabled = 0
 
     insert into #IndexNames 
       ( scn, tb, td, IDX, pglock, partitionnum, frag, index_type_desc
@@ -14891,7 +14892,7 @@ Begin
        And c.column_id = Ixc.column_id 
   Where     
     objectpropertyEx(ixs.object_id, "IsUserTable") = 1
-    And not exists(Select * from sys.indexes I where I.name = Ixs.name)
+    And not exists(Select * from sys.indexes I where I.name = Ixs.name And I.IS_Disabled=0)
     And Schema_name (OB.schema_id) NOT IN ("sys")
     And objectpropertyEx(OB.object_id, "isMsShipped") = 0 -- on veut pas toucher aux objets 
                                                         -- systèmes ex: Dt% 

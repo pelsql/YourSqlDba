@@ -18,6 +18,15 @@ It creates, on the SQL instance where it runs, a database named YourSqlDba packe
 
 **[Get script for version 7.0.0.4](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
 
+**Version 7.1:**
+This version achieves a long-sought goal: removing assembly dependencies from YourSqlDba!
+
+How can you deploy a SQLCLR in a script without delivering a DLL or creating it from a hex string of code?
+
+By making the script compile, deploy, and secure it autonomously. YourSqlDba gained this capability from parts of a base source code of my own library, called S# (not yet published on GitHub). This library allows source code to be embedded within an inline function definition, enabling complete T-SQL commands to create the assembly and expose its SQLCLR entry points in SQL Server. Special thanks to Solomon Rutzky (srutzky@gmail.com) for his insights on assembly and module security, which helped me finalize the security by adding a signature at the creation point. Now, every DBA can review the relatively straightforward C# code without the risk of running unsigned assembly code, enhancing the security of YourSqlDba. This also makes YourSqlDba more secure. 
+
+This version contains also a minor fix to 7.0.0.4, which wasn't corrected properly.
+
 Interim versions 7.0.0.0 to 7.0.0.3 have been deprecated, as version 7.0.0.4 consolidates all of their changes. These minor updates were deemed unnecessary to retain individually, though they remain accessible on GitHub for comparison. Additionally, several bugs from versions preceding 7.0 have been resolved. Here are the primary updates:
 
 Version 7.x establishes a foundation for the new architecture of YourSqlDba, introducing these elements gradually to allow the original and new architectures to coexist, ensuring code quality remains uncompromised. Upgrading is especially recommended to benefit from bug fixes introduced in version 7.0.0.3.
@@ -25,6 +34,7 @@ Version 7.x establishes a foundation for the new architecture of YourSqlDba, int
 With version 7.0, **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)** has received several improvements to enhance the visualization of multi-job interactions. Events within a specific period are now chronologically ordered and display simultaneous job events. Each time the log history switches jobs, columns indicating job pedigree are set to make these transitions easily identifiable.
 
 **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)** is an essential tool within YourSqlDba for diagnosing maintenance issues. When investigating outside a single job's scope, pre-computed datetime values from `Maint.MaintenanceEnums` allow querying of YourSqlDba activity within relative time frames. More details are available in the updated documentation on **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)**, including instructions on querying SQL executed during maintenance.
+
 
 **Version 7.0.0.4:**
 A divide-by-zero error may occur in integrity testing when database filtering excludes all databases. This is because table selection is based on `@SpreadCheckDd` job parameter. When computing this selection, the number of databases is taken into account to calculate a modulo value, set either to `@SpreadCheckDd` or the total number of databases.
