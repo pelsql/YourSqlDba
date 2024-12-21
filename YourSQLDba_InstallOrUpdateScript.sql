@@ -6,12 +6,15 @@
 -- Online Documentation : https://github.com/pelsql/YourSqlDba?tab=readme-ov-file#links-into-online-documentation
 -- Latest release of YourSqlDba : https://github.com/pelsql/YourSqlDba/blob/master/YourSQLDba_InstallOrUpdateScript.sql?raw=true
 -- First install? Easy setup to make YourSqlDba run with SQL Agent and Database Mail https://github.com/pelsql/YourSqlDba?tab=readme-ov-file#installinitialsetupofyoursqldba
+-- Main entry point for maintenance https://github.com/pelsql/YourSqlDba?tab=readme-ov-file#maintyoursqldba_domaint
 -- Job reporting and diagnostic : https://github.com/pelsql/YourSqlDba/?tab=readme-ov-file#mainthistoryview 
+-- More on diagnostics : https://github.com/pelsql/YourSqlDba/?tab=readme-ov-file#more-on-diagnostics
+-- Version History : https://github.com/pelsql/YourSqlDba/?tab=readme-ov-file#version-history
 
 Drop Table if Exists #version
 create table #Version (version nvarchar(40), VersionDate datetime)
 set nocount on
-insert into #Version Values ('7.0.0.3', convert(datetime, '2024-06-07', 120))  
+insert into #Version Values ('7.0.0.4', convert(datetime, '2024-12-20', 120))  
 
 --Alter database yoursqldba set single_user with rollback immediate
 --go
