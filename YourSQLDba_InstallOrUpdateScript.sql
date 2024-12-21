@@ -3,10 +3,10 @@
 -- Author : Maurice Pelchat
 
 -- GitHub Website Readme : https://github.com/pelsql/YourSqlDba#readme
--- Online Documentation : https://github.com/pelsql/YourSqlDba#online-documentation
+-- Online Documentation : https://github.com/pelsql/YourSqlDba?tab=readme-ov-file#links-into-online-documentation
 -- Latest release of YourSqlDba : https://github.com/pelsql/YourSqlDba/blob/master/YourSQLDba_InstallOrUpdateScript.sql?raw=true
--- First install? Easy setup to make YourSqlDba run with SQL Agent and Database Mail https://github.com/pelsql/YourSqlDba#InstallInitialSetupOfYourSQLDba
--- Job reporting and diagnostic : https://github.com/pelsql/YourSqlDba/#MaintHistoryView 
+-- First install? Easy setup to make YourSqlDba run with SQL Agent and Database Mail https://github.com/pelsql/YourSqlDba?tab=readme-ov-file#installinitialsetupofyoursqldba
+-- Job reporting and diagnostic : https://github.com/pelsql/YourSqlDba/?tab=readme-ov-file#mainthistoryview 
 
 Drop Table if Exists #version
 create table #Version (version nvarchar(40), VersionDate datetime)
