@@ -4,12 +4,14 @@
 
 Find more about YourSqlDba releases [here](https://github.com/pelsql/YourSqlDba/blob/master/README.md)
 
->YourSqlDba comes alive only through SQL Agent job and Database Mail that need to be configured. An helper stored procedure need to be lauched (see documentation of  **[Install.InitialSetupOfYourSQLDba](https://tinyurl.com/YSDInitSetup)**). This procedure  provides the necessary parameters to set up database mail, backup directories, and some default behaviors. It creates also two SQL Agent Jobs and schedules them to be launched them as needed.
-
-**Everything about YourSqlDba** can be found in this **[One-Note Online documentation](https://tinyurl.com/YourSqlDba)**
-which doesn't requires no other thing than a browser to navigate. Here is a **[Quick start](https://tinyurl.com/YSDBAQuickStart)** documentation about what YourSqlDba does and how it works.  
-
->Each jobs has one single maintenance step that. They both runs **[Maint.YourSQLDba_DoMaint](https://tinyurl.com/YSDDoMaint)** stored procedure with different parameters according to the type of job run. Its parameters reflect some of the **[Install.InitialSetupOfYourSQLDba](https://tinyurl.com/YSDInitSetup)** parameters values, and many are by default. **[Maint.YourSQLDba_DoMaint](https://tinyurl.com/YSDDoMaint)** parameters are explained in detail in YourSqlDba online documentation.
+GitHub Website Readme : https://github.com/pelsql/YourSqlDba#readme
+Online Documentation : https://github.com/pelsql/YourSqlDba?tab=readme-ov-file#links-into-online-documentation
+Latest release of YourSqlDba : https://github.com/pelsql/YourSqlDba/blob/master/YourSQLDba_InstallOrUpdateScript.sql?raw=true
+First install? Easy setup to make YourSqlDba run with SQL Agent and Database Mail https://github.com/pelsql/YourSqlDba?tab=readme-ov-file#installinitialsetupofyoursqldba
+Main entry point for maintenance https://github.com/pelsql/YourSqlDba?tab=readme-ov-file#maintyoursqldba_domaint
+Job reporting and diagnostic : https://github.com/pelsql/YourSqlDba/?tab=readme-ov-file#mainthistoryview 
+More on diagnostics : https://github.com/pelsql/YourSqlDba/?tab=readme-ov-file#more-on-diagnostics
+Version History : https://github.com/pelsql/YourSqlDba/?tab=readme-ov-file#version-history
 
 >YourSqlDba is finally just a **very big T-SQL script** that helps a lot about installing automating database maintenance for SQL Server. 
 It creates, on the SQL instance where it runs, a database named YourSqlDba packed with T-SQL modules (function, stored procedures, and views). You don't need to be concerned by all of them, albeit if some of them are interesting tools for exceptional day-to-day DBA tasks, out of regular maintenance tasks.

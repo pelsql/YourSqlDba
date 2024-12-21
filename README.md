@@ -29,16 +29,16 @@ Next step is to perform  **[Initial Setup of YourSqlDba](https://onedrive.live.c
 
 ### Version history
 
-**[Get script of 7.0.0.3](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
-Interim versions 7.0.0.0 to 7.0.0.2 are discarded. Version 7.0.0.3 encompasses all their changes. 
+**[Get script of 7.0.0.4](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+Interim versions 7.0.0.0 to 7.0.0.3 are discarded. Version 7.0.0.4 is mandatory and encompasses all their changes and address a problem to links with documentation, either in the readme and the index.md which is a short doc page.
 
 Here they are:
 
 Version 7.0.0.1 lays the foundation for elements of a new architecture for YourSqlDba. These elements will be introduced gradually, maintaining parallel elements of both the original and the new architecture.
 
-With version 7.0, several improvements have been added to **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)**. To acheive better visualization of multi-job interactions, events within a specified period are ordered by time and include simultaneous job events. Each time the log history switches jobs, a list of columns displaying job pedigree is set, making the switch easily visible
+With version 7.0, several improvements have been added to **[YourSQLDba.Maint.HistoryView](#mainthistoryview)**. To acheive better visualization of multi-job interactions, events within a specified period are ordered by time and include simultaneous job events. Each time the log history switches jobs, a list of columns displaying job pedigree is set, making the switch easily visible
 
-**[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)** is a crucial tool within the YourSqlDba function for diagnosing maintenance problems. When searching outside the realm of a single jon, pre-computed datetime values from Maint.MaintenanceEnums can be used to query current or past YourSqlDba activity within relative time ranges. For more details, see the updated documentation on **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)**. These choices are documented in the message that displays the query to use for querying the SQL executed during the maintenance process.
+**[YourSQLDba.Maint.HistoryView](#mainthistoryview)** is a crucial tool within the YourSqlDba function for diagnosing maintenance problems. When searching outside the realm of a single jon, pre-computed datetime values from Maint.MaintenanceEnums can be used to query current or past YourSqlDba activity within relative time ranges. For more details, see the updated documentation on **[YourSQLDba.Maint.HistoryView](#mainthistoryview)**. These choices are documented in the message that displays the query to use for querying the SQL executed during the maintenance process.
 
 A piece of code invoking log cleanup has been missing since version 6.8.0.0. It is reintroduced in version 7.0.0.1.
 
@@ -59,7 +59,7 @@ The expect date format for the date is the style 121 of the convert function whi
 
 When connection language setting is french, implicit date conversion swaps mm-dd to dd-mm. This give another date than the intended one or worst and invalid date leading to a runtime error (ex: a day value of 13 or greater being swapped to month isn't valid for a month value). 
 
-**[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)** date parameters were modified to received a string that is then internally explicitely converted to datetime with the 121 style option.
+**[YourSQLDba.Maint.HistoryView](#mainthistoryview)** date parameters were modified to received a string that is then internally explicitely converted to datetime with the 121 style option.
 
 Select cmdStartTime, JobNo, seq, Typ, line, Txt 
 From
@@ -87,13 +87,13 @@ Alongside some works are done to incorporate elements of an outside library (of 
 
 >The next modification related to Mirroring.FailOver. It is a follow up for external backups solutions performing directly SQL backups to their datastore and able to do some kind of warm standy server. For example CommVault supports some kind of standy-by server very similar to YourSqlDba "Mirroring" solution. Since CommVault handles also backups and restores, a last sync must be done through CommVault console. Mirroring.Failover cannot attempt to do a last sync because it has no more control on backups. However remaining tasks of Mirroring.FailOver remain valuable (sync of logins, adjusting database owner, updating compatibility level, an recovering database on destination server). A new defaut parameter was than added to let know to Mirroring.Failover if some data sync must be done, and it is set to ON by default. For actual YourSqlDba users, default parameter can be ommitted, so use case remains the same. CommVault users must explicitly put this parameter to off when they want to use Mirroring.Failover to automate remaining failOver tasks without attempts of data synching from the procedure.
 
->Some other stuff very specific to CommVault direct handling of backups is explained there **(https://tinyurl.com/YourSqlDbaAndCommVault)**. An helper stored procedure was added to documentation to generate restores from a directory of .Bak files with a naming specific to CommVault. Restoring CommVault backups in the form of on-disk equivalent of Sql backups is an option offered by CommVault. So this helper stored proc is welcomed, as it avoids to write a lot of restore commands (one for each file). This procedure is provided as-is in the documentation, and is not part of YourSqlDba common code. It is pretty well documented and could be used for another similar application.
+>Some other stuff very specific to CommVault direct handling of backups is explained there **(https://onedrive.live.com/view.aspx?resid=12C385255443C4ED!7080&migratedtospo=true&redeem=aHR0cHM6Ly8xZHJ2Lm1zL28vYy8xMmMzODUyNTU0NDNjNGVkL0V1M0VRMVFsaGNNZ2dCS29Hd0FBQUFBQlJ2b290QVJmaE5LQjJaenNPU09yZkE_ZT01OjRmYWJlNDFlYzdiZTQxYTM4ZWY1NjQ0ZjhlMDdhYmIxJnNoYXJpbmd2Mj10cnVlJmZyb21TaGFyZT10cnVlJmF0PTk&wd=target%28External%20backup%20solution%20and%20YourSqlDba.one%7C74432c93-3c8e-4c12-85ca-57184e019ae5%2FCommVault%20example%7Cba9123e9-aecf-49fc-84a3-3b6ec94b3b2d%2F%29&wdorigin=NavigationUrl)**. An helper stored procedure was added to documentation to generate restores from a directory of .Bak files with a naming specific to CommVault. Restoring CommVault backups in the form of on-disk equivalent of Sql backups is an option offered by CommVault. So this helper stored proc is welcomed, as it avoids to write a lot of restore commands (one for each file). This procedure is provided as-is in the documentation, and is not part of YourSqlDba common code. It is pretty well documented and could be used for another similar application.
 
 **[Get script of 6.7.3.1](https://raw.githubusercontent.com/pelsql/YourSqlDba/22844466770e0f898eadc1ec28e7fcb7be10f2e0/YourSQLDba_InstallOrUpdateScript.sql)**
 >Fix of 6.7.3.0 (Integrity tests could report an error) 
 Introduces as a new feature providing some interoperability with other external backups solutions like CommVault backups. In this case you must modify YourSqlDba jobs by disabling or removing log backups job. Main maintenance parameter needs to be adjusted to not ask for full backups, leaving other maintenance actions, for other optimizations and integrity testing, with the same parameters ;  
 
->Some minimal setup is needed with CommVault backups jobs (full or logs); You must add for full backups a pre-job and for log backups a post job as instructed in **(https://tinyurl.com/YourSqlDbaAndCommVault)**. 
+>Some minimal setup is needed with CommVault backups jobs (full or logs); You must add for full backups a pre-job and for log backups a post job as instructed in **(https://onedrive.live.com/view.aspx?resid=12C385255443C4ED!7080&migratedtospo=true&redeem=aHR0cHM6Ly8xZHJ2Lm1zL28vYy8xMmMzODUyNTU0NDNjNGVkL0V1M0VRMVFsaGNNZ2dCS29Hd0FBQUFBQlJ2b290QVJmaE5LQjJaenNPU09yZkE_ZT01OjRmYWJlNDFlYzdiZTQxYTM4ZWY1NjQ0ZjhlMDdhYmIxJnNoYXJpbmd2Mj10cnVlJmZyb21TaGFyZT10cnVlJmF0PTk&wd=target%28External%20backup%20solution%20and%20YourSqlDba.one%7C74432c93-3c8e-4c12-85ca-57184e019ae5%2FCommVault%20example%7Cba9123e9-aecf-49fc-84a3-3b6ec94b3b2d%2F%29&wdorigin=NavigationUrl)**. 
 
 >Fix: Incorrect database size computing prevented integrity testing for very large databases on a table by table basis as intended. Now it works as intended. Above 1Tb (VLDB), integrity testing will now go through checktables as expected.  
 
