@@ -14,7 +14,7 @@
 Drop Table if Exists #version
 create table #Version (version nvarchar(40), VersionDate datetime)
 set nocount on
-insert into #Version Values ('7.0.0.4', convert(datetime, '2024-12-20', 120))  
+insert into #Version Values ('7.0.0.5', convert(datetime, '2025-01-20', 120))  
 
 --Alter database yoursqldba set single_user with rollback immediate
 --go
@@ -6366,7 +6366,7 @@ Begin Try
 End Try
 Begin Catch
   Declare @errm nvarchar(4000);
-  Set @errm = yExecNLog.FormatBasicBeginCatchErrMsg ()
+  Set @errm = YourSqlDba.yExecNLog.FormatBasicBeginCatchErrMsg ()  
   -- first error already logged, do not do it again
   Insert into YourSqlDba.Maint.DbccShrinkLogState (DbName, FailedShrinkTime) 
   Select Db_name(), Getdate()

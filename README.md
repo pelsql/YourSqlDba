@@ -29,8 +29,8 @@ Next step is to perform  **[Initial Setup of YourSqlDba](https://onedrive.live.c
 
 ### Version history
 
-**[Get script of 7.0.0.4](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
-Interim versions 7.0.0.0 to 7.0.0.3 are discarded. Version 7.0.0.4 is mandatory and encompasses all their changes and address a problem to links with documentation, either in the readme and the index.md which is a short doc page.
+**[Get script of 7.0.0.5](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+Interim versions 7.0.0.0 to 7.0.0.4 are discarded. Version 7.0.0.5 is mandatory and encompasses all their changes and address a problem to links with documentation, either in the readme and the index.md which is a short doc page.
 
 Here they are:
 
@@ -47,6 +47,12 @@ Corrects the message related to issues preventing access to the mirror server. I
 
 Version 7.0.0.3:
 When upgrading from a previous version, YourSqlDba Maintenance logs appear larger. Migrating them may cause issues with YourSqlDba log size. To address this, cleanup operations are performed before the upgrade. The DELETE statement is broken into multiple smaller statements (using TOP()) to avoid log oversizing.
+
+Version 7.0.0.4:
+Replace TinyUrl links in readme and source that do not work for github links.
+
+Version 7.0.0.5:
+When Shrinking database files, if an error was encountered, improper call to yExecNLog.FormatBasicBeginCatchErrMsg () outside yourSqlDba database context prevent correct error reporting. Call was corrected to YourSqlDba.yExecNLog.FormatBasicBeginCatchErrMsg ()
 
 **[Get script of 6.8.2.1](https://raw.githubusercontent.com/pelsql/YourSqlDba/6e7d1fbf53fb5344efae2b9640f551b78794d758/YourSQLDba_InstallOrUpdateScript.sql)**
 SQL2022 needed a small adjustment to the procedure YUtl.CollectBackupHeaderInfoFromBackupFile because 'Restore Header Only' output now 3 more columns. I just saw the issue (2024-04-23). This is new to me, that I'm informed through the Issue feature from Github, and it is welcome. I'll now check more often, and be more proactive with new versions.
