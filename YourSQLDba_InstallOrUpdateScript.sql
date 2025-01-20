@@ -3,10 +3,13 @@
 -- Author : Maurice Pelchat
 
 -- GitHub Website Readme : https://github.com/pelsql/YourSqlDba#readme
--- Online Documentation : https://tinyurl.com/YourSqlDba
+-- Online Documentation : https://github.com/pelsql/YourSqlDba?tab=readme-ov-file#links-into-online-documentation
 -- Latest release of YourSqlDba : https://github.com/pelsql/YourSqlDba/blob/master/YourSQLDba_InstallOrUpdateScript.sql?raw=true
--- First install? Easy setup to make YourSqlDba run with SQL Agent and Database Mail https://tinyurl.com/YSDInitSetup
--- Job reporting and diagnostic : https://tinyurl.com/YourSqlDbaHistoryView
+-- First install? Easy setup to make YourSqlDba run with SQL Agent and Database Mail https://github.com/pelsql/YourSqlDba?tab=readme-ov-file#installinitialsetupofyoursqldba
+-- Main entry point for maintenance https://github.com/pelsql/YourSqlDba?tab=readme-ov-file#maintyoursqldba_domaint
+-- Job reporting and diagnostic : https://github.com/pelsql/YourSqlDba/?tab=readme-ov-file#mainthistoryview 
+-- More on diagnostics : https://github.com/pelsql/YourSqlDba/?tab=readme-ov-file#more-on-diagnostics
+-- Version History : https://github.com/pelsql/YourSqlDba/?tab=readme-ov-file#version-history
 
 Drop Table if Exists #version
 create table #Version (version nvarchar(40), VersionDate datetime)
@@ -402,22 +405,49 @@ Set @sql = Replace (@sql, '<pathLog>', @pathLog)
 Exec (@sql)
 GO
 -- Create YourSqlDba login, with unknown password.  If required DBA can change it.
-If not exists
-   (select * from sys.sql_logins where name='YourSQLDba')
-Begin
-  declare @unknownPwd nvarchar(100) = convert(nvarchar(400), HASHBYTES('SHA1', convert(nvarchar(100),newid())), 2)
-  Exec
+-- break links with logn YourSqlDba
+--drop login Yoursqldba
+
+--Select * From sys.databases where SUSER_SNAME(owner_Sid)='YourSqlDba'
+----ALTER AUTHORIZATION ON Database::[YourSQLDba] To [sa]
+
+--Select * From msdb.dbo.sysjobs where SUSER_SNAME(owner_Sid)='YourSqlDba'
+--EXEC msdb.dbo.sp_update_job
+--  @job_name = 'YourSQLDba_FullBackups_And_Maintenance',   -- Replace with the name of your job
+--  @owner_login_name = 'SA'; -- Replace with the new owner's login name
+
+Drop table If Exists #Pwd 
+Select uPwd = convert(nvarchar(400), HASHBYTES('SHA1', convert(nvarchar(100),newid())), 2)
+Into #Pwd 
+
+Declare @Sql Nvarchar(Max)
+Select @Sql = Sql.Sql
+From 
   (
+  Select Sql=
   '
   create login Yoursqldba 
-  With Password = '''+@unknownPwd+'''
+  With Password = ''#Upwd#''
   , DEFAULT_DATABASE = YourSqlDba
   , CHECK_EXPIRATION = OFF
   , CHECK_POLICY = OFF
   , DEFAULT_LANGUAGE=US_ENGLISH  
   '
-  )
-END
+  Where Not Exists (select * from sys.sql_logins where name='YourSQLDba')
+  UNION ALL
+  Select Sql=
+  '
+  CREATE CREDENTIAL YourSqlDbaRemoteServerCred
+  WITH IDENTITY = ''YourSqlDba'',  -- Remote SQL Login
+     SECRET = ''#UPwd#''; -- Same password as YourSqlDba;
+  ALTER LOGIN YourSqlDba WITH CREDENTIAL = YourSqlDbaRemoteServerCred;
+  '
+  Where Not Exists (select * from sys.credentials where name='YourSqlDbaRemoteServerCred')
+  ) as ToDo
+  CROSS APPLY (Select Sql=REPLACE(Sql, '#UPwd#', Upwd) From #Pwd) as Sql
+  Print @Sql
+  Exec (@Sql)
+  Drop Table #Pwd
 GO
 Exec sp_addsrvrolemember @loginame= 'YourSqlDba' , @rolename = 'sysadmin'
 GO
@@ -2875,6 +2905,8 @@ From
   from sys.databases 
   Where name = IIF('#Db#'='', Db_name(), '#Db#')
 
+  -- since the assembly has unsafe attribute, the DB needs to be set TRUSTWORTHY before creating it.
+  -- It can be turned off as we will sign the assembly later
   Alter database [#Db#] Set TRUSTWORTHY On;
   Insert into S#.ScriptToRun (Sql, Seq)
   Select Sql=Code, Seq 
@@ -7180,7 +7212,7 @@ Begin Try
 End Try
 Begin Catch
   Declare @errm nvarchar(4000);
-  Set @errm = yExecNLog.FormatBasicBeginCatchErrMsg ()
+  Set @errm = YourSqlDba.yExecNLog.FormatBasicBeginCatchErrMsg ()
   -- first error already logged, do not do it again
   Insert into YourSqlDba.Maint.DbccShrinkLogState (DbName, FailedShrinkTime) 
   Select Db_name(), Getdate()
@@ -8438,6 +8470,7 @@ Begin
   -- double quotes are replaced by 2 single quotes. This trick avoid the unreadability
   -- of double single quotes
   Set @sql = '
+  EXECUTE AS LOGIN = "YourSqlDba";
   Exec [<MirrorServer>].YourSqlDba.yMirroring.DoRestore 
     @BackupType="<BackupType>"
   , @Filename="<Filename>"
@@ -8445,6 +8478,7 @@ Begin
   , @MigrationTestMode=<MigrationTestMode>
   , @ReplaceSrcBkpPathToMatchingMirrorPath="<ReplaceSrcBkpPathToMatchingMirrorPath>"
   , @ReplacePathsInDbFilenames = "<ReplacePathsInDbFilenames>"
+  Revert;
   '
 
   Set @sql = REPLACE(@sql, '<BackupType>', @bkpTyp)
@@ -9921,7 +9955,9 @@ Begin
   Set @MirrorServerName = ''
   While (1=1)
   Begin
-    Select top 1 @MirrorServerName = MirrorServerName From Mirroring.TargetServer Where MirrorServerName > @MirrorServerName Order By MirrorServerName
+    Select top 1 @MirrorServerName = MirrorServerName 
+    From Mirroring.TargetServer 
+    Where MirrorServerName > @MirrorServerName Order By MirrorServerName
     If @@ROWCOUNT = 0 Break
 
     -- Reinstall YourSqlDba mapping
@@ -9963,6 +9999,7 @@ Begin
        Exec (""alter authorization on database::yoursqldba to [""+@currentSysAdmin+""]"")
        Alter LOGIN YourSqlDba WITH PASSWORD=<password_hash> HASHED
        Exec (""alter authorization on database::yoursqldba to [YourSqlDba]"")
+       CREATE CREDENTIAL YourSqlDbaRemoteServerCred WITH IDENTITY = ""YourSqlDba"", SECRET = ""<newPwd>"";  
      End
      End try
      Begin catch
@@ -9974,6 +10011,7 @@ Begin
      '
      Set @sql = REPLACE(@sql, '<mirrorserver>', @MirrorServerName)     
      Set @sql = REPLACE(@sql, '<password_hash>', yUtl.ConvertToHexString(@password_hash_Local))
+     Set @sql = REPLACE(@sql, '<newPwd>', @newPwd)
      Set @sql = REPLACE(@sql, '"', '''')
 
      Begin try
@@ -11521,7 +11559,7 @@ Begin
 
 End -- Maint.RestoreDb
 GO
-ALTER DATABASE YourSQLDba Set Trustworthy on
+ALTER DATABASE YourSQLDba Set Trustworthy off
 GO
 GRANT connect to guest
 GO
@@ -14631,8 +14669,7 @@ Begin
   Set @sql = replace(@sql, '"', '''')
 
   Exec yExecNLog.LogAndOrExec 
-    @jobNo = @jobNo
-  , @context = 'yExport.CreateExportDatabase'
+    @context = 'yExport.CreateExportDatabase'
   , @Info = 'Running create database for database export'  
   , @sql = @sql
   , @raiseError = @stopOnError
@@ -14858,8 +14895,7 @@ Begin
   Set @sql = replace(@sql, '<db>', @dbName)
 
   Exec yExecNLog.LogAndOrExec 
-    @jobNo = @jobNo
-  , @context = 'yExport.ExportData'
+    @context = 'yExport.ExportData'
   , @Info = 'Put Export Db is simple recovery'
   , @sql = @sql
   , @raiseError = @stopOnError
@@ -14911,8 +14947,7 @@ Begin
   Set @sql = replace(@sql, '"', '''')
 
   Exec yExecNLog.LogAndOrExec 
-    @jobNo = @jobNo
-  , @context = 'yExport.ExportData'
+    @context = 'yExport.ExportData'
   , @Info = 'Recording info to rebuild original stats'
   , @sql = @sql
   , @raiseError = @stopOnError
@@ -14937,8 +14972,7 @@ Begin
   Set @sql = replace(@sql, '"', '''')
 
   Exec yExecNLog.LogAndOrExec 
-    @jobNo = @jobNo
-  , @context = 'yExport.ExportData'
+    @context = 'yExport.ExportData'
   , @Info = 'Recording info to rebuild original schema'
   , @sql = @sql
   , @raiseError = @stopOnError
@@ -14979,8 +15013,7 @@ Begin
   set @sql = replace (@sql, '<svrCollation>', convert(sysname, Serverproperty('Collation')))
   Set @sql = replace(@sql, '"', '''')
   Exec yExecNLog.LogAndOrExec 
-    @jobNo = @jobNo
-  , @context = 'yExport.ExportData'
+    @context = 'yExport.ExportData'
   , @Info = 'Recording referential constrains info to rebuild them'
   , @sql = @sql
   , @raiseError = @stopOnError
@@ -15034,8 +15067,7 @@ Begin
   Set @sql = replace(@sql, '"', '''')
 
   Exec yExecNLog.LogAndOrExec 
-    @jobNo = @jobNo
-  , @context = 'yExport.ExportData'
+    @context = 'yExport.ExportData'
   , @Info = 'Recording referential constrains relations between columns '
   , @sql = @sql
   , @raiseError = @stopOnError
@@ -15088,8 +15120,7 @@ Begin
   Set @sql = replace(@sql, '"', '''')
 
   Exec yExecNLog.LogAndOrExec 
-    @jobNo = @JobNo
-  , @context = 'yExport.ExportData'
+    @context = 'yExport.ExportData'
   , @Info = 'Recording tables to migrate '
   , @sql = @sql
   , @raiseError = @stopOnError
@@ -15239,8 +15270,7 @@ Begin
   Set @sql = replace(@sql, '<db>', @dbName)
   Set @sql = replace(@sql, '"', '''')
   Exec yExecNLog.LogAndOrExec 
-    @jobNo = @JobNo
-  , @context = 'yExport.ExportData'
+    @context = 'yExport.ExportData'
   , @Info = 'Recording column info. of tables to migrate'
   , @sql = @sql
   , @raiseError = @stopOnError
@@ -15307,8 +15337,7 @@ Begin
   Set @sql = replace(@sql, '<db>', @dbName)
   Set @sql = replace(@sql, '"', '''')
   Exec yExecNLog.LogAndOrExec 
-    @jobNo = @JobNo
-  , @context = 'yExport.ExportData'
+    @context = 'yExport.ExportData'
   , @Info = 'Recording data type info. of columns of tables to migrate'
   , @sql = @sql
   , @raiseError = @stopOnError
@@ -15359,8 +15388,7 @@ Begin
   Set @sql = replace(@sql, '"', '''')
   
   Exec yExecNLog.LogAndOrExec 
-    @jobNo = @JobNo
-  , @context = 'yExport.ExportData'
+    @context = 'yExport.ExportData'
   , @Info = 'Recording index info.'
   , @sql = @sql
   , @raiseError = @stopOnError
@@ -15394,8 +15422,7 @@ Begin
   Set @sql = replace(@sql, '"', '''')
   
   Exec yExecNLog.LogAndOrExec 
-    @jobNo = @JobNo
-  , @context = 'yExport.ExportData'
+    @context = 'yExport.ExportData'
   , @Info = 'Recording columns'' indexes info.'
   , @sql = @sql
   , @raiseError = @stopOnError
@@ -15427,8 +15454,7 @@ Begin
     Set @sql = replace(@sql, '<sn>', @sn)
 
     Exec yExecNLog.LogAndOrExec 
-      @jobNo = @JobNo
-    , @context = 'yExport.ExportData'
+      @context = 'yExport.ExportData'
     , @Info = 'Create schema'
     , @sql = @sql
     , @raiseError = @stopOnError
@@ -15467,8 +15493,7 @@ Begin
     Set @sql = replace(@sql, '<nullspec>', @nullSpec)
     
     Exec yExecNLog.LogAndOrExec 
-      @jobNo = @JobNo
-    , @context = 'yExport.ExportData'
+      @context = 'yExport.ExportData'
     , @Info = 'Create data types'
     , @sql = @sql
     , @raiseError = @stopOnError
