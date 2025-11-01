@@ -34,7 +34,7 @@ Interim versions 7.0.0.0 to 7.0.0.4 are discarded. Version 7.0.0.5 is mandatory 
 **Everything about YourSqlDba** can be found in this **[OneNote Online documentation](https://1drv.ms/o/c/12c385255443c4ed/Eu3EQ1QlhcMggBKoGwAAAAABRvootARfhNKB2ZzsOSOrfA?e=usHzVk)**,
 which requires nothing more than a web browser to navigate.
 Pay attention to the landing page and the section describing what YourSqlDba does and how it works.
-There is also, on the landing page, a **QuickLinks** table referencing frequently read and relevant pages.
+There is also, on the landing page, a **`QuickLinks`** table referencing frequently read and relevant pages.
 
 > YourSqlDba operates exclusively through SQL Agent jobs and Database Mail, both of which need to be configured.
 > A helper stored procedure must be executed (**see `Goals/QuickLinks table/Install.InitialSetupOfYourSQLDba`**) once per instance after downloading and running the YourSqlDba script.
