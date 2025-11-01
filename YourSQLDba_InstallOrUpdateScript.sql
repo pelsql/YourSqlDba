@@ -3,13 +3,17 @@
 -- Author : Maurice Pelchat
 
 -- GitHub Website Readme : https://github.com/pelsql/YourSqlDba#readme
--- Online Documentation : https://github.com/pelsql/YourSqlDba?tab=readme-ov-file#links-into-online-documentation
 -- Latest release of YourSqlDba : https://github.com/pelsql/YourSqlDba/blob/master/YourSQLDba_InstallOrUpdateScript.sql?raw=true
--- First install? Easy setup to make YourSqlDba run with SQL Agent and Database Mail https://github.com/pelsql/YourSqlDba?tab=readme-ov-file#installinitialsetupofyoursqldba
--- Main entry point for maintenance https://github.com/pelsql/YourSqlDba?tab=readme-ov-file#maintyoursqldba_domaint
--- Job reporting and diagnostic : https://github.com/pelsql/YourSqlDba/?tab=readme-ov-file#mainthistoryview 
--- More on diagnostics : https://github.com/pelsql/YourSqlDba/?tab=readme-ov-file#more-on-diagnostics
--- Version History : https://github.com/pelsql/YourSqlDba/?tab=readme-ov-file#version-history
+-- Online Documentation : https://1drv.ms/o/c/12c385255443c4ed/Eu3EQ1QlhcMggBKoGwAAAAABRvootARfhNKB2ZzsOSOrfA?e=usHzVk
+--   Pay attention to the documentation landing page, and the Goals/QuickLinks table of the online documentation for all the subjects below:
+--
+--       For a good overview it is goof to have a look to the complete introduction section
+--
+--       First install? Easy setup to make YourSqlDba run with SQL Agent and Database Mail 
+--       Main entry point for maintenance 
+--       Job reporting and diagnostic
+--       More on diagnostics
+--       Version History
 
 Drop Table if Exists #version
 create table #Version (version nvarchar(40), VersionDate datetime)
@@ -173,7 +177,7 @@ Set nocount On
 EXEC xp_instance_regwrite N'HKEY_LOCAL_MACHINE', N'Software\Microsoft\MSSQLServer\MSSQLServer', N'NumErrorLogs', REG_DWORD, 30
 GO
 
--- If Sql Service Broker in not enabled on MSDB, enable it
+-- If Sql Service Broker in not enabled on MSDB, enable it, to have database mail working
 if exists(select name, is_broker_enabled from sys.databases where name = 'msdb' and is_broker_enabled = 0)
 begin
   print 'Sql Service broker activation in MSDB'
@@ -452,7 +456,7 @@ GO
 Exec sp_addsrvrolemember @loginame= 'YourSqlDba' , @rolename = 'sysadmin'
 GO
 ALTER AUTHORIZATION ON Database::[YourSQLDba] To [YourSqlDba]
-ALTER Database YourSqlDba Set TRUSTWORTHY ON
+ALTER Database YourSqlDba Set TRUSTWORTHY OFF
 GO
 If DB_NAME()<> 'YourSqlDba' Use YourSQLDba
 --use tempdb
@@ -617,9 +621,9 @@ Return
 Select *
 From   
   (Select Delim=@delim, ModuleRef=@ModuleRef) as ModuleRef
-  CROSS APPLY (Select Typ=IIF(ModuleRef IS NULL, NULL, sql_variant_property(ModuleRef, 'BaseType'))) as Typ
-  OUTER APPLY (Select PrmIsName=Convert(sysName,moduleRef) Where Typ = 'varchar') as PrmIsName
+  CROSS APPLY (Select Typ=IIF(ModuleRef IS NULL, NULL, Convert (nvarchar(30), sql_variant_property(ModuleRef, 'BaseType')))) as Typ
   OUTER APPLY (Select ObjId=Convert(int, moduleRef) Where Typ = 'int') as ObjId
+  OUTER APPLY (Select PrmIsName=Convert(sysName,moduleRef) Where Typ Like '%varchar') as PrmIsName
   -- GET A MODULE NAME THROUGH OBJECT_ID or IF NAME EXACTLY in OBJECT REF
   -- module name Will be null if moduleRef is set to NULL on purpose (get source text from running batch or proc)
   -- or if invalid object id is passed
@@ -936,7 +940,8 @@ Return
   , TagReplacements As
     (
     Select RowKey, AttributeRowSeq, AttributeNbOfRow, AttributeTag, AttributeValue, LastReplace=Cast (REPLACE (@template, AttributeTag, AttributeValue) as nvarchar(max)) 
-    From tagSrc Where AttributeRowSeq = 1
+    From tagSrc 
+    Where AttributeRowSeq = 1
     UNION ALL 
     Select T.Rowkey, T.AttributeRowSeq, T.AttributeNbOfRow, T.AttributeTag, T.AttributeValue, LastReplace=Cast (REPLACE (LastReplace, T.AttributeTag, T.AttributeValue) as nvarchar(max)) 
     From 
@@ -1021,7 +1026,7 @@ Create Or Alter Function S#.GetTemplateFromCmtAndReplaceTags (@delim sysname, @C
 Returns table
 As
 Return
-  Select Code=Code.replacedTxt
+  Select Code=Code.replacedTxt, Template.moduleName 
   From 
     S#.GetCmtBetweenDelim (@delim, @CmtSource) as Template
     CROSS APPLY S#.MultipleReplaces (Template.TxtInCmt, @JsonDataSource) as Code
@@ -1294,7 +1299,18 @@ Return
 (
 Select *
 From 
-  (Select ErrorMsgFormatTemplate=@MsgTemplate) as MsgTemplate
+  (
+  Select ErrorMsgFormatTemplate = 
+'----------------------------------------------------------------------------------------------
+-- Msg: #ErrMessage#
+-- Error: #ErrNumber# Severity: #ErrSeverity# State: #ErrState##atPos#
+----------------------------------------------------------------------------------------------'
+  Where @MsgTemplate IS NULL
+
+  Union All
+  Select ErrorMsgFormatTemplate = @MsgTemplate 
+  Where @MsgTemplate IS NOT NULL
+  ) as MsgTemplate
   CROSS APPLY (Select ErrMessage=@error_message) as ErrMessage
   CROSS APPLY (SeLect ErrNumber=@error_number) as ErrNumber
   CROSS APPLY (SeLect ErrSeverity=@error_severity) as ErrSeverity
@@ -1330,6 +1346,41 @@ END CATCH;
 /*===KeyWords===
 Scripting,Logging
 ===KeyWords===*/
+GO
+-- Function to generate a formatted error message for the most recent runtime error using the current error context.
+-- Parameters:
+--   @MsgTemplate: The custom error message template (if NULL, uses the default template).
+-- Returns:
+--   A table containing the formatted error message using the latest error context (ERROR_* functions).
+-- This function is the one mostly typically used for default error messaging
+CREATE OR ALTER FUNCTION S#.FormatCurrentMsg (@MsgTemplate nvarchar(4000))
+Returns table
+as 
+Return
+  Select * 
+  From
+    S#.FormatRunTimeMsg 
+    (
+      @MsgTemplate, -- Custom template for error message formatting.
+      ERROR_NUMBER(), -- Number of the last error that occurred in the session.
+      ERROR_SEVERITY(), -- Severity of the last error.
+      ERROR_STATE(), -- State code of the last error.
+      ERROR_LINE(), -- Line number of the last error.
+      ERROR_PROCEDURE(), -- Procedure or function where the last error occurred.
+      ERROR_MESSAGE() -- Text message of the last error.
+    ) as Fmt
+/*
+-- quick test artefact
+Begin try
+  Select 1/0
+ENd try 
+Begin Catch
+  Declare @Msg Nvarchar(max) = (Select ErrMsg
+  From 
+    S#.FormatCurrentMsg(null))
+  Raiserror (@Msg, 11,1 )
+End Catch
+*/
 GO
 --------------------------------------------------------------------------------------------------------
 -- for a given message format, put typical values that can be returned from ERROR_functions of catch
@@ -1481,7 +1532,7 @@ SELECT
 FROM
   S#.Enums as En
   CROSS APPLY (Select Action=@Action) as Action
-  CROSS APPLY (Select EventSessionNamePrefix='S#_RunscriptErrors') as EventSessionNamePrefix
+  CROSS APPLY (Select EventSessionNamePrefix='YourSqlDbaQueryMsgs') as EventSessionNamePrefix
   -- session name that exists or should exists from this spid
   CROSS APPLY (Select CurrentSpid=Cast(@@spid as nvarchar)) as CurrentSpid
   CROSS APPLY (Select CurrentEventSessionName=EventSessionNamePrefix + CurrentSpid) as CurrentEventSessionName
@@ -1535,7 +1586,7 @@ FROM
     ( -- a stop and clear
     Select ProperActionSequence=12, TemplateDelim='===StopEventSession_S#_RunscriptErrorsForSpecificSpid==='
     UNION ALL
-    Select ProperActionSequence=13, TemplateDelim='===DropEventSession_S#_RunscriptErrorsForSpecificSpid'
+    Select ProperActionSequence=13, TemplateDelim='===DropEventSession_S#_RunscriptErrorsForSpecificSpid==='
     ) as ActionsOnOrphanedSesssions
 
   ) as SessionActionAndSeq
@@ -1668,7 +1719,7 @@ Select *
 From
   (
   Select 
-    -- if an extended event is activated by runScript for this session, if grab errors not reported by TSQL ERROR_NUMBER()
+    -- if an extended event is activated by runScript for this session, it grabs errors not reported by TSQL ERROR_NUMBER()
     -- but if it reports an error with the same error_number, this error is reported in more details by TSQL
     MostSignificantMessages.*  
   , DecideBetweenTSqlOrExtended = ROW_NUMBER() Over (Partition By ErrNumber Order By isAnExtendedError)  
@@ -1703,62 +1754,67 @@ From
     UNION -- perform some distinct operation especially on the next query for which I do not know there is some message reported twice
 
     -- extended events if it exists, while have some of the messages from T-SQL to eliminate
-      Select 
-        ISNULL(Fmt.ErrMsg, 'Error from SQL ErrorLog: ' + X.ErrMessage)  -- formatted msg or message from SQL error log
-      , X.ErrMessage -- data for standard error messages
-      , X.ErrNumber
-      , X.ErrSeverity
-      , X.ErrState
-      , PlaceHolderColsForUnion.ErrLine
-      , PlaceHolderColsForUnion.ErrProcedure
-      , X.EventTime
-      , isAnExtendedError
-      , X.TotalEventsProcessed -- let know if events details are there yet (delay between catch and event session reporting)
-      , EventSessionName
-      , X.EventName
-      --, XEdata
-      FROM 
-        sys.server_event_sessions as Se
+    Select 
+      ISNULL(Fmt.ErrMsg, 'Error from SQL ErrorLog: ' + X.ErrMessage)  -- formatted msg or message from SQL error log
+    , X.ErrMessage -- data for standard error messages
+    , X.ErrNumber
+    , X.ErrSeverity
+    , X.ErrState
+    , PlaceHolderColsForUnion.ErrLine
+    , PlaceHolderColsForUnion.ErrProcedure
+    , X.EventTime
+    , isAnExtendedError
+    , X.TotalEventsProcessed -- let know if events details are there yet (delay between catch and event session reporting)
+    , EventSessionName
+    , X.EventName
+    --, XEdata
+    FROM 
+      (
+      Select EventSessionName, XE.*, Xet.target_data
+      From
+        (Select EventSessionName='YoourSqlDbaQueryMsgs'+CAST(@@spid as Nvarchar)) as EventSessionName
+        JOIN
+        sys.server_event_sessions as Se 
+        ON Se.name = EventSessionName 
         JOIN 
         sys.dm_xe_sessions AS xe
         On Xe.name = Se.name
         JOIN 
         sys.dm_xe_session_targets AS xet
         ON (xet.event_session_address=xe.address)
+      ) as ExEventInfo
 
-        CROSS APPLY (Select XEdata=S#.EaseOptimizerJobByMaterializingXmlExpression(CAST(xet.target_data AS XML)) ) as vXEdata
-        CROSS APPLY XEData.nodes('//RingBufferTarget/event') AS xnode(c)
-        CROSS APPLY
-        (
-        Select *
-        From
-          (Select TotalEventsProcessed = xnode.c.value(N'(/RingBufferTarget/@totalEventsProcessed)[1]', 'INT') ) as TotalEventsProcessed
-          CROSS APPLY (Select SessionId = xnode.c.value(N'(action[@name="session_id"]/value)[1]', N'SMALLINT') ) AS SessionId
-          CROSS APPLY (Select EventName = xnode.c.value(N'(@name)[1]', N'NVARCHAR(MAX)') ) AS EventName
-          CROSS APPLY (Select EventTime = xnode.c.value(N'(@timestamp)[1]', N'datetime') ) AS EventTime
-          CROSS APPLY (Select ErrMessage = xnode.c.value(N'(data[@name="message"]/value)[1]', N'NVARCHAR(MAX)') ) AS ErrMessage
-          CROSS APPLY (Select ErrNumber = xnode.c.value(N'(data[@name="error_number"]/value)[1]', N'INT') ) AS ErrNumber
-          CROSS APPLY (Select ErrSeverity = xnode.c.value(N'(data[@name="severity"]/value)[1]', N'INT') ) AS ErrSeverity
-          CROSS APPLY (Select ErrState = xnode.c.value(N'(data[@name="state"]/value)[1]', N'INT') ) AS ErrState
-          CROSS APPLY (Select IsIntercepted = xnode.c.value(N'(data[@name="is_intercepted"]/value)[1]', N'NVARCHAR(MAX)') ) AS IsIntercepted
-          -- this info in never reported in event session error reporting, but must match the next select in union
-          CROSS APPLY (Select ErrLine=Cast(Null as Int) ) AS ErrLine 
-          -- this info in never reported in event session error reporting, but must match the next select in union
-          CROSS APPLY (Select ErrProcedure=Cast(Null as sysname) ) As ErrProcedure 
-        ) as X
-        CROSS JOIN  S#.Enums As E
-        OUTER APPLY S#.FormatRunTimeMsg (E.RunScript@ErrMsgTemplate, ErrNumber, ErrSeverity, ErrState, X.ErrLine, X.ErrProcedure, X.ErrMessage) as Fmt
-        CROSS APPLY (Select EventSessionName='S#_RunscriptErrors'+CAST(@@spid as Nvarchar)) as vEventSessionName
-        -- unapplicable columns for this error source, but necessary for union of the two sources
-        CROSS APPLY (Select isAnExtendedError=1, ErrLine=Cast(Null as Int), ErrProcedure=Cast(Null as sysname) ) as PlaceHolderColsForUnion
-        -- Get event from "errorlog_written" event only for DBCC for which error_reported event do not report some interesting info
-        CROSS APPLY (Select LikeInfoFmtDBCCMsg='[0-9][0-9][0-9][0-9]% spid'+CONVERT(nvarchar, @@spid)+' %DBCC CHECKDB%') as LikeInfoFmtDBCCMsg
-        OUTER APPLY (Select GetErrorFromErrLog=1 where X.ErrMessage Like LikeInfoFmtDBCCMsg) as GetErrorFromErrLog
+      CROSS APPLY (Select XEdata=S#.EaseOptimizerJobByMaterializingXmlExpression(CAST(ExEventInfo.target_data AS XML)) ) as vXEdata
+      CROSS APPLY XEData.nodes('//RingBufferTarget/event') AS xnode(c)
+      CROSS APPLY
+      (
+      Select *
+      From
+        (Select TotalEventsProcessed = xnode.c.value(N'(/RingBufferTarget/@totalEventsProcessed)[1]', 'INT') ) as TotalEventsProcessed
+        CROSS APPLY (Select SessionId = xnode.c.value(N'(action[@name="session_id"]/value)[1]', N'SMALLINT') ) AS SessionId
+        CROSS APPLY (Select EventName = xnode.c.value(N'(@name)[1]', N'NVARCHAR(MAX)') ) AS EventName
+        CROSS APPLY (Select EventTime = xnode.c.value(N'(@timestamp)[1]', N'datetime') ) AS EventTime
+        CROSS APPLY (Select ErrMessage = xnode.c.value(N'(data[@name="message"]/value)[1]', N'NVARCHAR(MAX)') ) AS ErrMessage
+        CROSS APPLY (Select ErrNumber = xnode.c.value(N'(data[@name="error_number"]/value)[1]', N'INT') ) AS ErrNumber
+        CROSS APPLY (Select ErrSeverity = xnode.c.value(N'(data[@name="severity"]/value)[1]', N'INT') ) AS ErrSeverity
+        CROSS APPLY (Select ErrState = xnode.c.value(N'(data[@name="state"]/value)[1]', N'INT') ) AS ErrState
+        CROSS APPLY (Select IsIntercepted = xnode.c.value(N'(data[@name="is_intercepted"]/value)[1]', N'NVARCHAR(MAX)') ) AS IsIntercepted
+        -- this info in never reported in event session error reporting, but must match the next select in union
+        CROSS APPLY (Select ErrLine=Cast(Null as Int) ) AS ErrLine 
+        -- this info in never reported in event session error reporting, but must match the next select in union
+        CROSS APPLY (Select ErrProcedure=Cast(Null as sysname) ) As ErrProcedure 
+      ) as X
+      CROSS JOIN  S#.Enums As E
+      OUTER APPLY S#.FormatRunTimeMsg (E.RunScript@ErrMsgTemplate, ErrNumber, ErrSeverity, ErrState, X.ErrLine, X.ErrProcedure, X.ErrMessage) as Fmt
+      -- unapplicable columns for this error source, but necessary for union of the two sources
+      CROSS APPLY (Select isAnExtendedError=1, ErrLine=Cast(Null as Int), ErrProcedure=Cast(Null as sysname) ) as PlaceHolderColsForUnion
+      -- Get event from "errorlog_written" event only for DBCC for which error_reported event do not report some interesting info
+      CROSS APPLY (Select LikeInfoFmtDBCCMsg='[0-9][0-9][0-9][0-9]% spid'+CONVERT(nvarchar, @@spid)+' %DBCC CHECKDB%') as LikeInfoFmtDBCCMsg
+      OUTER APPLY (Select GetErrorFromErrLog=1 where X.ErrMessage Like LikeInfoFmtDBCCMsg) as GetErrorFromErrLog
+    Where (X.EventName = 'error_reported' Or GetErrorFromErrLog = 1) -- we get stuff from errorLog only for DBCC which do not report some error through normal SQL ERROR
 
-      Where se.name = EventSessionName 
-        And (X.EventName = 'error_reported' Or GetErrorFromErrLog = 1) -- we get stuff from errorLog only for DBCC which do not report some error through normal SQL ERROR
-      ) as MostSignificantMessages
-    ) as SortedMsg
+    ) as MostSignificantMessages
+  ) as SortedMsg
   Where DecideBetweenTSqlOrExtended=1
   /*
   -- get the stuff to create 
@@ -1789,6 +1845,8 @@ From
        Select * from S#.GetErrorMessagesAndInfo ()
     End
   end catch
+
+  Dbcc checkdb ('bible')
   
   Begin try 
     Declare @divparZero int = 1/0
@@ -1860,9 +1918,17 @@ Create Table S#.RealScriptToRun
 , label nvarchar(max)
 , db Sysname NULL
 , constraint Pk_RealScriptToRun Primary Key Clustered (spid, nestLevel, seq)
+-- extra columns for support passing of paramters to yExecNLog.LogAndOrExecPrm from S#.RunScript
+, Context nvarchar(4000) NULL
+, info nvarchar(max) NULL
+, raiseErrorFlag int NULL
+, forDiagOnly  int NULL
 )
 GO
-Create View S#.ScriptToRun as Select Sql, db, label, Seq, nestLevel From S#.RealScriptToRun Where spid = @@spid
+Create View S#.ScriptToRun as 
+Select Sql, db, label, Seq, nestLevel, Context, info, raiseErrorFlag, forDiagOnly
+From S#.RealScriptToRun 
+Where spid = @@spid
 GO
 -- ------------------------------------------------------------------------------------------
 -- When inserting through this view, previous rows inserted are automatically cleanuped
@@ -1876,10 +1942,16 @@ as
 Begin
   Set nocount on
   Delete From S#.ScriptToRun Where nestLevel >= @@NESTLEVEL-- this view is filtered by current @@spid
-  Insert into S#.ScriptToRun (seq, Sql, db, label) Select  seq, Sql, db, label From Inserted
+  Insert into S#.ScriptToRun 
+    (seq, Sql, db, label, Context, info, raiseErrorFlag, forDiagOnly) 
+  Select  seq, Sql, db, label, Context, info, raiseErrorFlag, forDiagOnly 
+From Inserted
 End
 GO
-Create View S#.AppendToScriptToRun  as Select Sql, db, label, Seq, nestLevel From S#.RealScriptToRun Where spid = @@spid
+Create View S#.AppendToScriptToRun  as 
+Select Sql, db, label, Seq, nestLevel, Context, info, raiseErrorFlag, forDiagOnly 
+From S#.RealScriptToRun 
+Where spid = @@spid
 GO
 -- ------------------------------------------------------------------------------------------
 -- When inserting through this view, previous rows inserted are not automatically cleanuped
@@ -1893,7 +1965,12 @@ Instead Of Insert
 as
 Begin
   Set nocount on
-  Insert into S#.AppendToScriptToRun (seq, Sql, db, label) Select  seq+(Select ISNULL(Max(Seq),0) From S#.ScriptToRun), Sql, db, label From Inserted
+  Insert into S#.AppendToScriptToRun 
+    (seq, Sql, db, label, Context, info, raiseErrorFlag, forDiagOnly) 
+  Select  
+    seq+(Select ISNULL(Max(Seq),0) From S#.ScriptToRun)
+  , Sql, db, label, Context, info, raiseErrorFlag, forDiagOnly 
+  From Inserted
 End
 GO
 ------------------------------------------------------------------------------
@@ -1954,8 +2031,11 @@ End -- S#.ModifyShowLastRunScriptQry
 GO
 -- ------------------------------------------------------------------------------------------
 -- Run commands stored in scriptTable (segregated by connection)
+-- Useful for big scripting
 -- ------------------------------------------------------------------------------------------
-Create Or Alter Proc S#.RunScript 
+Drop Proc If Exists S#.RunScript
+GO
+create Proc S#.RunScript 
   @PrintOnly Int = 0 -- don't execute just print what SQL to execute looks like
 , @Silent Int = 0 -- doesn't echo execution
 , @NestLevelOffset int = 0 -- special trick not often used to get SQL generated to compare for unit testing
@@ -2214,6 +2294,7 @@ Scripting,Logging
 ===KeyWords===*/
 End
 GO
+
 ------------------------------------------------------------------------------------------------
 -- Two functions that returns CLR Code and SQL that match the CLR Code
 -- they are used in an automated way to do deployement of CLR Code from C# source code
@@ -3125,12 +3206,19 @@ GO
 -- =========================================================================
 -- Deploy CSharp code defined in this script
 -- =========================================================================
-Declare @silent Int = 0
+Declare @silent Int = 1
+Print ''
+Print '**************************************************************************************************************************************'
+Print '-------------------------------- Compiling and signing YourSqlDba assemblies from C# source code in this script ----------------------'
+Print '-------------------------------- Compilation process can be verbose (seek Declare @Silent Int = 1) and change it to 0 ----------------------'
+Print '**************************************************************************************************************************************'
+Print ''
 Insert into S#.ScriptToRun (Sql, Seq)
 Select Sql, seq
 From 
   S#.ScriptDeployAllClrDef(@Silent, DB_NAME()) -- can change param to 0 to verbose generated code
 Exec S#.RunScript @printOnly=0, @silent=@silent -- can change silent to 0 to verbose generated code
+Print '-------------------------------- Compile, signing, securing and deployment done ----------------------'
 GO
 -- end of section about deploying native c# code into CLR
 
@@ -3234,7 +3322,7 @@ returns table
 -- This row also contains the main SQL query, which is useful for reporting, auditing and debugging.
 --
 -- Related modules: MaincontextInfo
--- MaintContextInfo ia a function that returns parameters as a single row, for which columns reflect paramaters name.
+-- MainContextInfo ia a function that returns parameters as a single row, for which columns reflect paramaters name.
 -- It also returns the main Sql query of the procedure that called this functions.
 -- It finds the info from maint.JobHistory using the session context set for the jobNo.
 --
@@ -3410,9 +3498,14 @@ Set @sql = REPLACE(@sql, '"', '''')
 --print @sql
 exec (@sql)
 GO
-ALTER DATABASE YourSQLDba SET ENABLE_BROKER WITH ROLLBACK IMMEDIATE;
-GO
-ALTER DATABASE YourSQLDba SET NEW_BROKER WITH ROLLBACK IMMEDIATE;
+-- The broker is no more needed in YourSqlDba
+If DATABASEPROPERTYEX('YourSqlDba', 'IsBrokerEnabled')=1
+Begin
+  ALTER DATABASE YourSqlDba SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+  ALTER DATABASE YourSqlDba SET ERROR_BROKER_CONVERSATIONS;
+  ALTER DATABASE YourSqlDba SET DISABLE_BROKER;
+  ALTER DATABASE YourSqlDba SET MULTI_USER WITH ROLLBACK IMMEDIATE;
+End
 GO
 -- old code removed from version 7.0.0.4
 IF  EXISTS (SELECT * FROM sys.assemblies asms WHERE asms.name = N'YourSqlDba_ClrExec')
@@ -4256,7 +4349,7 @@ return
   , JSonPrms
   From 
     (
-    -- most of the time, JobNo is taken from Session_context, because dbo.MaintContextInfo is called with a NULL param.
+    -- most of the time, JobNo is taken from Session_context, because dbo.MainContextInfo is called with a NULL param.
     Select JobSelected = ISNULL(@JobNo, Cast(SESSION_CONTEXT (N'JobNoInSessCtx') as Int))
     ) as JobSelected
     CROSS APPLY (Select JobNo, JobStart, JobEnd, JSonPrms, MainSqlCmd, Who, host, prog, SqlAgentJobName, JobId, StepId  From Maint.JobHistory Where jobNo = JobSelected) as AllCtx
@@ -4395,6 +4488,27 @@ Begin
 End
 GO
 
+-- this IF is just useful when testing some parts of the code oterwise it is always true when running the whole script
+If object_id('Mirroring.RestoreQueue') is null 
+Begin
+  Declare @sql nvarchar(max)
+  Set @sql =
+  '
+  Create table Mirroring.RestoreQueue
+  (
+    RestoreSeq Int Identity (1,1)
+  , QueuedAt Datetime Default Getdate()
+  , StartedAt Datetime Default NULL
+  , EndedAt Datetime Default NULL
+  , CallingJobNo Int Not Null       -- to be able to have a common context to log restore events under the same job as the calling one
+  , JSonPrms Nvarchar(max)
+  , ErrorN Int Default 0
+  )
+  Create Unique Index iRestoreQueueNextJob On Mirroring.RestoreQueue (RestoreSeq) Where ErrorN=0
+  '
+  Exec (@sql)
+End
+GO
 -- this IF is just useful when testing some parts of the code oterwise it is always true when running the whole script
 If object_id('Mirroring.TargetServer') is null 
 Begin
@@ -5110,7 +5224,28 @@ GO
 Create Or Alter Procedure yExecNLog.ExecWithProfilerTrace @sql nvarchar(max), @maxSeverity int output, @Msgs nvarchar(max) = '' output
 as
 Begin
+
+  ---- **** code emprunté de S#.RunScript
+  ---- **** permet à S#.RunScript d'être roulé indépendamment et a 
+  ---- yExecNLog.ExecWithProfilerTrace d'être roulé indépendamment
+
+  ---- ExtendedEvents Session for this spid allows the capture of multiple messages (error or not)
+  ---- on a statement execution (like DBCC ou Backup/Restore)
+  ---- as S#.ScriptManageEventSession is a function that returns the proper sequence of actions to start the event session
+  ---- Start the event session, if not already start because of a previous run
+  --Declare @ManageEvent Nvarchar(Max)
+  --Set @ManageEvent =''
+  --Select @ManageEvent = @ManageEvent+ProperActionSequence 
+  --From 
+  --  S#.Enums as Consts
+  --  -- Consts.ExtendedEventSession@Start is a constant understood by S#.ScriptManageEventSession
+  --  -- to generate script to start the event session
+  --  Cross Apply S#.ScriptManageEventSession(Consts.ExtendedEventSession@Start) As A
+  --If @@rowcount>0 Exec (@ManageEvent) 
+
   Set @MaxSeverity = 0
+  
+  -- récupérer les messages @msgs ici en cas d'erreur pour les retourner à yExecNLog.LogAndOrExec
   Exec S#.Clr_ExecAndLogAllMsgs @sqlcmd=@sql, @maxSeverity=@maxSeverity output, @msgs=@msgs output
   
   If @sql is null Set @sql = ''
@@ -5134,8 +5269,8 @@ Create or Alter proc yExecNLog.LogAndOrExec
 , @context nvarchar(4000) = NULL
 , @sql nvarchar(max) = '' -- this is a convenient way to know if LogAndOrExec was called without SQL command
 , @Info nvarchar(max) = NULL
-, @err nvarchar(max) = NULL Output -- input : err msg to be written to log; output: error generated by an sql execution
-, @errorN Int = 0 Output
+, @err nvarchar(max) = NULL -- input : err msg to be written to log; 
+, @errorN Int = 0 Output -- output: error flag (1 or 0) set by an sql execution
 , @raiseError int = 0 
 , @forDiagOnly  int = 0
 as
@@ -5183,8 +5318,10 @@ Begin
   
   --Don't ever drop table at run-time. It is here just for debugging. 
   --Dropping the table cause reentrancy problem, by clearing caller's temporary table with same name
-  --Drop table if Exists #Prm 
-  Create table #prm
+  --Drop table if Exists #PrmLogAndOrExec
+  --I'm put a kind of unique name for temptable, in case a calling sp would also create a #prm table
+  -- in that case this would create an error here
+  Create table #prmLogAndOrExec
   (
     JobNo INT NULL
   , YourSqlDbaNo nvarchar(max) NULL
@@ -5197,11 +5334,10 @@ Begin
   , forDiagOnly  int NULL
   , Seq Int NULL
   )
-  -- create #trc on same model than Maint.JobHistoryLineDetails 
-  Select top 0 * Into #trc From Maint.JobHistoryLineDetails 
+  -- create #prmLogAndOrExec on same model than Maint.JobHistoryLineDetails 
+  Select top 0 * Into #trcLogAndOrExec From Maint.JobHistoryLineDetails 
 
   Begin TRY
-
     -- special entries are logged for job start that describe the job and it parameters
     -- the not exists clause ensure that it is done only once.
 
@@ -5210,15 +5346,13 @@ Begin
     Select JobNo, @forDiagOnly From dbo.MainContextInfo(null)
     Set @Seq=SCOPE_IDENTITY()
 
-    -- memorize parameters into #prm, which make queries easier to maintain with intellisence
-    Insert into #prm 
+    -- memorize parameters into #prmLogAndOrExec, which make queries easier to maintain with intellisence
+    Insert into #prmLogAndOrExec 
     Select M.JobNo, @YourSqlDbaNo, @Context, @sql, @Info, @err, @errorN, @raiseError, @forDiagOnly, @seq
     From dbo.MainContextInfo(null) as M
 
-    -- useful to trace, but select output can be returned when launched from 
-    -- Broker_AutoActivated_LaunchRestoreToMirrorCmd activated by
-    -- [dbo].[YourSQLDbaTargetQueueMirrorRestore] queue
-    insert into #trc 
+    -- Required to build output to YourSqlDba log
+    insert into #trcLogAndOrExec 
     Select 
       I.JobNo
     , I.Seq
@@ -5228,7 +5362,7 @@ Begin
     , ToLog.Txt 
     From 
       -- only happens once at job start
-      (Select JobNo, YourSqlDbaNo, Context, sql, Info, err, errorN, [raiseError], forDiagOnly, seq From #prm as I) as I
+      (Select JobNo, YourSqlDbaNo, Context, sql, Info, err, errorN, [raiseError], forDiagOnly, seq From #prmLogAndOrExec as I) as I
       -- shred into columns JSonPrms of JobHistory for info that goes in messages
       -- parameter NULL could be used again, as before. But jobNo was recorded in yExecNLog.LogAndOrExecPrm table, so we take it there instead 
       CROSS APPLY Dbo.MainContextInfo (I.JobNo) as J 
@@ -5316,18 +5450,18 @@ Begin
     -- Select * from #trc 
     -- memorize into Maint.JobHistoryLineDetails, details of the job
     Insert into Maint.JobHistoryLineDetails (jobNo, Seq, TypSeq, Typ, Line, Txt)
-    Select * from #trc
+    Select * from #trcLogAndOrExec
 
     -- always update event for log message only
     Update JH
     Set JobEnd = Getdate()
     From 
-      #trc as t -- I could use #Trc, but this code is more convenient for debugging as #prm is volatile
+      #trcLogAndOrExec as t 
       Join Maint.JobHistory as JH
       ON JH.JobNo = t.JobNo 
 
-    -- the same #trc is going to be reused for logging run-time execution error, if there are any
-    Truncate table #trc 
+    -- the same #trcLogAndOrExec is going to be reused for logging run-time execution error, if there are any
+    Truncate table #trcLogAndOrExec 
 
     If isnull(@sql, '') = '' 
       Return  -- nothing left to do
@@ -5340,7 +5474,7 @@ Begin
 
     -- always update in case of DBCC messages with errors which can't be trapped error
     -- always update event for log message only
-    -- Since here #trc is empty switch back to dbo.MaintcontextInfo(null) method to get jobNo
+    -- Since here #trc is empty switch back to dbo.MainContextInfo(null) method to get jobNo
     Update JH
     Set JobEnd = Getdate()
     From 
@@ -5353,7 +5487,7 @@ Begin
     -- Logs messages, being informational (severity <=10) or not.
     -- As examples : prints, or dbcc checkdb output without error are informational messages. 
     -- The last line of the report on a global execution status
-    Insert into #trc
+    Insert into #trcLogAndOrExec
     Select 
       I.JobNo
     , I.Seq
@@ -5362,7 +5496,7 @@ Begin
     , Line=ToLog.LineOrd
     , ToLog.Txt
     From 
-      (Select * From #prm as I) as I
+      (Select * From #prmLogAndOrExec as I) as I
       CROSS APPLY -- log informational messages from SQL severity <=10
       ( 
       -- @maxSeverity is a value returned by ExecWithProfilerTrace. Smaller than 10, this is a print.
@@ -5402,7 +5536,7 @@ Begin
 
     -- copy #trc if it has run-time execution error logged into it into Maint.JobHistoryLineDetails 
     Insert into Maint.JobHistoryLineDetails (jobNo, Seq, TypSeq, Typ, Line, Txt)
-    Select * from #trc
+    Select * from #trcLogAndOrExec
 
 
     -- Update Maint.JobHistoryDetails for query duration
@@ -5412,7 +5546,7 @@ Begin
       secs = Datediff(ss, cmdStartTime, getdate())
     , forDiagOnly = Case When @maxSeverity > 10 Then 0 Else @forDiagOnly End
     From
-      #prm as P
+      #prmLogAndOrExec as P
       JOIN Maint.JobHistoryDetails JD
       ON JD.JobNo = P.JobNo And JD.seq = P.Seq
 
@@ -5441,7 +5575,7 @@ Begin
     -- write it into Maint.JobHistoryLineDetails 
     Insert Into Maint.JobHistoryLineDetails (jobNo, Seq, TypSeq, Typ, Line, Txt)
     Select I.JobNo, I.Seq, TypSeq=99, typ='ErrLog', lineOrd=1, line=@Msg
-    From #Prm as I
+    From #prmLogAndOrExec as I
     -- always update event for log message only
     Update JH
     Set JobEnd = Getdate()
@@ -5470,6 +5604,83 @@ as
 Begin
   Declare @DebugLine Nvarchar(max) = ':Debug:'+ISNULL(@DebugMessage, ' well... the debug message was found null (concatenation of text with null value? )') ;
   Exec yExecNLog.LogAndOrExec @Info=@DebugLine
+End
+GO
+-- ------------------------------------------------------------------------------------------
+-- Run commands stored in scriptTable (segregated by connection)
+-- but use the logging mecanism of YourSqlDba
+-- By calling yExecNLog.LogAndOrExec instead.
+-- Allow multi-statement generation and processing by inserting multiple statement into view S#.ScriptToRun
+-- This proc read and execute each generated statements separately.
+-- ------------------------------------------------------------------------------------------
+Create Or Alter Proc S#.RunScriptAndLog 
+  @RunOnThisDb sysname = NULL -- remote database execution if database is specified
+as
+Begin
+  Set Nocount on;
+  Declare @Sql Nvarchar(max) = ''
+  Declare @Label Nvarchar(max)
+  Declare @seq Int
+  Declare @db Sysname
+  Declare @Context Nvarchar(max)
+  Declare @Info Nvarchar(max)
+  Declare @RaiseErrorFlag Int
+  Declare @forDiagOnly Int
+  Declare @errorN Int 
+
+  --Drop table if exists #Tmp
+  Drop table if exists #tmp
+  Select top 0 * into #tmp From S#.GetErrorMessagesAndInfo () as Err
+  -- Create temporary table to hold current query to be processed
+  Drop table if exists #Sql
+  Select Top 0 
+    Seq=@Seq, Sql=@sql, Db=@Db, Label=@label, 
+    Context=@Context, info=@info, raiseErrorFlag=@raiseErrorFlag, forDiagOnly=@forDiagOnly
+  Into #Sql
+
+  Select @seq = Min(Seq)-1 
+  From S#.ScriptToRun -- this view is filtered by current @@spid
+  Where nestLevel = @@NESTLEVEL 
+
+  While (1=1)
+  Begin
+    Insert into #Sql 
+    Select Top 1 seq, sql, db, label, R.Context, R.info, R.raiseErrorFlag, R.forDiagOnly
+    From S#.ScriptToRun AS R -- this view is filtered by current @@spid
+    Where nestLevel = @@NESTLEVEL
+      And seq > @Seq 
+    Order by Seq
+
+    If @@rowcount = 0 break
+    Select @seq = Seq, @Sql=Sql, @Db=Db, @Label=Label, @Context=@Context, @Sql=@Sql, @Info=@Info, @RaiseErrorFlag=@RaiseErrorFlag, @forDiagOnly=@forDiagOnly
+    From #Sql
+    Truncate Table #Sql 
+
+    Declare @nbRangees Int
+    Declare @StatsInfo nvarchar(max)
+
+    -- Let yExecNLog.LogAndOrExec execute and log stuff the YourSqlDba way
+    -- either directly from YourSqlDba database context
+    If Coalesce(@Db,@RunOnThisDb) IS NULL 
+      -- directly from YourSqlDba database context
+      Exec yExecNLog.LogAndOrExec @Context=@Context, @Sql=@Sql, @Info=@Info, @RaiseError=@RaiseErrorFlag, @forDiagOnly=@forDiagOnly, @ErrorN = @ErrorN Output
+    Else
+      -- or perform a database context switch before executing dynamic SQL
+      Begin 
+        Declare @IndirectContextSwitch as nvarchar(max)
+        Set @IndirectContextSwitch = 
+        N'Use ['+Coalesce(@Db,@RunOnThisDb)+'];'+
+        N'Exec yExecNLog.LogAndOrExec @Context=@Context, @Sql=@Sql, @Info=@Info, @RaiseError=@RaiseErrorFlag, @forDiagOnly=@forDiagOnly, @ErrorN = @ErrorN Output'
+        -- ***** extraire param pour yExecNLog.LogAndOrExec  et l'appeler d'ici
+        Exec sp_executeSql @IndirectContextSwitch
+        , N'@Context Nvarchar(max), @Sql nvarchar(max) ,@Info Nvarchar(max),@RaiseErrorFlag Int, @forDiagOnly Int, @ErrorN Int Output'
+        , @Context, @Sql, @Info, @RaiseErrorFlag, @forDiagOnly, @ErrorN Output
+      End
+  End -- While
+
+/*===KeyWords===
+Scripting,Logging
+===KeyWords===*/
 End
 GO
 Create Or Alter Procedure yMaint.CollectBackupHeaderInfoFromBackupFile @bkpFile nvarchar(512)
@@ -5778,46 +5989,6 @@ Begin
 End -- Maint.DiagDbMail
 GO
 
-Create Or Alter Function yUtl.ConvertToHexString
-(
-  @binValue varbinary(max)
-)
-returns nvarchar(max)
-as
-Begin
-  DECLARE @charvalue nvarchar (max)
-  DECLARE @i         int
-  DECLARE @length    int
-  Declare @pwdHexString Char(16)
-
-  If @Binvalue IS NULL
-    RETURN (N'NULL')
-
-  SELECT @charvalue = '0x'
-  SELECT @i = 1
-  SELECT @length = datalength (@binvalue)
-  SELECT @pwdHexString = '0123456789ABCDEF'
-
-  WHILE (@i <= @length)
-  BEGIN
-    DECLARE @tempint   int
-    DECLARE @firstint  int
-    DECLARE @secondint int
-
-    Set @tempint = CONVERT (int, SUBSTRING (@binvalue, @i, 1))
-    Set @firstint = FLOOR (@tempint / 16)
-    Set @secondint = @tempint - (@firstint * 16)
-
-    Set @charvalue = @charvalue +
-      SUBSTRING (@pwdHexString, @firstint + 1, 1) +
-      SUBSTRING (@pwdHexString, @secondint + 1, 1)
-
-    Set @i = @i + 1
-  END
-
-  return(@charvalue)
-End -- yUtl.ConvertToHexString
-GO
 --select * 
 --from 
 --yUtl.YourSQLDba_ApplyFilterDb (
@@ -5954,599 +6125,6 @@ End
 --go
 ----------------------------------------------------------------------------------------
 go
-
-Create Or Alter Procedure Audit.GenerateIt
-   @db sysname 
-,  @schema sysname 
-,  @tabListLike nvarchar(max)
-,  @expirationDate datetime 
-As
-Begin  
-
-  set nocount on 
-
-  -- I set a context just for helping yExecNLog.LogAndOrExec to give info about the job. I don't need also to put param values into the context
-  -- I I'll would want to, I would need to set either a new version of MainSessionContext, let's say AuditContext
-  Declare @Sql Nvarchar(max)
-  Select @sql=Sql From dbo.ScriptSetGlobalAccessToPrm ( (Select MaintJobName='Audit.GenerateIt' For JSON PATH, WITHOUT_ARRAY_WRAPPER) )
-  Exec (@Sql) -- Execute SQL generated by previous query
-  
-  declare @SqlDyn nvarchar(max)
-  Declare @Info nvarchar(max)
-
-  Set @Info = 'Audit defined on ['+@db+'].['+@schema+'] for table names that match like '+@tabListLike 
-  Exec yExecNLog.LogAndOrExec 
-    @context = 'Audit.GenerateIt'
-  , @Info = @Info
-
-  Set @Sql = 
-  '
-  Use [<db>]
-  Select T.OBJECT_id, @schema, ltrim(rtrim(T.name))
-  From 
-    YourSqlDba.yUtl.SplitParamInRows (@TabListLike) as A
-    join 
-    sys.tables T
-    ON T.name like A.line Collate Latin1_general_ci_ai And 
-       SCHEMA_NAME(T.schema_id) = @Schema Collate Latin1_general_ci_ai
-  '
-  Set @Sql = replace (@sql, '<db>', @db) 
-  Create table #tabList (objID INT primary key clustered, schName sysname, TAB sysname)
-  Insert into #tabList
-  Exec sp_executeSql @Sql, N'@TabListLike nvarchar(max), @Schema sysname', @TabListLike, @Schema
-
-  Declare @objId Int
-  Declare @TAB sysname
-  Select @objId = MIN(objId)-1 from #tablist
-  While(1=1)
-  Begin
-    Select top 1
-      @objId = objId
-    , @TAB = TAB
-    From #tabList
-    Where objId > @objId
-    If @@ROWCOUNT = 0 break
-
-    Set @Sql = 
-    '
-    Use [<db>]
-    If schema_id("yAudit_<Sch>") Is NULL exec("Create schema [yAudit_<Sch>]")
-    If schema_id("yAudit_<Sch>_TxSeq") Is NULL exec("Create schema [yAudit_<Sch>_TxSeq]")
-    '  
-    Set @Sql = replace (@sql, '<db>', @db) 
-    Set @Sql = replace (@sql, '<sch>', @schema) 
-    Set @Sql = replace (@sql, '"', '''') 
-    print @sql
-    Exec(@sql)
-    
-    Set @Sql = 
-    '
-    Use [<db>]
-    Drop Table If Exists [yAudit_<sch>].[<TAB>]
-    Drop Table If Exists [yAudit_<sch>_TxSeq].[<TAB>]
-    '   
-    Set @Sql = replace (@sql, '<db>', @db) 
-    Set @Sql = replace (@sql, '<sch>', @schema) 
-    Set @Sql = replace (@sql, '<TAB>', @TAB) 
-    Set @Sql = replace (@sql, '"', '''') 
-    print @sql
-    Exec(@sql)
-
-    Declare @ColsRedefToAllowInsert Nvarchar(max)
-    Set @Sql = 
-    '
-    Use [<db>]
-      
-    Select @ColsRedefToAllowInsert =
-      (
-      Select 
-        convert
-        (nvarchar(max), ", "+
-         Case 
-           When Is_Identity = 1 Then "convert(bigInt, 0) as ["+name+"]" 
-           When type_name(system_type_id) in ("timestamp", "rowversion") Then "convert(varbinary(8), 0) as ["+name+"]" 
-           Else "["+name+"]" 
-         End
-        ) as [text()]
-      From sys.columns  
-      Where object_id = object_id("[<sch>].[<TAB>]")
-      Order by column_id
-      For XML PATH("")
-      )
-    '  
-
-    Set @Sql = replace (@sql, '<db>', @db) 
-    Set @Sql = replace (@sql, '<sch>', @schema) 
-    Set @Sql = replace (@sql, '<TAB>', @TAB) 
-    Set @Sql = replace (@sql, '"', '''') 
-    print @sql
-    Exec sp_executeSql @Sql, N'@ColsRedefToAllowInsert Nvarchar(max) OUTPUT', @ColsRedefToAllowInsert Output
-
-    Set @Sql = 
-    '
-    Use [<db>]
-      
-    Select distinct top 0
-      convert(bigint, 0) as [y_TxSeq]
-    , convert(nchar(1), " ") as [y_Op]
-    , convert(nchar(1), " ") as [y_BeforeOrNew]
-    , getdate() as [y_EvTime]
-    , app_name() as [y_App]
-    , host_name() as [y_Wks]
-    , suser_sname() as [y_Who]
-    , user_name() as [y_DbUser]
-    <*>
-    into [yAudit_<sch>].[<TAB>]
-    From [<sch>].[<TAB>]
-    
-    Create table [yAudit_<sch>_TxSeq].[<TAB>] (seq bigInt identity, dummyInsert int)
-    '  
-    Set @Sql = replace (@sql, '<db>', @db) 
-    Set @Sql = replace (@sql, '<sch>', @schema) 
-    Set @Sql = replace (@sql, '<TAB>', @TAB) 
-    Set @Sql = replace (@sql, '"', '''') 
-    Set @Sql = REPLACE (@Sql, '<*>', @ColsRedefToAllowInsert) 
-    print @sql
-    Exec(@sql)
-
-    Set @SqlDyn = 
-    '
-    Create trigger [<sch>].[<TAB>_yAudit] 
-    ON [<sch>].[<TAB>]
-    For insert, delete, update
-    as
-    Begin
-      /*<expDate>:<TAB>_yAudit_expirationDate*/
-      If @@rowcount = 0 return
-      If Trigger_nestlevel()> 1 Return
-      Set nocount on  
-      Declare @op Nchar(1)
-      select top 1 @op = "D" from deleted
-      select top 1 @op = case when @op = "D" Then "U" Else "I" End from inserted
-      
-      Declare @txSeq BigInt
-      begin tran IncBox
-      save tran inc
-      insert into [yAudit_<sch>_TxSeq].[<TAB>] (dummyInsert) values (0)
-      Set @txSeq = @@identity
-      rollback tran inc -- identity do not rollback
-      commit tran IncBox
-      
-      ; With WhenHowWho as (Select  getdate() as EventTime, app_name() as Through, host_name() as FromWks, suser_sname() as Who, user_name() as DbUser)
-      , BeforeValues as (Select @txSeq as TxSeq, @op as Op, "B" as BeforeOrNew, What.*, Tx.* From WhenHowWho as What cross join Deleted as tx)
-      , NewValues as (Select @txSeq as TxSeq, @op as Op, "N" as BeforeOrNew, What.*, Tx.* From WhenHowWho as What cross join Inserted as tx)
-      insert into [yAudit_<sch>].[<TAB>]
-      Select * From BeforeValues
-      union all
-      Select * From NewValues
-    End  
-    '
-    Set @SqlDyn = replace (@sqlDyn, '<sch>', @schema) 
-    Set @SqlDyn = replace (@sqlDyn, '<TAB>', @TAB) 
-    Set @SqlDyn = replace (@sqlDyn, '<expDate>', convert(nvarchar(8), @expirationDate,112) )
-    Set @SqlDyn = replace (@sqlDyn, '"', '''') 
-    
-    Set @Sql =
-    '
-    Use [<db>]
-    If object_id("[<sch>].[<TAB>_yAudit]") IS NOT NULL
-      Drop trigger [<sch>].[<TAB>_yAudit];
-    Exec sp_executeSql @SqlDyn
-    '
-    Set @Sql = replace (@sql, '<db>', @db) 
-    Set @Sql = replace (@sql, '<sch>', @schema) 
-    Set @Sql = replace (@sql, '<TAB>', @TAB) 
-    Set @Sql = replace (@sql, '"', '''') 
-
-    print '@SqlDyn='+nchar(10)+@sqlDyn 
-    print '@Sql='+@sql
-    Exec sp_executeSql @Sql, N'@sqlDyn nvarchar(max)', @SqlDyn
-
-  End  -- While
-  
-End -- Audit.GenerateIt  
-go
-Create Or Alter Procedure Audit.SuspendIt
-   @db sysname 
-,  @schema sysname 
-,  @tabListLike nvarchar(max)
-As
-Begin  
-  set nocount on 
-
-  Declare @Sql Nvarchar(max)
-  Select @sql=Sql From dbo.ScriptSetGlobalAccessToPrm ( (Select MaintJobName='Audit.SuspendIt' For JSON PATH, WITHOUT_ARRAY_WRAPPER) )
-  Exec (@Sql) -- Execute SQL generated by previous query
-
-  Declare @Info nvarchar(max)
-  Set @Info = 'Audit suspended on ['+@db+'].['+@schema+'] for table names that match like '+@tabListLike 
-  Exec yExecNLog.LogAndOrExec 
-    @context = 'Audit.SuspendIt'
-  , @Info = @Info
- 
-  Set @Sql = 
-  '
-  Use [<db>]
-  Select T.OBJECT_id, @schema, ltrim(rtrim(T.name))
-  From 
-    YourSqlDba.yUtl.SplitParamInRows (@TabListLike) as A
-    join 
-    sys.tables T
-    ON T.name like A.line Collate Latin1_general_ci_ai And 
-       SCHEMA_NAME(T.schema_id) = @Schema Collate Latin1_general_ci_ai
-  '
-  Set @Sql = replace (@sql, '<db>', @db) 
-  Create table #tabList (objID INT primary key clustered, schName sysname, TAB sysname)
-  Insert into #tabList
-  Exec sp_executeSql @Sql, N'@TabListLike nvarchar(max), @Schema sysname', @TabListLike, @Schema
-
-  Declare @objId Int
-  Declare @TAB sysname
-  Select @objId = MIN(objId)-1 from #tablist
-  While(1=1)
-  Begin
-    Select top 1
-      @objId = objId
-    , @TAB = TAB
-    From #tabList
-    Where objId > @objId
-    If @@ROWCOUNT = 0 break
-
-    Set @Sql = 
-    '
-    Use [<db>]
-    alter table [<sch>].[<TAB>] disable trigger [<TAB>_yAudit] 
-    '
-    Set @Sql = replace (@Sql, '<db>', @db) 
-    Set @Sql = replace (@Sql, '<sch>', @schema) 
-    Set @Sql = replace (@Sql, '<TAB>', @TAB) 
-    Set @Sql = replace (@Sql, '"', '''') 
-    print @sql
-    Exec sp_executeSql @Sql
-    
-  End  -- While
-  
-End -- Audit.SuspendIt  
-go
-
-Create Or Alter Procedure Audit.ReactivateIt
-   @db sysname 
-,  @schema sysname 
-,  @tabListLike nvarchar(max)
-As
-Begin  
-  set nocount on 
-  declare @Sql nvarchar(max)
-  Select @sql=Sql From dbo.ScriptSetGlobalAccessToPrm ( (Select MaintJobName='Audit.ReactivateIt' For JSON PATH, WITHOUT_ARRAY_WRAPPER) )
-  Exec (@Sql) -- Execute SQL generated by previous query
-
-  declare @SqlDyn nvarchar(max)
-  Declare @Info nvarchar(max)
-  Set @Info = 'Audit reactivated on ['+@db+'].['+@schema+'] for table names that match like '+@tabListLike 
-  Exec yExecNLog.LogAndOrExec 
-    @context = 'Audit.ReactivateIt'
-  , @Info = @Info
-
-  Set @Sql = 
-  '
-  Use [<db>]
-  Select T.OBJECT_id, @schema, ltrim(rtrim(T.name))
-  From 
-    YourSqlDba.yUtl.SplitParamInRows (@TabListLike) as A
-    join 
-    sys.tables T
-    ON T.name like A.line Collate Latin1_general_ci_ai And 
-       SCHEMA_NAME(T.schema_id) = @Schema Collate Latin1_general_ci_ai
-  '
-  Set @Sql = replace (@sql, '<db>', @db) 
-  Create table #tabList (objID INT primary key clustered, schName sysname, TAB sysname)
-  Insert into #tabList
-  Exec sp_executeSql @Sql, N'@TabListLike nvarchar(max), @Schema sysname', @TabListLike, @Schema
-  select * from #tablist
-
-  Declare @objId Int
-  Declare @TAB sysname
-  Select @objId = MIN(objId)-1 from #tablist
-  While(1=1)
-  Begin
-    Select top 1
-      @objId = objId
-    , @TAB = TAB
-    From #tabList
-    Where objId > @objId
-    If @@ROWCOUNT = 0 break
-
-    Set @Sql = 
-    '
-    Use [<db>]
-    alter table [<sch>].[<TAB>] enable trigger [<TAB>_yAudit] 
-    '
-    Set @Sql = replace (@Sql, '<db>', @db) 
-    Set @Sql = replace (@Sql, '<sch>', @schema) 
-    Set @Sql = replace (@Sql, '<TAB>', @TAB) 
-    print @sql
-    Exec sp_executeSql @sql
-    
-  End  -- While
-  
-End -- Audit.ReactivateIt  
-go
-
-Create Or Alter Procedure Audit.RemoveIt
-   @db sysname 
-,  @schema sysname 
-,  @tabListLike nvarchar(max)
-As
-Begin  
-  set nocount on 
-  declare @Sql nvarchar(max)
-  Select @sql=Sql From dbo.ScriptSetGlobalAccessToPrm ( (Select MaintJobName='Audit.RemoveIt' For JSON PATH, WITHOUT_ARRAY_WRAPPER) )
-  Exec (@Sql) -- Execute SQL generated by previous query
-   
-  Declare @Info nvarchar(max)
-  Set @Info = 'Audit removed on ['+@db+'].['+@schema+'] for table names that match like '+@tabListLike 
-  Exec yExecNLog.LogAndOrExec 
-    @context = 'Audit.RemoveIt'
-  , @Info = @Info
- 
-  Set @Sql = 
-  '
-  Use [<db>]
-  Select T.OBJECT_id, @schema, ltrim(rtrim(T.name))
-  From 
-    YourSqlDba.yUtl.SplitParamInRows (@TabListLike) as A
-    join 
-    sys.tables T
-    ON T.name like A.line Collate Latin1_general_ci_ai And 
-       SCHEMA_NAME(T.schema_id) = @Schema Collate Latin1_general_ci_ai
-  '
-  Set @Sql = replace (@sql, '<db>', @db) 
-  Create table #tabList (objID INT primary key clustered, schName sysname, TAB sysname)
-  Insert into #tabList
-  Exec sp_executeSql @Sql, N'@TabListLike nvarchar(max), @Schema sysname', @TabListLike, @Schema
-
-  Declare @objId Int
-  Declare @TAB sysname
-  Select @objId = MIN(objId)-1 from #tablist
-  While(1=1)
-  Begin
-    Select top 1
-      @objId = objId
-    , @TAB = TAB
-    From #tabList
-    Where objId > @objId
-    If @@ROWCOUNT = 0 break
-
-    Set @Sql = 
-    '
-    Use [<db>]
-    Drop trigger if exists [<sch>].[<TAB>_yAudit] 
-    Drop table if exists [yAudit_<sch>].[<TAB>]
-    Drop table if exists [yAudit_<sch>_TxSeq].[<TAB>]
-    '
-    Set @Sql = replace (@Sql, '<db>', @db) 
-    Set @Sql = replace (@Sql, '<sch>', @schema) 
-    Set @Sql = replace (@Sql, '<TAB>', @TAB) 
-    Set @Sql = replace (@Sql, '"', '''') 
-    print @sql
-    Exec sp_executeSql @Sql
-    
-  End  -- While
-  
-End -- Audit.RemoveIt  
-go
-
-Create Or Alter Procedure Audit.ProcessExpiredDataAudits 
-  @db sysname
-as
-Begin  
-  Declare 
-    @schema sysname 
-  , @tabListLike nvarchar(max)  
-  , @sql nvarchar(max)
-
-  Select @sql=Sql 
-  From 
-    dbo.ScriptSetGlobalAccessToPrm ( (Select MaintJobName='Audit.ProcessExpiredDataAudits' For JSON PATH, WITHOUT_ARRAY_WRAPPER) )
-  Where Not Exists (Select * From dbo.MainContextInfo(null))
-  Exec (@Sql) -- Execute SQL generated by previous query
-
-  create table #triggerMatch (sch sysname, TAB sysname, primary  key clustered (sch, TAB))
-  Set @sql =
-  '
-  use [<db>]
-  ;With TrigDetails
-  as
-  (
-  Select 
-    TR.name as TRG
-  , TR.object_id
-  , Object_name(TR.parent_id) as TAB
-  , schema_name(convert(int, objectpropertyex(TR.parent_id, "schemaId"))) as SCH
-  From 
-    sys.triggers TR
-  )
-  , TabWithAuditTriggerExpired
-  as
-  (
-  Select 
-    TRG
-  , Stuff( Stuff(M.definition, 1, charindex(TAB+"_yAudit_expirationDate", M.definition) -10, ""), 9, len(M.definition), "") as ExpDate
-  , TAB
-  , SCH
-  From  
-    TrigDetails TR
-    Join 
-    sys.sql_modules M
-    On M.object_id = TR.object_id
-  Where 
-      TAB+"_yAudit" = TRG 
-      -- expiration date is located as a comment into the trigger code
-  And M.definition like "%"+TAB+"_yAudit_expirationDate%"   
-  )
-  Select SCH, TAB
-  From TabWithAuditTriggerExpired
-  Where getdate() > convert(datetime, expDate, 112)
-  '  
-
-  Set @sql = replace (@sql, '<db>', @db)
-  Set @sql = replace (@sql, '"', '''')
-  
-  Insert into #triggerMatch (sch, TAB)
-  Exec sp_executeSql @sql
-
-  If @@ROWCOUNT > 0  
-  Begin
-    Declare @Info nvarchar(max)
-    Set @Info = 'Start removing audit expired on ['+@db+'] '
-    Exec yExecNLog.LogAndOrExec 
-      @context = 'Audit.ProcessExpiredDataAudits'
-    , @Info = @Info
-  End
-  
-  While (1=1)
-  Begin
-    Select top 1 @schema = sch
-    From #triggerMatch
-    
-    If @@ROWCOUNT = 0 
-      Break
-    
-    Select 
-      @tabListLike =
-      (
-      Select     
-        CONVERT(nvarchar(max), '||') + TAB as [text()]
-      From #triggerMatch 
-      Where sch = @schema   
-      Order by TAB
-      For XML PATH('')
-      )
-
-    Set @tabListLike = REPLACE(@tabListLike , '||', yUtl.UnicodeCrLf()) 
-    Exec Audit.RemoveIt @db = @db, @schema = @schema, @tabListLike = @tabListLike
-     
-    Delete -- remove processed schema
-    From #triggerMatch 
-    Where sch = @schema
-
-  End  
-  
-End -- Audit.ProcessExpiredDataAudits  
-go
-
-Create Or Alter Procedure Audit.ProcessDataAuditsCleanup 
-  @db sysname
-as
-Begin  
-  declare @Sql nvarchar(max)
-  Declare @info sysname;
-  Select @sql=Sql 
-  From dbo.ScriptSetGlobalAccessToPrm ( (Select MaintJobName='Audit.ProcessDataAuditsCleanup' For JSON PATH, WITHOUT_ARRAY_WRAPPER) )
-  Where Not Exists (Select * From dbo.MainContextInfo(null))
-  Exec (@Sql) -- Execute SQL generated by previous query
-
-  Set @Info = 'Audit traces cleanup on ['+@db+'] to preserve space'
-  Exec yExecNLog.LogAndOrExec 
-    @context = 'Audit.ProcessDataAuditsCleanup'
-  , @Info = @Info
-  Set @Sql =
-  '
-  use [<db>]
-
-  declare @trunc table (seq int primary key clustered, sch sysname, tb sysname)
-
-  ;With SelectedTrigger
-  as
-  (
-  Select 
-    schema_name(convert(int, objectpropertyex(TR.parent_id, "schemaId"))) as sch
-  , TR.name as trg
-  , Object_name(TR.parent_id) as Tb
-  From 
-    sys.triggers TR
-  )  
-  Insert into @trunc (seq, sch, tb)
-  Select
-    ROW_NUMBER() over(order by sch, tb) as Seq
-  , sch
-  , Tb
-  From
-    SelectedTrigger
-  Where trg = tb + "_yAudit" 
- 
-  Declare 
-    @sch sysname 
-  , @tb sysname
-  , @seq int
-  , @sql nvarchar(max)
-
-  Set @seq = 0
-  While (1=1)
-  Begin
-
-    Select top 1 @seq = seq, @sch = sch,  @tb = tb
-    From @trunc
-    Where 
-      seq > @seq
-    Order by seq
-    
-    If @@ROWCOUNT = 0 
-      Break
-    
-    Set @Sql = "Truncate table [yAudit_<sch>].[<tb>]"
-    Set @Sql = REPLACE(@sql, "<sch>", @sch)
-    Set @Sql = REPLACE(@sql, "<tb>", @tb)
-    Exec sp_executeSql @Sql
-
-  End -- While
-  '
-  Set @sql = replace (@sql, '<db>', @db)
-  Set @sql = replace (@sql, '"', '''')
-
-  Begin Try  
-    Exec sp_executeSql @sql
-  End Try
-  Begin Catch
-    Exec yExecNLog.LogAndOrExec @context='Audit.ProcessDataAuditsCleanup', @err='?'
-  End Catch
-    
-End -- Audit.ProcessDataAuditsCleanup  
-go
-
-Create Or Alter Proc Audit.ProcessDataAuditsCleanupForAllDb
-as
-Begin
-  set nocount on 
-  DECLARE @RC int
-  DECLARE @name sysname
-
-  declare @db TABLE (name sysname primary Key)
-  declare @Sql nvarchar(max)
-  Select @sql=Sql 
-  From dbo.ScriptSetGlobalAccessToPrm ( (Select MaintJobName='Audit.ProcessDataAuditsCleanupForAllDb' For JSON PATH, WITHOUT_ARRAY_WRAPPER) )
-  Where Not Exists (Select * From dbo.MainContextInfo(null))
-  Exec (@Sql) -- Execute SQL generated by previous query
-
-  Insert into @db
-  select name from sys.databases
-
-  set @name = ''
-  While (1=1)
-  Begin 
-    Select top 1 @name = name from @db where name > @name order by name 
-    If @@ROWCOUNT = 0 break
-    
-    If DATABASEPROPERTYEX(@Name, 'Updateability') <> N'READ_WRITE'  
-      Continue
-
-    print @name
-    Exec Audit.ProcessExpiredDataAudits @name
-    Exec Audit.ProcessDataAuditsCleanup @name
-  End
-  
-End -- Audit.ProcessDataAuditsCleanupForAllDb 
-GO
 Create OR Alter Function maint.HistoryView (@StartDateTime Nvarchar(23), @EndDatetime Nvarchar(23), @FilterOption Int)
 -- ----------------------------------------------------------------------------------------------------------
 -- Function to list filter history in a more readeable form, based on a datetime range.
@@ -6638,7 +6216,7 @@ From
 
     -- JobNoFromExecutionContext is only valid from withing calling YourSqlDba procedures that setup 
     -- a session context.
-    -- Dbo.MaintContextInfo with NULL param returns info from the current executing job.
+    -- Dbo.MainContextInfo with NULL param returns info from the current executing job.
     -- JobNoFromExecutionContext is NULL if the function is called from outside YourSqlDba procedures
     -- or if the function is called from a YourSqlDba procedure that does not setup a session context
     --
@@ -7670,8 +7248,7 @@ Begin
     ELSE
 
     BEGIN -- Regular databases, either do Physical_ONLY most of the time, or once every n run without Physical_only
-      Set @sql = 'DBCC checkDb("<DbName>") '+ IIF(@doFullCheckDb = 0,' WITH PHYSICAL_ONLY ','')
-
+      Set @sql = 'DBCC checkDb("<DbName>") '+ IIF(@doFullCheckDb = 0,' WITH PHYSICAL_ONLY;',';')
       Set @sql = replace(@sql,'<DbName>', @dbName )
       set @sql = replace(@sql,'"','''') -- useful to avoid duplicating of single quote in boilerplate 
 
@@ -8315,121 +7892,187 @@ Begin
   
 End -- yMaint.MakeBackupCmd
 GO
--- ------------------------------------------------------------------------------
--- SP that takes built backup command and run it remotely
--- by the fact that the command is
--- an exec through the remote server (ex:  Exec [<MirrorServer>].YourSqlDba.yMirroring.DoRestore )
--- This SP is an activated stored proc linked to queue YourSQLDbaTargetQueueMirrorRestore 
--- ------------------------------------------------------------------------------
-Create Or Alter Procedure yMirroring.Broker_AutoActivated_LaunchRestoreToMirrorCmd
-as
-begin
-  Declare @RecvReqDlgHandle uniqueidentifier;
-  Declare @RecvReqMsg xml
-  Declare @RecvReqMsgName sysname;
-  Declare @JobNo int
-  Declare @seq int
-  Declare @sql nvarchar(max)
-  Declare @ReplyMsg xml;
-  Declare @errorN Int;
-  Declare @err nvarchar(max);
+-------------------------------------------------------------------------------------
+-- Sp to ensure and or create specific SQL Agent Job for restore to MirrorServer
+-------------------------------------------------------------------------------------
+Create Or Alter Procedure Mirroring.HandleRestoreJobAsNecessary @MirrorServer Sysname, @dropJob Int = 0, @ForceRecreateJob Int = 0
+As
+Begin
+  DECLARE @ReturnCode INT = 0
+  DECLARE @jobId BINARY(16)
+  Declare @DeploymentName sysName
+  Declare @context sysname
+  Select @DeploymentName = 'YourSQLDba_RestoreJob to '+@MirrorServer
+  Select @jobId = job_id From msdb.dbo.sysjobs where name =@DeploymentName
 
-  WHILE (1=1)
+  Begin Try
+  
+  -- Use case. Mirroring.AddServer call this proc with @ForceRecreateJob=1 to ensure there is a clean job to handle restore
+  -- If there is already one, it drops it. This leads to its recreation.
+  -- Mirroring.DropServer orders the cleanup with @dropJob=1
+  If (@jobId IS NOT NULL) And (@ForceRecreateJob=1 Or @DropJob = 1)
+  Begin
+    Set @context = 'Removing previous job definition for '+@DeploymentName
+    EXEC @ReturnCode =  msdb.dbo.sp_delete_job @job_name=@DeploymentName
+    IF (@ReturnCode <> 0) Raiserror ('Return code %d from msdb.dbo.sp_delete_schedule ',11,1,@returnCode)
+  End
+  -- For a drop server, this ends here
+  If @DropJob=1 -- case of a call by Mirroring.dropServer
+    Return
+
+  -- Use case. Mirroring.QueueRestoreToMirrorCmd call this proc to ensure there is a job to handle restore
+  -- If there is already one, it exits.
+  -- case for a call with Mirroring.addServer Or Mirroring.
+  -- When Mirroring.StartRestartRestoreJobForMirrorServer called this proc 
+  -- this ensures the job is present by recreating it otherwise it skips this step
+  If Exists(Select * From msdb.dbo.sysjobs where name =@DeploymentName)
+    Return
+
+  BEGIN TRANSACTION;
+
+  Set @context = 'Add job title'
+  Set @jobId = NULL
+  EXEC @ReturnCode =  msdb.dbo.sp_add_job 
+    @job_name=@DeploymentName, 
+		  @enabled=1, 
+		  @notify_level_eventlog=0, 
+		  @notify_level_email=0, 
+		  @notify_level_netsend=0, 
+		  @notify_level_page=0, 
+		  @delete_level=0, 
+		  @description=N'No description available.', 
+  		@category_name=N'[Uncategorized (Local)]', 
+		  @owner_login_name=N'sa',
+    @job_id = @jobId OUTPUT
+  IF (@ReturnCode <> 0) Raiserror ('Return code %d from msdb.dbo.sp_add_job ',11,1,@returnCode)
+
+  Set @context = 'Add job step'
+  EXEC @ReturnCode = msdb.dbo.sp_add_jobstep @job_id=@jobId, @step_name=N'Run', 
+		  @step_id=1, 
+		  @cmdexec_success_code=0, 
+		  @on_success_action=1, 
+		  @on_success_step_id=0, 
+		  @on_fail_action=2, 
+		  @on_fail_step_id=0, 
+		  @retry_attempts=0, 
+		  @retry_interval=0, 
+		  @os_run_priority=0, @subsystem=N'TSQL', 
+ 	  @command= N'EXECUTE [Mirroring].[ProcessRestores]', 
+		  @database_name=N'YourSqlDba', 
+		  @flags=4
+  IF (@ReturnCode <> 0) Raiserror ('Return code %d from msdb.dbo.sp_add_job_Step ',11,1,@returnCode)
+
+  Set @context = 'Set (local) as job server for the job'
+  EXEC @ReturnCode = msdb.dbo.sp_add_jobserver @job_id = @jobId, @server_name = N'(local)'
+  IF (@ReturnCode <> 0) Raiserror ('Return code %d from msdb.dbo.sp_add_jobserver ',11,1,@returnCode)
+
+  Declare @operator sysname
+  Select @operator=ISNULL(oper, N'YourSqlDba_Operator') From MainContextInfo (null) 
+  EXEC msdb.dbo.sp_update_job 
+    @job_id=@jobId,
+		  @notify_level_email=2, 
+		  @notify_level_page=2, 
+		  @notify_email_operator_name=@operator
+
+  COMMIT
+
+  End Try
+  Begin catch
+    Declare @msg nvarchar(max)
+    Select @msg = @context + nChar(10)+F.ErrMsg
+    From 
+      S#.FormatCurrentMsg(NULL) as F
+    Print 'Error When running Mirroring.HandleRestoreJobAsNecessary : '+@msg
+    ROLLBACK
+  End catch
+
+End -- Mirroring.HandleRestoreJobAsNecessary
+GO
+-- ----------------------------------------------------------------------------------------------
+-- Start_Restart Restore job for mirrorServer
+-- ----------------------------------------------------------------------------------------------
+Create or Alter Proc Mirroring.StartRestartRestoreJobForMirrorServer @MirrorServer Sysname
+as 
+Begin
+
+  Exec Mirroring.HandleRestoreJobAsNecessary @MirrorServer=@MirrorServer
+
+  Drop Table if Exists #PrmStartRestartRestoreJobForMirrorServer
+  Select MirrorServer, JobName, Job_Id
+  Into #PrmStartRestartRestoreJobForMirrorServer
+  From 
+--    (Select MirrorServer='MauriceSql\Maint19') as MirrorServer
+    (Select MirrorServer=@MirrorServer) as MirrorServer
+    Cross Apply (Select JobName='YourSQLDba_RestoreJob to '+MirrorServer) as JobName
+    Outer Apply (Select Job_id=job_id FROM msdb.dbo.sysjobs WHERE name = JobName) as JobId
+
+  If EXISTS -- job already running? then quit
+     (
+     SELECT *
+     From 
+       (Select MaxSessionId = MAX(session_id) FROM msdb.dbo.syssessions) as MaxSessionId
+       CROSS JOIN (Select NotRunning=0) as NotRunning
+       CROSS JOIN #PrmStartRestartRestoreJobForMirrorServer
+       OUTER APPLY 
+       (
+       SELECT Running=1
+       FROM msdb.dbo.sysjobactivity AS ja
+       WHERE ja.job_id = #PrmStartRestartRestoreJobForMirrorServer.job_id
+         AND ja.session_id = MaxSessionId
+         AND ja.start_execution_date IS NOT NULL
+         AND ja.stop_execution_date  IS NULL
+       ) as Running
+       CROSS APPLY (Select isRunning=COALESCE(Running, NotRunning)) as isRunning
+     Where isRunning = 1
+     )
+    Return
+
+  BEGIN TRY
+    Waitfor Delay '00:00:05' -- Wait 5 seconds to start
+    Declare @jobName Sysname = (Select JobName From #PrmStartRestartRestoreJobForMirrorServer)
+    EXEC msdb.dbo.sp_start_job @job_name = @JobName;
+    PRINT 'Job started: ' + @JobName;
+    Waitfor Delay '00:00:30' -- Wait 30 seconds to ensure job state reports correctly in msdb.dbo.sysjobactivity
+  END TRY
+  BEGIN CATCH
+    IF ERROR_NUMBER() = 14262
+      RAISERROR('SQL Server Agent is not running.', 16, 1);
+    ELSE
+      THROW;
+  END CATCH
+End -- Mirroring.StartRestartRestoreJobForMirrorServer
+GO
+CREATE OR ALTER PROCEDURE dbo.LogEvent
+  @MsgTemplate nvarchar(2048)
+, @JsonPrms    Nvarchar(max) 
+, @Severity    varchar(20) = 'informational'  -- 'informational', 'warning', 'error'
+AS
+BEGIN
+  SET NOCOUNT ON;
+
+  -- Validation rapide du niveau
+  IF @Severity NOT IN ('informational', 'warning', 'error')
   BEGIN
-    
-    -- The RECEIVE is not in transaction to prevent the call «Exec yExecNLog.LogAndOrExec»
-    -- fromg freezing.  Because there is no transaction only 1 procedure should be activated 
-    -- for this Queue.
-    WAITFOR
-    ( RECEIVE TOP(1)
-        @RecvReqDlgHandle = conversation_handle,
-        @RecvReqMsg = convert(xml, message_body),
-        @RecvReqMsgName = message_type_name
-      FROM YourSqlDbaTargetQueueMirrorRestore
-    ), TIMEOUT 1000;
-    
-    IF (@@ROWCOUNT = 0)
-    BEGIN
-      BREAK;
-    END    
-    
-    IF @RecvReqMsgName = N'//YourSQLDba/MirrorRestore/End'
-    BEGIN
-      END CONVERSATION @RecvReqDlgHandle    
-    END
+    SET @Severity = 'Informational';
+  END;
 
-    IF @RecvReqMsgName = N'//YourSQLDba/MirrorRestore/Request'
-    BEGIN
-      Set @JobNo = @RecvReqMsg.value('JobNo[1]', 'int')
-      Set @seq = @RecvReqMsg.value('Seq[1]', 'int')
-      Set @sql = @RecvReqMsg.value('Sql[1]', 'nvarchar(max)')
+  -- Préfixe facultatif (source)
+  DECLARE @FullMessage nvarchar(2048);
+  Select @FullMessage = FullMsg
+  From 
+    S#.MultipleReplaces (@MsgTemplate, @JSonPrms) as R
+    CROSS APPLY (Select FullMsg='[YourSqlDba]: '+R.replacedTxt) as FullMsg
 
-      -- This is the only other place where we set directly the value of JobNo to context key JobNoInSessCtx.
-      -- This is because this procedure is activated from the Queue YourSqlDbaTargetQueueMirrorRestore, 
-      -- under a separated session (spid), in which do not have access to JobNoInSessCtx key value which is the JobNo
-      -- SO
-      -- We do it because yExecNLog.LogAndOrExec needs JobNo to log queries and messages to the same job log
-      -- yExecNLog.LogAndOrExec get JobNo through dbo.MaintContextInfo, which itself call Session_Context('JobNoInSessCtx') 
-      -- to return jobNo to yExecNLog.LogAndOrExec 
-      Exec SP_Set_Session_context -- memorize jobNo in a Session_Context with key JobNoInSessCtx
-        @key='JobNoInSessCtx'
-      , @value=@JobNo
-      , @read_only=0
-               
-      -- even if yExecNLog.LogAndOrExec runs here under a different spid, 
-      -- it now have access to a copy of the same JobNoInSessCtx, so yExecNLog.LogAndOrExec does it job ok.
-      Exec yExecNLog.LogAndOrExec 
-        @context = 'yMirroring.Broker_AutoActivated_LaunchRestoreToMirrorCmd'
-      , @Info = '-- Remote restore diagnostics here '
-      , @sql = @sql
-      , @errorN = @errorN output
-      , @err = @err output
-
-      SELECT @ReplyMsg = 
-             (SELECT 
-                @JobNo as JobNo
-              , @seq as Seq
-              , Case When @errorN > 0 Then 'Failure: ' Else 'Success: ' End+
-              @sql+
-              case when @errorN > 0 Then @err Else '' End as Info 
-              FOR XML PATH('')
-              );
-
-
-      SEND ON CONVERSATION @RecvReqDlgHandle
-          MESSAGE TYPE 
-          [//YourSQLDba/MirrorRestore/Reply]
-          (@ReplyMsg);
-      
-    END --IF @RecvReqMsgName = N'//YourSQLDba/MirrorRestore/Request'
-    
-    IF @RecvReqMsgName not in (N'//YourSQLDba/MirrorRestore/Request', N'//YourSQLDba/MirrorRestore/End')
-    Begin
-      declare @Info nvarchar(max)
-      Set @Info = 'Message name unexpected: ' + @RecvReqMsgName
-      Exec yExecNLog.LogAndOrExec 
-        @context = 'yMirroring.Broker_AutoActivated_LaunchRestoreToMirrorCmd'
-      , @Info = @Info
-    End
-    
-  END --WHILE (1=1)
-
-End
+  -- Appel silencieux à xp_logevent (écrit dans SQL + Windows)
+  BEGIN TRY
+    EXEC master..xp_logevent 50001, @FullMessage, @Severity;
+  END TRY
+  BEGIN CATCH
+    RETURN;
+  END CATCH;
+END;
 GO
--- using a sequence is better to sequence queue items
-Drop Sequence if Exists yMirroring.QueueAndRestoreSeq
-GO
-Create Sequence yMirroring.QueueAndRestoreSeq as Int
-  START WITH 1  
-  INCREMENT BY 1 ;  
-GO
--- ---------------------------------------------------------------------------------------------
--- SP that build backup command and queue it, so it can run in parallel
--- The queue auto activate stored proc yMirroring.Broker_AutoActivated_LaunchRestoreToMirrorCmd
--- which read the command and run it to the remote server (by the fact that the command is
--- an exec through the remote server (ex:  Exec [<MirrorServer>].YourSqlDba.yMirroring.DoRestore )
--- ---------------------------------------------------------------------------------------------
-Create Or Alter Procedure yMirroring.QueueRestoreToMirrorCmd
+Create Or Alter Procedure yMirroring.QueueRestoreToMirror
   @context nvarchar(4000) = ''
 , @DbName sysname
 , @bkpTyp Char(1)
@@ -8438,8 +8081,13 @@ Create Or Alter Procedure yMirroring.QueueRestoreToMirrorCmd
 , @MigrationTestMode Int -- behaves differently at restore... See yMirroring.DoRestore
 , @ReplaceSrcBkpPathToMatchingMirrorPath nvarchar(max) = ''
 , @ReplacePathsInDbFilenames nvarchar(max) = ''
-, @BrokerDlgHandle uniqueidentifier OUT
 as
+-- ---------------------------------------------------------------------------------------------
+-- Stores backup/restore parameters into Mirroring.RestoreQueue
+-- Call Exec Mirroring.StartRestartRestoreJobForMirrorServer to ensure
+-- that the SQL Agent Job that execute Mirroring.ProcessRestores is
+-- there and started
+-- ---------------------------------------------------------------------------------------------
 Begin
 
   -- If the mirror server is disabled or this is a system database then return
@@ -8448,7 +8096,7 @@ Begin
     Return(0)
   If @DbName in ('master', 'model', 'msdb', 'tempdb', 'YourSQLDba')
     Return( 0 )
-    
+
   -- Test that the Mirror server was defined  
   Declare @sql       nvarchar(max)
   Declare @Info nvarchar(max)
@@ -8457,7 +8105,7 @@ Begin
   Begin
     Set @err = 'Mirror server «' + @MirrorServer + '» not defined.  Use stored procedure «Mirroring.AddServer»'
     Exec yExecNLog.LogAndOrExec 
-      @context = 'yMirroring.QueueRestoreToMirrorCmd'
+      @context = 'yMirroring.QueueRestoreToMirror'
     , @Info = 'Error at launch restore to mirror server'
     , @YourSqlDbaNo = '008'
     , @Err = @Err
@@ -8465,84 +8113,45 @@ Begin
     Return( 0 )
   End
 
+  -- CallingJobNo is required to allow to the procedure that does restores and that run under 
+  -- a SQL Agent Job with a different connection to set the same session context jobNo
+  -- It then gives access to many parameters stored for this job into Maint.JobHistory, through the jobNo of this session context
+  -- for a more detailed explanation, see Mirroring.ProcessRestores.
+  Insert into Mirroring.RestoreQueue (CallingJobNo, JsonPrms)
+  Select M.JobNo, J.JsonPrms
+  From 
+    dbo.MainContextInfo(null) as M -- get JobNo from current context that asks for a restore
+    CROSS APPLY
+    (Select JsonPrms=
+       (
+       Select 
+         M.JobNo
+       , DbName = @DbName 
+       , bkpTyp = @bkpTyp 
+       , fileName = @fileName 
+       , M.MirrorServer
+       , M.MigrationTestMode
+       , M.ReplaceSrcBkpPathToMatchingMirrorPath
+       , M.ReplacePathsInDbFilenames
+       For Json Path, INCLUDE_NULL_VALUES
+       )
+    ) as j
+  Declare @jSonPrms Nvarchar(2048)
+  Select @JsonPrms=JsonPrms From Mirroring.RestoreQueue Where RestoreSeq=SCOPE_IDENTITY()
 
-  -- Make query boilerplate with replaçable parameters delimited by "<" and ">"
-  -- double quotes are replaced by 2 single quotes. This trick avoid the unreadability
-  -- of double single quotes
-  Set @sql = '
-  EXECUTE AS LOGIN = "YourSqlDba";
-  Exec [<MirrorServer>].YourSqlDba.yMirroring.DoRestore 
-    @BackupType="<BackupType>"
-  , @Filename="<Filename>"
-  , @DbName="<DbName>"
-  , @MigrationTestMode=<MigrationTestMode>
-  , @ReplaceSrcBkpPathToMatchingMirrorPath="<ReplaceSrcBkpPathToMatchingMirrorPath>"
-  , @ReplacePathsInDbFilenames = "<ReplacePathsInDbFilenames>"
-  Revert;
-  '
+  Exec Dbo.LogEvent 
+    @MsgTemplate = 'JobNo:#JobNo# - Queing Database backup (#bkpTyp#) #DbName# for restore at server #MirrorServer#'
+  , @JsonPrms=@JsonPrms    
 
-  Set @sql = REPLACE(@sql, '<BackupType>', @bkpTyp)
-  Set @sql = REPLACE(@sql, '<Filename>', @fileName)
-  Set @sql = REPLACE(@sql, '<DbName>', @DbName)
-  Set @sql = REPLACE(@sql, '<MirrorServer>', @MirrorServer)  
-  Set @sql = REPLACE(@sql, '<MigrationTestMode>', convert(nvarchar,@MigrationTestMode))  
-  Set @sql = REPLACE(@sql, '<ReplaceSrcBkpPathToMatchingMirrorPath>', yUtl.NormalizeLineEnds (isNull(@ReplaceSrcBkpPathToMatchingMirrorPath,'')))  
-  Set @sql = REPLACE(@sql, '<ReplacePathsInDbFilenames>', yUtl.NormalizeLineEnds (isnull(@ReplacePathsInDbFilenames,'')))  
-  Set @sql = REPLACE(@sql, '"', '''')
-
-  Set @Info = 'Restore to mirror server sent to Broker (waiting for activation):' + @sql
+  Set @Info = 'Restore to mirror server sent to Restore Queue:' + @sql
   Exec yExecNLog.LogAndOrExec 
     @yourSqlDbaNo='020'
-  , @context='yMirroring.QueueRestoreToMirrorCmd'
+  , @context='yMirroring.QueueRestoreToMirror'
   , @Info = @info
 
-  -- The stored procedure activated by the queue on which we queue the restore command, runs under another session (spid)
-  -- When the queue will activate the procedure, the actived procedure will invoke yExecNLog.LogAndOrExec 
-  -- which needs the originating job number to post error messages (if any) 
-
-  -- Activated SP will read the jobNo in the message send into the queue and set the session context this way
-  --   Exec SP_Set_Session_context @key='JobNoInSessCtx', @value=@JobNo, @read_only=0
-  -- yExecNLog.LogAndOrExec needs this joNo, to post message to the matching jobNo log, which will happen 
-  -- through dbo.MainContextInfo(null) which its gets the job number from the function call session_context('JobNoInSessCtx')
-
-  Declare @seq int
-  Declare @RequestMsg xml  
-  Select @seq = NEXT VALUE FOR yMirroring.QueueAndRestoreSeq
-  Select @RequestMsg =
-    (
-    Select JobNo, Seq=@seq, Sql=@sql From dbo.MainContextInfo(null) 
-    For Xml Path('')
-    )
-    
-  BEGIN TRAN    
+  Exec Mirroring.StartRestartRestoreJobForMirrorServer @MirrorServer 
   
-  begin try
-  
-    If @BrokerDlgHandle Is Null
-    Begin
-      BEGIN DIALOG @BrokerDlgHandle
-      FROM SERVICE [//YourSQLDba/MirrorRestore/InitiatorService]
-      TO SERVICE '//YourSQLDba/MirrorRestore/TargetService'
-      ON CONTRACT [//YourSQLDba/MirrorRestore/Contract]
-      WITH ENCRYPTION = OFF;
-    End;
-    
-    SEND ON CONVERSATION @BrokerDlgHandle
-        MESSAGE TYPE [//YourSQLDba/MirrorRestore/Request]
-        (@RequestMsg);
-        
-    COMMIT TRAN          
-  End try 
-  Begin catch
-    Exec yExecNLog.LogAndOrExec 
-      @yourSqlDbaNo='020'
-    , @context='yMirroring.QueueRestoreToMirrorCmd'
-    , @Info = 'Restore to mirror server sent to Broker (waiting for activation)'
-    , @err = '?'
-    , @sql = @sql
-  End catch
-  
-End -- yMirroring.QueueRestoreToMirrorCmd
+End -- yMirroring.QueueRestoreToMirror
 GO
 Create Or Alter Procedure Maint.DropOrphanLogins
 as
@@ -8979,8 +8588,8 @@ Begin
     If @bulkadmin      = 1 Set @sql = @sql + 'EXEC sp_addsrvrolemember "<loginname>", "bulkadmin";'
 
     Set @sql = REPLACE(@sql, '<loginname>', @loginname)
-    Set @sql = REPLACE(@sql, '<password>', yUtl.ConvertToHexString(@password_hash))
-    Set @sql = REPLACE(@sql, '<sid>', yUtl.ConvertToHexString(@sid))
+    Set @sql = REPLACE(@sql, '<password>', Convert(nvarchar(max),@password_hash,1))
+    Set @sql = REPLACE(@sql, '<sid>', Convert(nvarchar(max),@sid,1))
     Set @sql = REPLACE(@sql, '<checkpolicy>', @policy_checked)
     Set @sql = REPLACE(@sql, '<checkexpiration>', @expiration_checked)
     If @defLanguage is Not NULL
@@ -9125,8 +8734,8 @@ Begin
       Set @sql = REPLACE(@sql, '<servername>', @servername)
       Set @sql = REPLACE(@sql, '<loginname>', @loginname)
       Set @sql = REPLACE(@sql, '<type>', @type)
-      Set @sql = REPLACE(@sql, '<password_hash>', yUtl.ConvertToHexString(@password_hash))
-      Set @sql = REPLACE(@sql, '<sid>', yUtl.ConvertToHexString(@sid))
+      Set @sql = REPLACE(@sql, '<password_hash>', Convert(nvarchar(max),@password_hash,1))
+      Set @sql = REPLACE(@sql, '<sid>', Convert(nvarchar(max),@sid,1))
       Set @sql = REPLACE(@sql, '<policy_checked>', @policy_checked)
       Set @sql = REPLACE(@sql, '<expiration_checked>', @expiration_checked)
       Set @sql = REPLACE(@sql, '<deflanguage>', @deflanguage)
@@ -9346,7 +8955,6 @@ Begin
   Declare @jobStart Datetime
   Declare @MirrorServer sysname
   Declare @MigrationTestMode Int
-  Declare @BrokerDlgHandle uniqueidentifier
   Declare @FullBkExt nvarchar(7) 
   Declare @LogBkExt nvarchar(7) 
   Declare @err nvarchar(max)
@@ -9681,14 +9289,10 @@ Begin
       -- drop flag to let dbcc log shrink go, since backup is done
         Exec sp_releaseapplock @Resource=@resourceName, @lockOwner='Session'
 
-      If @DoFullBkp = 1
-      Begin
-        Exec Audit.ProcessExpiredDataAudits @dbName -- remove expired audits since we have them in backup
-        Exec Audit.ProcessDataAuditsCleanup @dbname -- clean active audits sunce we have them in backup
-      End
-
-      -- Restore the backup to the mirror server (internally the procedure check is mirrorServer is in backup locations)
-      Exec yMirroring.QueueRestoreToMirrorCmd
+      -- Restore the backup to the mirror server 
+      -- Internally the procedure check if mirrorServer is specified
+      -- otherwise it doesn't
+      Exec yMirroring.QueueRestoreToMirror
            @context = @ctx
          , @DbName = @DbName
          , @bkpTyp = @DoBackup
@@ -9697,7 +9301,6 @@ Begin
          , @MigrationTestMode = @MigrationTestMode 
          , @ReplaceSrcBkpPathToMatchingMirrorPath = @ReplaceSrcBkpPathToMatchingMirrorPath
          , @ReplacePathsInDbFilenames = @ReplacePathsInDbFilenames
-         , @BrokerDlgHandle = @BrokerDlgHandle OUT
 
       -- do not shrink log while a full or diff backup is performed on the database
       If @DoLogBkp = 1 And APPLOCK_TEST ('public', @resourceName, 'exclusive', 'session')=1  
@@ -9759,7 +9362,7 @@ Begin
         , @errorN = @errorN_BkpPartielInit output
 
         -- Restore the backup to the mirror server if enabled
-        Exec yMirroring.QueueRestoreToMirrorCmd
+        Exec yMirroring.QueueRestoreToMirror
              @context = 'yMaint.backups (queue restore of log backup init)'
            , @DbName = @DbName
            , @bkpTyp = N'L'
@@ -9768,7 +9371,6 @@ Begin
            , @MigrationTestMode = @MigrationTestMode
            , @ReplaceSrcBkpPathToMatchingMirrorPath = @ReplaceSrcBkpPathToMatchingMirrorPath
            , @ReplacePathsInDbFilenames = @ReplacePathsInDbFilenames
-           , @BrokerDlgHandle = @BrokerDlgHandle OUT
                               
         If @errorN_BkpPartielInit = 0 -- version 
         Begin
@@ -9821,77 +9423,7 @@ Begin
     , @sql = @sql
     , @Info = 'Full Msdb backup to save the most up-to-date backup history'
     , @errorN = @errorN output
-    
-    -- If @BrokerDlgHandle is not null it tells us that we queued at least one restore to the mirror server
-    -- so we send un message to indicate that mirror restore are over and we wait untill all the restore 
-    -- are completed
-    If @BrokerDlgHandle IS Not Null
-    Begin
-      Exec yExecNLog.LogAndOrExec 
-        @context = 'yMaint.backups'
-      , @Info = 'Waiting for mirror restore to complete';
 
-      -- Send the End message to the queue
-      SEND ON CONVERSATION @BrokerDlgHandle
-          MESSAGE TYPE [//YourSQLDba/MirrorRestore/End];
-      
-      Declare @RecvReqMsg xml
-      Declare @RecvReqMsgName sysname
-      Declare @TimeoutConsec int
-      Set  @TimeoutConsec = 0
-            
-      While (1=1)
-      Begin
-        Exec yExecNLog.LogAndOrExec 
-          @context = 'yMaint.backups'
-        , @Info = 'Waiting for mirror restore to complete (for 1 min)';
-      
-        -- «WHERE conversation_handle = @BrokerDlgHandle» is very important so we receive only messages
-        -- that were queued by this procedure.  
-        -- adjustement to get more responsive echi from waits, more waits, but shorter
-        Waitfor
-        (
-        RECEIVE TOP(1)
-          @RecvReqMsg = convert(xml, message_body),
-          @RecvReqMsgName = message_type_name
-        FROM YourSqlDbaInitiatorQueueMirrorRestore
-        WHERE conversation_handle = @BrokerDlgHandle
-        ), timeout 60000 -- wait 1 minute = 60 000 = 60 sec * 1000 millisec
-        
-        If @@ROWCOUNT = 0 -- may be a restore last more than 10 minutes, so 10 minutes without message
-        Begin
-          set @TimeoutConsec = @TimeoutConsec +1  -- but we won't wait forever
-          If @TimeoutConsec > 180 -- 1 timeout = 1 min, then max wait of 3 hour without messages
-            Break
-          Else  
-            Continue
-        End  
-        Else 
-          Set @TimeoutConsec = 0
-          
-        If @RecvReqMsgName = N'http://schemas.microsoft.com/SQL/ServiceBroker/EndDialog'
-        Begin
-          END CONVERSATION @BrokerDlgHandle
-          BREAK
-                    
-        End --If @RecvReqMsgName = N'http://schemas.microsoft.com/SQL/ServiceBroker/EndDialog'
-
-        If @RecvReqMsgName = N'//YourSQLDba/MirrorRestore/Reply'
-        Begin
-          Set @JobNo = @RecvReqMsg.value('JobNo[1]', 'int')
-          Set @seq = @RecvReqMsg.value('Seq[1]', 'int')
-          Set @Info = 'Reply from queued mirror restore ' + nchar(10) + @RecvReqMsg.value('Info[1]', 'nvarchar(max)')
-          
-          Exec yExecNLog.LogAndOrExec 
-             @context = 'yMaint.backups'
-           , @Info = @info
-
-        End --If @RecvReqMsgName = N'//YourSQLDba/MirrorRestore/Reply'        
-      
-      End --While RestoreEnded = 0    
-      
-    End --If @BrokerDlgHandle IS Not Null
-    
 
   End try
   Begin catch
@@ -9948,7 +9480,7 @@ Begin
   -- local password of YourSqlDba account with the same value
   If @YourSqlDbaAccountForMirroringPwd IS NULL
   Begin 
-    Set @sql = 'Alter login YourSqlDba With password='+yUtl.ConvertToHexString(@Original_password_hash_Local)+' HASHED'
+    Set @sql = 'Alter login YourSqlDba With password='+Convert(nvarchar(max),@Original_password_hash_Local,1)+' HASHED'
     Exec (@sql)
   End
 
@@ -10010,7 +9542,7 @@ Begin
      ) At [<mirrorServer>]
      '
      Set @sql = REPLACE(@sql, '<mirrorserver>', @MirrorServerName)     
-     Set @sql = REPLACE(@sql, '<password_hash>', yUtl.ConvertToHexString(@password_hash_Local))
+     Set @sql = REPLACE(@sql, '<password_hash>', Convert(nvarchar(max),@password_hash_Local,1))
      Set @sql = REPLACE(@sql, '<newPwd>', @newPwd)
      Set @sql = REPLACE(@sql, '"', '''')
 
@@ -10069,7 +9601,7 @@ Begin
   If ISNULL(@MirrorServer, '') <> '' And Not Exists (Select * From Sys.servers Where name = @MirrorServer And is_linked = 1)
     Set @err = 1
 
-  -- imeprsonate YourSqlDba account to test connection
+  -- impersonate YourSqlDba account to test connection
   Execute as login = 'yoursqldba'
 
   -- for each server, check remote access as YourSqlDba
@@ -10665,12 +10197,42 @@ Begin
   Begin
     Exec yMaint.backups
   End -- If @DoBackup  
-  
+
+  -- Wait for emptying the Mirroring.RestoreQueue
   -- If backups are to be mirrored than we Launch a login synchronisation on the mirror server
   If isnull(@MirrorServer, '') <> ''
     And (@DoBackup = 'F' Or @DoBackup = 'D')
+  Begin
+    While (1=1) -- wait all mirrored backup to be done before lauching login synchro
+    Begin
+      -- wait while there is still something to for process
+      If Exists (Select * From Mirroring.RestoreQueue Where ErrorN = 0)
+        Waitfor Delay '00:01:00' -- wait a minute for a second test
+      Else
+      Begin
+        -- there is nothing else to process but restores in error remain
+        If Exists (Select * From Mirroring.RestoreQueue Where ErrorN <> 0)
+        Begin
+          Exec yExecNLog.LogAndOrExec 
+            @context = 'Maint.YourSqlDba_DoMaint'
+          , @Info = 'Error in Maint.YourSqlDba_DoMaint'
+          , @err = 'Some restores to MirrorServer failed. See Mirroring.RestoreQueue'
+          Break;
+        End
+        Else
+        Begin -- nothing remains then quit
+          If Not Exists(Select * From Mirroring.RestoreQueue)
+            Break
+        End
+      End 
+    End -- While
+
+    -- do try to sync whatever is possible 
+    -- if some database are missing some login with default_db that points
+    --  to a missing database are going to be rejected
     Exec yMirroring.LaunchLoginSync 
-    
+  End 
+  
   -- Check for databases that are in SIMPLE recovery mode and not excluded form this policy
   -- with the @ExcDbFromPolicy_CheckFullRecoveryModel parameter
   If @DoBackup = 'F' Or @DoBackup = 'D'
@@ -11558,8 +11120,6 @@ Begin
   REVERT
 
 End -- Maint.RestoreDb
-GO
-ALTER DATABASE YourSQLDba Set Trustworthy off
 GO
 GRANT connect to guest
 GO
@@ -13039,6 +12599,9 @@ Begin
 
   Print 'Remove existing Linked Server' + @mirrorServer
   Exec sp_dropServer @MirrorServer
+
+  
+  Exec Mirroring.HandleRestoreJobAsNecessary @MirrorServer=@MirrorServer, @DropJob=1
   
   Print '-------------------------------------------------------------------' 
   Print ' Mirror server succesfully uninstalled' 
@@ -13046,6 +12609,146 @@ Begin
   
 End -- Mirroring.DropServer
 GO
+Create Or Alter Procedure Mirroring.ProcessRestores
+As
+-------------------------------------------------------------------------------------
+-- Sp called by SQL Agent Job in the context of a MirrorServer.
+-- This SQL Agent Job is managed properly by yMirroring.QueueRestoreToMirror
+-------------------------------------------------------------------------------------
+Begin
+  -- Restores are scheduled from a maintenance session that has its own parameters and JobNo.
+  -- Before queuing a restore, this maintenance session records its current JobNo along with 
+  -- the SQL command to execute and the target MirrorServer.
+
+  -- In YourSqlDba, many processes and logging operations rely on information linked to this JobNo.
+  -- The JobNo is made globally available to the current session through a session context key 
+  -- named 'JobNoInSessCtx'. It is set by calling:
+  --   EXEC sp_set_session_context @key = N'JobNoInSessCtx', @value = @JobNo
+
+  -- Many processes obtain their parameters and JobNo via MainContextInfo(), 
+  -- which internally reads the session context value for 'JobNoInSessCtx' to get the JobNo,
+  -- and then uses it to read Maint.JobHistory for all related parameters.
+
+  -- Therefore, we retrieve @JobNo from Mirroring.RestoreQueue. After reading it, we set the 
+  -- session context for the current connection (the SQL Agent connection running 
+  -- Mirroring.ProcessRestores) with the same JobNo, so that dbo.MainContextInfo can return 
+  -- the correct originating JobNo and its parameters whenever needed.
+
+  Set Nocount on
+  Declare @WaitStart Datetime = Getdate()
+  Declare @RestoreSeq Int
+  Declare @errorN Int
+  Declare @jobNo Int
+  Declare @CallerProcess Nvarchar(4000)
+  Select  @CallerProcess = ISNULL(I.SqlAgentJobName, Prog + ' - Executed by :'+Who)  From dbo.WhoCalledWhat as I
+  Declare @JSonPrms Nvarchar(max)
+  Declare @MsgToLog Nvarchar (2048)
+  
+  While (1=1)
+  Begin
+    BEGIN TRY
+      Select Top 1 
+        @RestoreSeq = RestoreSeq
+      , @jobNo = Q.CallingJobNo
+      , @JSonPrms = Q.JSonPrms
+      From Mirroring.RestoreQueue as Q
+      Where Q.ErrorN = 0 -- not processed yet.
+      Order By RestoreSeq Asc
+
+      If @@ROWCOUNT = 0 
+      Begin
+        If DATEDIFF(mi, @WaitStart, Getdate()) > 5
+          Break -- Exit proc, it is waiting for 5 minutes and no new backups are queued into the table
+        Else 
+        Begin
+          Waitfor Delay '00:01:00';
+          Continue; -- retry a peek on the queue
+        End
+      End
+  
+      -- Set session context value for the jobNo to the same value of the connection that queue the restore
+      -- It will make the restore command to be logged as if it was part of the same job.
+      IF ISNULL(CAST(SESSION_CONTEXT(N'JobNoInSessCtx') AS int), -1) <> @JobNo
+        EXEC sp_set_session_context
+          @key = N'JobNoInSessCtx',
+          @value = @JobNo,
+          @read_only = 0;
+
+      -- Report error flag if any (could be zero)
+      Update Mirroring.RestoreQueue Set StartedAt = Getdate() Where RestoreSeq=@RestoreSeq 
+      
+      Exec Dbo.LogEvent 
+        @MsgTemplate = 'JobNo:#JobNo# - Restoring Database backup (#bkpTyp#) #DbName# at server #MirrorServer#'
+      , @JsonPrms=@JsonPrms    
+
+      EXECUTE AS LOGIN = 'YourSqlDba'; -- for our remote exec. setup
+
+      Declare @Sql Nvarchar(max)
+      Select @Sql=R.Code
+      From --#PrmQueueRestoreToMirrorCmd 
+        (Select ThisProc=S#.FullObjName(@@PROCID)) as ThisProc
+        CROSS APPLY S#.GetTemplateFromCmtAndReplaceTags ('===SqlTemplateForRestore===', ThisProc, @JsonPrms) as R
+
+/*===SqlTemplateForRestore===
+DECLARE 
+  @BackupType                            char(1)       = '#BkpTyp#'
+, @Filename                              Nvarchar(512) = '#Filename#'
+, @DbName                                Sysname       = '#DbName#'
+, @MigrationTestMode                     Int           = #MigrationTestMode#
+, @ReplaceSrcBkpPathToMatchingMirrorPath NVarchar(max) = '#ReplaceSrcBkpPathToMatchingMirrorPath#'
+, @ReplacePathsInDbFilenames             NVarchar(max) = '#ReplacePathsInDbFilenames#'
+EXEC 
+  (
+  N'
+  EXEC YourSqlDba.yMirroring.DoRestore
+      @BackupType = ?,
+      @Filename   = ?,
+      @DbName     = ?,
+      @MigrationTestMode = ?,
+      @ReplaceSrcBkpPathToMatchingMirrorPath = ?,
+      @ReplacePathsInDbFilenames = ?;
+  '
+  , @BackupType                           
+  , @Filename                             
+  , @DbName                               
+  , @MigrationTestMode                    
+  , @ReplaceSrcBkpPathToMatchingMirrorPath
+  , @ReplacePathsInDbFilenames            
+  ) AT [#MirrorServer#];
+===SqlTemplateForRestore===*/
+
+      EXEC yExecNLog.LogAndOrExec
+        @context = 'Mirroring.ProcessRestores'
+      , @Info    = @CallerProcess
+      , @sql     = @sql
+      , @errorN  = @errorN OUTPUT
+
+      REVERT;
+
+      Exec Dbo.LogEvent 
+        @MsgTemplate = 'JobNo:#JobNo# - Restore (#bkpTyp#) #DbName# processed at server #MirrorServer#'
+      , @JsonPrms=@JsonPrms    
+
+      -- Report error flag if any (could be zero)
+      Update Mirroring.RestoreQueue Set ErrorN = @ErrorN Where RestoreSeq=@RestoreSeq And ErrorN <> @ErrorN
+      Update Mirroring.RestoreQueue Set EndedAt = Getdate() Where RestoreSeq=@RestoreSeq 
+
+      -- If done, delete successful restore
+      Delete From Mirroring.RestoreQueue Where RestoreSeq=@RestoreSeq And ErrorN=0;
+      Set @WaitStart = Getdate()
+
+    END TRY
+    BEGIN CATCH
+      IF SUSER_SNAME() = 'YourSqlDba' BEGIN TRY REVERT; END TRY BEGIN CATCH END CATCH;
+      THROW;
+    END CATCH
+
+  End -- While
+End
+Go
+-------------------------------------------------------------------------------------
+-- When Adding a server ensure and or create specific SQL Agent Job for restore to MirrorServer
+-------------------------------------------------------------------------------------
 Create Or Alter Procedure Mirroring.AddServer 
   @MirrorServer nvarchar(512)
 , @remoteLogin nvarchar(512)
@@ -13157,6 +12860,8 @@ Begin
     Return
   End
   
+  Exec Mirroring.HandleRestoreJobAsNecessary @MirrorServer=@MirrorServer, @ForceRecreateJob=1
+
   -- Synchronise logins on the mirror server
   Exec yMirroring.LaunchLoginSync 
   
@@ -14160,8 +13865,8 @@ as
 Begin
   Set nocount on
 
-  --Drop Table If Exists #Prm
-  Select SrcDb = QUOTENAME(@SrcDb), DestDb = QUOTENAME(@DestDb) Into #Prm
+  --Drop Table If Exists #CopyAllSqlModules
+  Select SrcDb = QUOTENAME(@SrcDb), DestDb = QUOTENAME(@DestDb) Into #CopyAllSqlModules
     
   --Drop Table If Exists #ModuleDefInSrcDb
   -- Select top 0 to template #ModuleDefInSrcDb  from Sys.Sys_SqlModules + extra cols
@@ -14174,7 +13879,7 @@ Begin
   Declare @SqlDefMod Nvarchar(max)
   Select @SqlDefMod=SqlDefMod
   From
-    (Select ReplacePairs=(Select SrcDb, DestDb From #Prm For Json Path)) as ReplacePairs
+    (Select ReplacePairs=(Select SrcDb, DestDb From #CopyAllSqlModules For Json Path)) as ReplacePairs
     Cross Apply (Select SqlDefMod=R.code From S#.GetTemplateFromCmtAndReplaceTags('===GetModuleDefAndNames===', NULL, ReplacePairs) as R) as Sql
 /*===GetModuleDefAndNames===
   ---------------------------------------------------------------------------
@@ -14200,7 +13905,7 @@ Begin
   Declare @SqlGetObj Nvarchar(max)=''
   Select @SqlGetObj=@SqlGetObj+SqlGetObj -- concat because 2 rows of statements
   From
-    (Select Db=SrcDb, Typ='Src' From #Prm Union All Select Db=DestDb, Typ='Dest' From #Prm) as Db
+    (Select Db=SrcDb, Typ='Src' From #CopyAllSqlModules Union All Select Db=DestDb, Typ='Dest' From #CopyAllSqlModules) as Db
     Cross Apply (Select ReplacePairs=(Select Db, Typ For Json Path)) as ReplacePairs
     Cross Apply (Select SqlGetObj=R.code From S#.GetTemplateFromCmtAndReplaceTags('===GetObjects===', NULL, ReplacePairs) as R) as Sql
 /*===GetObjects===
@@ -14245,7 +13950,7 @@ Begin
   , Sql
   Into #DropsAndCreates
   from 
-    (Select DestDb, SrcDb From #Prm) as Prm
+    (Select DestDb, SrcDb From #CopyAllSqlModules) as Prm
     CROSS JOIN #ModuleDefInSrcDb M
     CROSS APPLY (Select aNull=IIF(M.uses_ansi_nulls=1,'ON', 'OFF')) aNull
     CROSS APPLY (Select qIden=IIF(M.uses_quoted_identifier=1,'ON', 'OFF')) qIden
@@ -14319,7 +14024,7 @@ Begin
     If @@ROWCOUNT = 0 Break
     Select @Sql=Sql
     From
-      (select sc=@Sc, DestDb From #Prm) as Sc
+      (select sc=@Sc, DestDb From #CopyAllSqlModules) as Sc
       Cross Apply (Select ReplacePairs=(Select DestDb, sc For Json Path)) as ReplacePairs
       Cross Apply (Select Sql=R.code From S#.GetTemplateFromCmtAndReplaceTags('===SchemaDup===', NULL, ReplacePairs) as R) as Sql
     /*===SchemaDup===
@@ -17655,14 +17360,8 @@ Begin
    
 End -- Mirroring.Failover
 GO
-If Exists(select * from sys.symmetric_keys Where name = '##MS_DatabaseMasterKey##') Drop master Key 
-IF NOT Exists (Select * From sys.databases Where name ='YourSQLDba' And is_master_key_encrypted_by_server=1)
-  CREATE MASTER KEY ENCRYPTION BY PASSWORD = 'Aa$1YourSQLDba123456789012345678901234567890'
-GO
-ALTER DATABASE YourSQLDba SET ENABLE_BROKER WITH ROLLBACK IMMEDIATE;
-GO
-ALTER DATABASE YourSQLDba SET NEW_BROKER WITH ROLLBACK IMMEDIATE;
-GO
+
+-- remove broker stuff from version previous to 7.1 version
 IF EXISTS (SELECT * FROM sys.services WHERE name = N'//YourSQLDba/MirrorRestore/TargetService')
      DROP SERVICE [//YourSQLDba/MirrorRestore/TargetService];
 GO
@@ -17700,57 +17399,6 @@ IF EXISTS (SELECT * FROM sys.service_message_types
      DROP MESSAGE TYPE
      [//YourSQLDba/MirrorRestore/End];
 GO
-
-CREATE MESSAGE TYPE
-       [//YourSQLDba/MirrorRestore/Request]
-       VALIDATION = WELL_FORMED_XML;
-GO
-
-CREATE MESSAGE TYPE
-       [//YourSQLDba/MirrorRestore/Reply]
-       VALIDATION = WELL_FORMED_XML;
-GO
-
-CREATE MESSAGE TYPE
-       [//YourSQLDba/MirrorRestore/End]
-       VALIDATION = NONE
-GO
-
-CREATE CONTRACT [//YourSQLDba/MirrorRestore/Contract]
-      ([//YourSQLDba/MirrorRestore/Request]
-       SENT BY INITIATOR,
-       [//YourSQLDba/MirrorRestore/End]
-       SENT BY INITIATOR,
-       [//YourSQLDba/MirrorRestore/Reply]
-       SENT BY TARGET
-      );
-GO
-
-CREATE QUEUE YourSQLDbaTargetQueueMirrorRestore
-  WITH 
-    STATUS  = ON
-  , ACTIVATION (
-      PROCEDURE_NAME = yMirroring.Broker_AutoActivated_LaunchRestoreToMirrorCmd,
-      MAX_QUEUE_READERS = 1,  -- Very important to preserve the restore sequence of backups
-      EXECUTE AS SELF );
-GO
-
-CREATE QUEUE YourSQLDbaInitiatorQueueMirrorRestore
-  WITH
-    STATUS  = ON
-GO
-
-CREATE SERVICE
-       [//YourSQLDba/MirrorRestore/TargetService]
-       ON QUEUE YourSQLDbaTargetQueueMirrorRestore
-       ([//YourSQLDba/MirrorRestore/Contract]);
-GO
-
-CREATE SERVICE
-       [//YourSQLDba/MirrorRestore/InitiatorService]
-       ON QUEUE YourSQLDbaInitiatorQueueMirrorRestore;
-GO 
-
 -- the sole purpose of these synonyms is to avoid
 -- breaking scripts that could used the previous name with dbo. schema
 -- Ia also ease calling of procedures not prefixed by the schema maint.
@@ -17786,7 +17434,6 @@ If OBJECT_ID ('dbo.RestoreDbAtStartOfMaintenanceMode') IS NULL
   create synonym dbo.RestoreDbAtStartOfMaintenanceMode For Maint.RestoreDbAtStartOfMaintenanceMode
 If OBJECT_ID ('dbo.ReturnDbToNormalUseFromMaintenanceMode') IS NULL 
   create synonym dbo.ReturnDbToNormalUseFromMaintenanceMode For Maint.ReturnDbToNormalUseFromMaintenanceMode
-  
 go
 grant execute on dbo.SaveDbOnNewFileSet to guest
 GO
@@ -17824,3 +17471,13 @@ If Schema_id('utl') is NOT NULL drop schema utl
 GO
 Exec Install.PrintVersionInfo
 
+/*====== to follow a runnning job
+Select
+  cmdStartTime, JobNo, seq, Typ, line, Txt, MaintJobName, MainSqlCmd, Who, Prog, Host, SqlAgentJobName, JobId, H.JobStart, JobEnd
+From 
+  (select top 1 JobStart  from Maint.JobHistory order by JobNo desc) as S
+  -- set of constants for the function below (& precomputed date range constants) 
+  cross join YourSQLDba.Maint.MaintenanceEnums as E -- HV$Now, HV$FromMidnight, HV$FromYesterdayMidnight, HV$Since12Hours, HV$Since10Min, HV$Since1Hour
+  cross apply YourSQLDba.Maint.HistoryView(S.jobStart, HV$Now, E.HV$ShowAll) as H -- E.HV$ShowErrOnly=1, E.HV$ShowAll=0
+Order By cmdStartTime, Seq, TypSeq, Typ, Line
+*/

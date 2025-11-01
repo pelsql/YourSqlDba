@@ -4,37 +4,67 @@
 
 >To display **currently installed release of YourSqlDba**, execute this query:<br/> **select * from Install.VersionInfo()**
 
-**Everything about YourSqlDba** can be found in this **[One-Note Online documentation](https://tinyurl.com/YourSqlDba)**
-which doesn't requires no other thing than a browser to navigate. Here is a **[Quick start](https://tinyurl.com/YSDBAQuickStart)** documentation about what YourSqlDba does and how it works.  
+**Everything about YourSqlDba** can be found in this **[OneNote Online documentation](https://1drv.ms/o/c/12c385255443c4ed/Eu3EQ1QlhcMggBKoGwAAAAABRvootARfhNKB2ZzsOSOrfA?e=usHzVk)**,
+which requires nothing more than a web browser to navigate.
+Pay attention to the landing page and the section describing what YourSqlDba does and how it works.
+There is also, on the landing page, a **QuickLinks** table referencing frequently read and relevant pages.
 
->YourSqlDba comes alive only through SQL Agent job and Database Mail that need to be configured. An helper stored procedure need to be lauched (see documentation of  **[Install.InitialSetupOfYourSQLDba](https://tinyurl.com/YSDInitSetup)**). This procedure  provides the necessary parameters to set up database mail, backup directories, and some default behaviors. It creates also two SQL Agent Jobs and schedules them to be launched them as needed.
+> YourSqlDba operates exclusively through SQL Agent jobs and Database Mail, both of which need to be configured.
+> A helper stored procedure must be executed (**see `Goals/QuickLinks table/Install.InitialSetupOfYourSQLDba`**) once per instance after downloading and running the YourSqlDba script.
+> This procedure provides the necessary parameters to set up Database Mail, backup directories, and default behaviors.
+> It also creates two SQL Agent jobs and schedules them to run as required.
+> Future version updates do not require re-running this procedure.
 
->Each jobs has one single maintenance step that. They both runs **[Maint.YourSQLDba_DoMaint](https://tinyurl.com/YSDDoMaint)** stored procedure with different parameters according to the type of job run. Its parameters reflect some of the **[Install.InitialSetupOfYourSQLDba](https://tinyurl.com/YSDInitSetup)** parameters values, and many are by default. **[Maint.YourSQLDba_DoMaint](https://tinyurl.com/YSDDoMaint)** parameters are explained in detail in YourSqlDba online documentation.
+> Each of the two jobs has a single maintenance step.
+> Both call the same main stored procedure (**see `Goals/QuickLinks table/Maint.YourSQLDba_DoMaint`**) with different parameters depending on the job type.
+> These parameters reflect some of those defined during installation (**see `Goals/QuickLinks table/Install.InitialSetupOfYourSQLDba`**) and include many default values.
+> `Maint.YourSQLDba_DoMaint` parameters are explained in detail in the online documentation.
 
->YourSqlDba is finally just a **very big T-SQL script** that helps a lot about installing automating database maintenance for SQL Server. 
-It creates, on the SQL instance where it runs, a database named YourSqlDba packed with T-SQL modules (function, stored procedures, and views). You don't need to be concerned by all of them, albeit if some of them are interesting tools for exceptional day-to-day DBA tasks, out of regular maintenance tasks.
+> YourSqlDba is essentially a **large T-SQL script** that automates database maintenance tasks for SQL Server.
+> It creates, on the instance where it runs, a database named *YourSqlDba* packed with T-SQL modules (functions, stored procedures, and views).
+> You do not need to be concerned with all of them, though some are useful tools for occasional day-to-day DBA work beyond regular maintenance.
+
+---
 
 ### Version history
 
-**[Get script for version 7.0.0.4](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+**Version 7.1**
 
-**Version 7.1:**
-This version achieves a long-sought goal: removing assembly dependencies from YourSqlDba!
+**[Get script for version 7.1](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
 
-How can you deploy a SQLCLR in a script without delivering a DLL or creating it from a hex string of code?
+This version achieves a long-sought goal: removing all external assembly dependencies from YourSqlDba.
+The script now builds its own assemblies from C# source code defined inside an inline table-valued function (iTvf).
+Since the script itself compiles and creates the assembly, it also signs it automatically — no binaries are imported from untrusted sources.
 
-By making the script compile, deploy, and secure it autonomously. YourSqlDba gained this capability from parts of a base source code of my own library, called S# (not yet published on GitHub). This library allows source code to be embedded within an inline function definition, enabling complete T-SQL commands to create the assembly and expose its SQLCLR entry points in SQL Server. Special thanks to Solomon Rutzky (srutzky@gmail.com) for his insights on assembly and module security, which helped me finalize the security by adding a signature at the creation point. Now, every DBA can review the relatively straightforward C# code without the risk of running unsigned assembly code, enhancing the security of YourSqlDba. This also makes YourSqlDba more secure. 
+By enabling the script to compile, deploy, and secure the assembly autonomously, YourSqlDba takes a major step toward self-containment.
+This capability is derived from portions of my own library, **S#** (not yet published on GitHub).
+That library allows C# source code to be embedded directly within an inline function definition, enabling a complete set of T-SQL commands to create the assembly and expose its SQLCLR entry points in SQL Server.
 
-This version contains also a minor fix to 7.0.0.4, which wasn't corrected properly.
+Special thanks to **Solomon Rutzky** ([srutzky@gmail.com](mailto:srutzky@gmail.com)) for his insights on assembly and module security, which helped finalize the design by adding a signature at creation time.
+Now, every DBA can review the relatively straightforward C# code without the risk of executing unsigned assemblies, significantly improving the overall security of YourSqlDba.
 
-Interim versions 7.0.0.0 to 7.0.0.3 have been deprecated, as version 7.0.0.4 consolidates all of their changes. These minor updates were deemed unnecessary to retain individually, though they remain accessible on GitHub for comparison. Additionally, several bugs from versions preceding 7.0 have been resolved. Here are the primary updates:
+Another important benefit is that the database no longer needs to be set as **TRUSTWORTHY**, further increasing security.
+This improvement was made possible by removing all reliance on **Service Broker** for mirror server operations.
+Previously, Service Broker was used to provide a background thread for running restores in parallel with backups.
+It has now been replaced with an automatically created, standalone **SQL Agent YourSqlDba task** dedicated to this purpose.
+That task starts automatically when backups complete and stops itself five minutes after finishing the `restoreQueue` processing.
 
-Version 7.x establishes a foundation for the new architecture of YourSqlDba, introducing these elements gradually to allow the original and new architectures to coexist, ensuring code quality remains uncompromised. Upgrading is especially recommended to benefit from bug fixes introduced in version 7.0.0.3.
+Version 7.1 lays the foundation for the new architecture of YourSqlDba, introducing these components gradually so the original and new architectures can coexist without compromising code quality.
+Upgrading is strongly recommended, especially for its security improvements.
 
-With version 7.0, **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)** has received several improvements to enhance the visualization of multi-job interactions. Events within a specific period are now chronologically ordered and display simultaneous job events. Each time the log history switches jobs, columns indicating job pedigree are set to make these transitions easily identifiable.
+---
 
-**[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)** is an essential tool within YourSqlDba for diagnosing maintenance issues. When investigating outside a single job's scope, pre-computed datetime values from `Maint.MaintenanceEnums` allow querying of YourSqlDba activity within relative time frames. More details are available in the updated documentation on **[YourSQLDba.Maint.HistoryView](tinyurl.com/YourSqlDbaHistoryView)**, including instructions on querying SQL executed during maintenance.
+With version 7.0, `YourSQLDba.Maint.HistoryView` (**see `Goals/QuickLinks table/Maint.HistoryView (V 7.0+)`**) received several improvements that enhance the visualization of multi-job interactions.
+Events within a selected period are now displayed in chronological order and show simultaneous job activity.
+Each time the log history switches jobs, columns indicating job lineage are highlighted to make these transitions easily identifiable.
 
+`YourSQLDba.Maint.HistoryView` is an essential diagnostic tool for maintenance operations.
+When investigating beyond the scope of a single job, pre-computed datetime values from `Maint.MaintenanceEnums` allow you to query YourSqlDba activity within relative time frames.
+More details are available in the updated documentation.
+
+**[Get script for version 7.0.0.5](https://github.com/pelsql/YourSqlDba/blob/68fbb28cfd3e380eca9b158372e0f077b5c4fa69/YourSQLDba_InstallOrUpdateScript.sql)**
+Version 7.0.0.5 is mandatory, encompassing all earlier changes and fixing issues with documentation links in both the README and `index.md`.
+Interim versions 7.0.0.0 to 7.0.0.4 are deprecated.
 
 **Version 7.0.0.4:**
 A divide-by-zero error may occur in integrity testing when database filtering excludes all databases. This is because table selection is based on `@SpreadCheckDd` job parameter. When computing this selection, the number of databases is taken into account to calculate a modulo value, set either to `@SpreadCheckDd` or the total number of databases.
