@@ -4,33 +4,6 @@
 
 >To display **currently installed release of YourSqlDba**, execute this query:<br/> **select * from Install.VersionInfo()**
 
-**Everything about YourSqlDba** can be found at **[Links into Online Documentation](#Links-into-Online-Documentation)**
-
-
->*[YourSQLDba_InstallOrUpdateScript](YourSQLDba_InstallOrUpdateScript.sql?raw=true)* is essentially a comprehensive T-SQL script designed to simplify and automate database maintenance for SQL Server. When executed, it creates (or update) a database named YourSqlDba on the SQL instance where it is run. This database is packed with T-SQL modules, including functions, stored procedures, and views. While you don’t need to worry about understanding every module, some of them can serve as valuable tools for exceptional day-to-day DBA tasks beyond regular maintenance. 
-
-### Links into Online Documentation
-
-The **[online documentation](https://onedrive.live.com/view.aspx?resid=12C385255443C4ED!7080&migratedtospo=true&redeem=aHR0cHM6Ly8xZHJ2Lm1zL28vYy8xMmMzODUyNTU0NDNjNGVkL0V1M0VRMVFsaGNNZ2dCS29Hd0FBQUFBQlJ2b290QVJmaE5LQjJaenNPU09yZkE_ZT01OjRmYWJlNDFlYzdiZTQxYTM4ZWY1NjQ0ZjhlMDdhYmIxJnNoYXJpbmd2Mj10cnVlJmZyb21TaGFyZT10cnVlJmF0PTk&wd=target%28Introduction.one%7Cc7014943-14b8-4c1d-9ae7-429002e0759c%2FGoals%7Ce133a6f3-2280-42c9-bef3-26c877c23c5d%2F%29&wdorigin=703)** is in the form of a web Microsoft OneNote. No other software than your browser is required to read it (but be patient for initial loading). It includes many sections, but only a few need to be mastered.
-
->**[Quick start](https://onedrive.live.com/view.aspx?resid=12C385255443C4ED!7080&migratedtospo=true&redeem=aHR0cHM6Ly8xZHJ2Lm1zL28vYy8xMmMzODUyNTU0NDNjNGVkL0V1M0VRMVFsaGNNZ2dCS29Hd0FBQUFBQlJ2b290QVJmaE5LQjJaenNPU09yZkE_ZT01OjRmYWJlNDFlYzdiZTQxYTM4ZWY1NjQ0ZjhlMDdhYmIxJnNoYXJpbmd2Mj10cnVlJmZyb21TaGFyZT10cnVlJmF0PTk&wd=target%28Introduction.one%7Cc7014943-14b8-4c1d-9ae7-429002e0759c%2FQuick%20Start%20%20download%7C7baefd6f-3103-45b4-899f-8c9f4be9e119%2F%29&wdorigin=703)**  This page explains what YourSqlDba is about does and how it works. First step is to run YourSQLDba_InstallOrUpdateScript.sql.  
-You can have it at [Version History](#Version-History).   
-Next step is to perform  **[Initial Setup of YourSqlDba](https://onedrive.live.com/view.aspx?resid=12C385255443C4ED!7080&migratedtospo=true&redeem=aHR0cHM6Ly8xZHJ2Lm1zL28vYy8xMmMzODUyNTU0NDNjNGVkL0V1M0VRMVFsaGNNZ2dCS29Hd0FBQUFBQlJ2b290QVJmaE5LQjJaenNPU09yZkE_ZT01OjRmYWJlNDFlYzdiZTQxYTM4ZWY1NjQ0ZjhlMDdhYmIxJnNoYXJpbmd2Mj10cnVlJmZyb21TaGFyZT10cnVlJmF0PTk&wd=target%28Initial%20Setup%20or%20Upgrade.one%7Cb3c8c1f9-cd98-47ec-a339-9e14522d31a5%2FInitial%20setup%7C8b51ac78-79a3-41c0-b29b-329f8ba5d372%2F%29&wdorigin=703)** if it is your first YourSqlDba install on a SQL Server.
-
-### **[Install.InitialSetupOfYourSQLDba](https://onedrive.live.com/view.aspx?resid=12C385255443C4ED!7080&migratedtospo=true&redeem=aHR0cHM6Ly8xZHJ2Lm1zL28vYy8xMmMzODUyNTU0NDNjNGVkL0V1M0VRMVFsaGNNZ2dCS29Hd0FBQUFBQlJ2b290QVJmaE5LQjJaenNPU09yZkE_ZT01OjRmYWJlNDFlYzdiZTQxYTM4ZWY1NjQ0ZjhlMDdhYmIxJnNoYXJpbmd2Mj10cnVlJmZyb21TaGFyZT10cnVlJmF0PTk&wd=target%28REFERENCE.one%7Cc7b30aeb-6ae2-4bd6-a550-14feb11d776d%2FInstall.InitialSetupOfYourSQLDba%7Cab0a67f6-ba01-419d-b111-336b424de5de%2F%29&wdorigin=703)**
->YourSQLDba_InstallOrUpdateScript.sql script creates a database along with its set of SQL modules and tables. It operates exclusively through SQL Agent jobs and Database Mail, both of which must be configured. To simplify this setup, the helper stored procedure *Install.InitialSetupOfYourSQLDba* is provided. This procedure allows you to easily configure Database Mail, specify backup directories, and define some default behaviors. The helper procedure also creates two SQL Agent jobs and schedules them to run as needed. These jobs execute the `Maint.YourSqlDba_DoMaint` stored procedure with different parameters. This stored procedure handles all maintenance actions.
-### **[Maint.YourSQLDba_DoMaint](https://onedrive.live.com/view.aspx?resid=12C385255443C4ED!7080&migratedtospo=true&redeem=aHR0cHM6Ly8xZHJ2Lm1zL28vYy8xMmMzODUyNTU0NDNjNGVkL0V1M0VRMVFsaGNNZ2dCS29Hd0FBQUFBQlJ2b290QVJmaE5LQjJaenNPU09yZkE_ZT01OjRmYWJlNDFlYzdiZTQxYTM4ZWY1NjQ0ZjhlMDdhYmIxJnNoYXJpbmd2Mj10cnVlJmZyb21TaGFyZT10cnVlJmF0PTk&wd=target%28REFERENCE.one%7Cc7b30aeb-6ae2-4bd6-a550-14feb11d776d%2FMaint.YourSQLDba_DoMaint%7Cde56c9b2-3548-4c94-a646-ae4139610a99%2F%29&wdorigin=703)** 
->This procedure serves as the main entry point for maintenance in both jobs. Different parameters are set based on the type of job to be executed. The first job, which runs daily, performs comprehensive database optimizations, including updating statistics, reorganizing or rebuilding indexes, and ensuring database integrity. It also creates full backups. Filters allow you to include or exclude databases using multiple wildcard sets, and numerous other parameters enable customization of various behaviors. The second job runs every 15 minutes and is dedicated to backing up transaction logs.
-### **[Maint.HistoryView](https://onedrive.live.com/view.aspx?resid=12C385255443C4ED!7080&migratedtospo=true&redeem=aHR0cHM6Ly8xZHJ2Lm1zL28vYy8xMmMzODUyNTU0NDNjNGVkL0V1M0VRMVFsaGNNZ2dCS29Hd0FBQUFBQlJ2b290QVJmaE5LQjJaenNPU09yZkE_ZT01OjRmYWJlNDFlYzdiZTQxYTM4ZWY1NjQ0ZjhlMDdhYmIxJnNoYXJpbmd2Mj10cnVlJmZyb21TaGFyZT10cnVlJmF0PTk&wd=target%28REFERENCE.one%7Cc7b30aeb-6ae2-4bd6-a550-14feb11d776d%2FMaint.HistoryView%20%28V%207.0%5C%29%7C50837514-3e97-4c66-9595-e428fb04087c%2F%29&wdorigin=703)** 
->This function is the primary method by which YourSqlDba generates a query (delivered through an email report) to provide a comprehensive error report in case of issues, detailed insights into job activity, or a complete log of events within a specified time frame (e.g., when multiple jobs run concurrently). It also allows you to filter events using any criteria supported by SQL, as it is fundamentally a query. Since version 7.0, significant emphasis has been placed on enhancing diagnostic capabilities, primarily through this function.
-### **[More on diagnostics](https://onedrive.live.com/view.aspx?resid=12C385255443C4ED!7080&migratedtospo=true&redeem=aHR0cHM6Ly8xZHJ2Lm1zL28vYy8xMmMzODUyNTU0NDNjNGVkL0V1M0VRMVFsaGNNZ2dCS29Hd0FBQUFBQlJ2b290QVJmaE5LQjJaenNPU09yZkE_ZT01OjRmYWJlNDFlYzdiZTQxYTM4ZWY1NjQ0ZjhlMDdhYmIxJnNoYXJpbmd2Mj10cnVlJmZyb21TaGFyZT10cnVlJmF0PTk&wd=target%28REFERENCE.one%7Cc7b30aeb-6ae2-4bd6-a550-14feb11d776d%2FDiagnostics%20%28maintenance%2C%20performance%5C%29%7C097c91ad-3afb-422f-b8c0-c76f9131e0a5%2F%29&wdorigin=703)** 
->This section also answer to some normal issues after first install.
-
-
-### Version history
-
-**[Get script of 7.0.0.5](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
-Interim versions 7.0.0.0 to 7.0.0.4 are discarded. Version 7.0.0.5 is mandatory and encompasses all their changes and address a problem to links with documentation, either in the readme and the index.md which is a short doc page.
 **Everything about YourSqlDba** can be found in this **[OneNote Online documentation](https://1drv.ms/o/c/12c385255443c4ed/Eu3EQ1QlhcMggBKoGwAAAAABRvootARfhNKB2ZzsOSOrfA?e=usHzVk)**,
 which requires nothing more than a web browser to navigate.
 Pay attention to the landing page and the section describing what YourSqlDba does and how it works.
@@ -63,9 +36,6 @@ This version achieves a long-sought goal: removing all external assembly depende
 The script now builds its own assemblies from C# source code defined inside an inline table-valued function (iTvf).
 Since the script itself compiles and creates the assembly, it also signs it automatically — no binaries are imported from untrusted sources.
 
-With version 7.0, several improvements have been added to **[YourSQLDba.Maint.HistoryView](#mainthistoryview)**. To acheive better visualization of multi-job interactions, events within a specified period are ordered by time and include simultaneous job events. Each time the log history switches jobs, a list of columns displaying job pedigree is set, making the switch easily visible
-
-**[YourSQLDba.Maint.HistoryView](#mainthistoryview)** is a crucial tool within the YourSqlDba function for diagnosing maintenance problems. When searching outside the realm of a single jon, pre-computed datetime values from Maint.MaintenanceEnums can be used to query current or past YourSqlDba activity within relative time ranges. For more details, see the updated documentation on **[YourSQLDba.Maint.HistoryView](#mainthistoryview)**. These choices are documented in the message that displays the query to use for querying the SQL executed during the maintenance process.
 By enabling the script to compile, deploy, and secure the assembly autonomously, YourSqlDba takes a major step toward self-containment.
 This capability is derived from portions of my own library, **S#** (not yet published on GitHub).
 That library allows C# source code to be embedded directly within an inline function definition, enabling a complete set of T-SQL commands to create the assembly and expose its SQLCLR entry points in SQL Server.
@@ -92,6 +62,7 @@ Each time the log history switches jobs, columns indicating job lineage are high
 When investigating beyond the scope of a single job, pre-computed datetime values from `Maint.MaintenanceEnums` allow you to query YourSqlDba activity within relative time frames.
 More details are available in the updated documentation.
 
+**Version 7.0.0.5:**
 **[Get script for version 7.0.0.5](https://github.com/pelsql/YourSqlDba/blob/68fbb28cfd3e380eca9b158372e0f077b5c4fa69/YourSQLDba_InstallOrUpdateScript.sql)**
 Version 7.0.0.5 is mandatory, encompassing all earlier changes and fixing issues with documentation links in both the README and `index.md`.
 Interim versions 7.0.0.0 to 7.0.0.4 are deprecated.
