@@ -31,22 +31,83 @@ Next step is to perform  **[Initial Setup of YourSqlDba](https://onedrive.live.c
 
 **[Get script of 7.0.0.5](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
 Interim versions 7.0.0.0 to 7.0.0.4 are discarded. Version 7.0.0.5 is mandatory and encompasses all their changes and address a problem to links with documentation, either in the readme and the index.md which is a short doc page.
+**Everything about YourSqlDba** can be found in this **[OneNote Online documentation](https://1drv.ms/o/c/12c385255443c4ed/Eu3EQ1QlhcMggBKoGwAAAAABRvootARfhNKB2ZzsOSOrfA?e=usHzVk)**,
+which requires nothing more than a web browser to navigate.
+Pay attention to the landing page and the section describing what YourSqlDba does and how it works.
+There is also, on the landing page, a **QuickLinks** table referencing frequently read and relevant pages.
 
-Here they are:
+> YourSqlDba operates exclusively through SQL Agent jobs and Database Mail, both of which need to be configured.
+> A helper stored procedure must be executed (**see `Goals/QuickLinks table/Install.InitialSetupOfYourSQLDba`**) once per instance after downloading and running the YourSqlDba script.
+> This procedure provides the necessary parameters to set up Database Mail, backup directories, and default behaviors.
+> It also creates two SQL Agent jobs and schedules them to run as required.
+> Future version updates do not require re-running this procedure.
 
-Version 7.0.0.1 lays the foundation for elements of a new architecture for YourSqlDba. These elements will be introduced gradually, maintaining parallel elements of both the original and the new architecture.
+> Each of the two jobs has a single maintenance step.
+> Both call the same main stored procedure (**see `Goals/QuickLinks table/Maint.YourSQLDba_DoMaint`**) with different parameters depending on the job type.
+> These parameters reflect some of those defined during installation (**see `Goals/QuickLinks table/Install.InitialSetupOfYourSQLDba`**) and include many default values.
+> `Maint.YourSQLDba_DoMaint` parameters are explained in detail in the online documentation.
+
+> YourSqlDba is essentially a **large T-SQL script** that automates database maintenance tasks for SQL Server.
+> It creates, on the instance where it runs, a database named *YourSqlDba* packed with T-SQL modules (functions, stored procedures, and views).
+> You do not need to be concerned with all of them, though some are useful tools for occasional day-to-day DBA work beyond regular maintenance.
+
+---
+
+### Version history
+
+**Version 7.1**
+
+**[Get script for version 7.1](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+
+This version achieves a long-sought goal: removing all external assembly dependencies from YourSqlDba.
+The script now builds its own assemblies from C# source code defined inside an inline table-valued function (iTvf).
+Since the script itself compiles and creates the assembly, it also signs it automatically — no binaries are imported from untrusted sources.
 
 With version 7.0, several improvements have been added to **[YourSQLDba.Maint.HistoryView](#mainthistoryview)**. To acheive better visualization of multi-job interactions, events within a specified period are ordered by time and include simultaneous job events. Each time the log history switches jobs, a list of columns displaying job pedigree is set, making the switch easily visible
 
 **[YourSQLDba.Maint.HistoryView](#mainthistoryview)** is a crucial tool within the YourSqlDba function for diagnosing maintenance problems. When searching outside the realm of a single jon, pre-computed datetime values from Maint.MaintenanceEnums can be used to query current or past YourSqlDba activity within relative time ranges. For more details, see the updated documentation on **[YourSQLDba.Maint.HistoryView](#mainthistoryview)**. These choices are documented in the message that displays the query to use for querying the SQL executed during the maintenance process.
+By enabling the script to compile, deploy, and secure the assembly autonomously, YourSqlDba takes a major step toward self-containment.
+This capability is derived from portions of my own library, **S#** (not yet published on GitHub).
+That library allows C# source code to be embedded directly within an inline function definition, enabling a complete set of T-SQL commands to create the assembly and expose its SQLCLR entry points in SQL Server.
 
-A piece of code invoking log cleanup has been missing since version 6.8.0.0. It is reintroduced in version 7.0.0.1.
+Special thanks to **Solomon Rutzky** ([srutzky@gmail.com](mailto:srutzky@gmail.com)) for his insights on assembly and module security, which helped finalize the design by adding a signature at creation time.
+Now, every DBA can review the relatively straightforward C# code without the risk of executing unsigned assemblies, significantly improving the overall security of YourSqlDba.
 
-Version 7.0.0.2:
-Corrects the message related to issues preventing access to the mirror server. It now includes the possibility that the mirror instance may simply be down.
+Another important benefit is that the database no longer needs to be set as **TRUSTWORTHY**, further increasing security.
+This improvement was made possible by removing all reliance on **Service Broker** for mirror server operations.
+Previously, Service Broker was used to provide a background thread for running restores in parallel with backups.
+It has now been replaced with an automatically created, standalone **SQL Agent YourSqlDba task** dedicated to this purpose.
+That task starts automatically when backups complete and stops itself five minutes after finishing the `restoreQueue` processing.
 
-Version 7.0.0.3:
-When upgrading from a previous version, YourSqlDba Maintenance logs appear larger. Migrating them may cause issues with YourSqlDba log size. To address this, cleanup operations are performed before the upgrade. The DELETE statement is broken into multiple smaller statements (using TOP()) to avoid log oversizing.
+Version 7.1 lays the foundation for the new architecture of YourSqlDba, introducing these components gradually so the original and new architectures can coexist without compromising code quality.
+Upgrading is strongly recommended, especially for its security improvements.
+
+---
+
+With version 7.0, `YourSQLDba.Maint.HistoryView` (**see `Goals/QuickLinks table/Maint.HistoryView (V 7.0+)`**) received several improvements that enhance the visualization of multi-job interactions.
+Events within a selected period are now displayed in chronological order and show simultaneous job activity.
+Each time the log history switches jobs, columns indicating job lineage are highlighted to make these transitions easily identifiable.
+
+`YourSQLDba.Maint.HistoryView` is an essential diagnostic tool for maintenance operations.
+When investigating beyond the scope of a single job, pre-computed datetime values from `Maint.MaintenanceEnums` allow you to query YourSqlDba activity within relative time frames.
+More details are available in the updated documentation.
+
+**[Get script for version 7.0.0.5](https://github.com/pelsql/YourSqlDba/blob/68fbb28cfd3e380eca9b158372e0f077b5c4fa69/YourSQLDba_InstallOrUpdateScript.sql)**
+Version 7.0.0.5 is mandatory, encompassing all earlier changes and fixing issues with documentation links in both the README and `index.md`.
+Interim versions 7.0.0.0 to 7.0.0.4 are deprecated.
+
+**Version 7.0.0.4:**
+A divide-by-zero error may occur in integrity testing when database filtering excludes all databases. This is because table selection is based on `@SpreadCheckDd` job parameter. When computing this selection, the number of databases is taken into account to calculate a modulo value, set either to `@SpreadCheckDd` or the total number of databases.
+
+**Version 7.0.0.3:**
+Upon upgrading from a previous version, YourSqlDba maintenance logs may expand significantly, potentially causing log size issues. To mitigate this, cleanup operations are performed prior to the upgrade, with the DELETE statement broken into smaller statements (using `TOP()`) to prevent log oversizing. On upgrade from version below 7.0.0.2 upgrading may take a sensible time,so just be more patient.
+
+**Version 7.0.0.2:**
+The message for access issues with the mirror server has been updated to indicate that the mirror instance may simply be down.
+
+**Version 7.0.0.1:**
+Code for log cleanup, omitted since version 6.8.0.0, has been reintroduced in version 7.0.0.1. 
+
 
 Version 7.0.0.4:
 Replace TinyUrl links in readme and source that do not work for github links.
