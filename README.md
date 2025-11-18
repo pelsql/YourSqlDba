@@ -28,9 +28,15 @@ There is also, on the landing page, a **`QuickLinks`** table referencing frequen
 
 ### Version history
 
+**Version 7.1.0.1**
+
+Fix for use in the context of YourSqlDba's mirror server feature. The restore queue is now cleaned between full backup executions. This is because the full maintenance job checks at the end if some queued entries are left with an error status. I do this want to stop reporting an error of a previous maintenances.
+
+**[Get script for version 7.1.0.1](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+
 **Version 7.1**
 
-**[Get script for version 7.1](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+**[Get script for version 7.1](https://raw.githubusercontent.com/pelsql/YourSqlDba/c4460c5808e4696b75c1259a754bbcb1693cf1d8/YourSQLDba_InstallOrUpdateScript.sql)**
 
 This version achieves a long-sought goal: removing all external assembly dependencies from YourSqlDba.
 The script now builds its own assemblies from C# source code defined inside an inline table-valued function (iTvf).
