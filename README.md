@@ -30,7 +30,8 @@ There is also, on the landing page, a **`QuickLinks`** table referencing frequen
 
 **Version 7.1.0.1**
 
-Fix for use in the context of YourSqlDba's mirror server feature. The restore queue is now cleaned between full backup executions. This is because the full maintenance job checks at the end if some queued entries are left with an error status. I do this want to stop reporting an error of a previous maintenances.
+The restore queue is now cleared between full-backup executions.
+This change ensures that the full-maintenance job no longer repeatedly reports leftover error entries from previous maintenance cycles. At the end of a cycle, the job performs a final check but intentionally does not remove any queued items that are in an error state. Instead, YourSqlDba sends a message instructing the user to query the queue (via a SELECT statement) to identify failed restores; those entries are then removed at the start of the next maintenance run.
 
 **[Get script for version 7.1.0.1](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
 
