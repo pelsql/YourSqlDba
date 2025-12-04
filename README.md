@@ -28,12 +28,18 @@ There is also, on the landing page, a **`QuickLinks`** table referencing frequen
 
 ### Version history
 
+**Version 7.1.0.2**
+
+In mirroring mode, restore could block log backups. Added internal locking to prevent this.
+
+**[Get script for version 7.1.0.2](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+
 **Version 7.1.0.1**
 
 The restore queue is now cleared between full-backup executions.
 This change ensures that the full-maintenance job no longer repeatedly reports leftover error entries from previous maintenance cycles. At the end of a cycle, the job performs a final check but intentionally does not remove any queued items that are in an error state. Instead, YourSqlDba sends a message instructing the user to query the queue (via a SELECT statement) to identify failed restores; those entries are then removed at the start of the next maintenance run.
 
-**[Get script for version 7.1.0.1](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+**[Get script for version 7.1.0.1](https://raw.githubusercontent.com/pelsql/YourSqlDba/dc41bac618203c31b0d36371671b01ac72dfadc3/YourSQLDba_InstallOrUpdateScript.sql)**
 
 **Version 7.1**
 

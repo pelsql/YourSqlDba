@@ -18,7 +18,7 @@
 Drop Table if Exists #version
 create table #Version (version nvarchar(40), VersionDate datetime)
 set nocount on
-insert into #Version Values ('7.1.0.1', convert(datetime, '2025-11-01', 120))  
+insert into #Version Values ('7.1.0.2', convert(datetime, '2025-12-03', 120))  
 
 --Alter database yoursqldba set single_user with rollback immediate
 --go
@@ -680,7 +680,8 @@ From
   Where found IS NULL And Typ = 'Int' And SrcTxt is NULL
   ) as InvalidModuleMsg
   OUTER APPLY (Select NotFoundMsg=IdFct+'No comment text between start Delim /*'+Delim+' and end Delim '+Delim+'*/!' Where found IS NULL) as NotFound
-  CROSS APPLY (Select TxtInCmt=Coalesce(InvalidDelimMsg, InvalidModuleMsg, NotFoundMsg, DelimTxtFound)) as ResGet
+  CROSS APPLY (Select FailedGetTemplate=Coalesce(InvalidDelimMsg, InvalidModuleMsg, NotFoundMsg)) as FailedGetTemplate
+  CROSS APPLY (Select TxtInCmt=Coalesce(FailedGetTemplate, DelimTxtFound)) as ResGet
 /*===Purpose===
 This function is to get some SQL Code wrapped in a multiline 
 comment that must starts and ends by a Delim of your choice
@@ -872,10 +873,6 @@ Scripting
 ===KeyWords===*/
 ) -- S#.ConcatFromJson
 GO
--- --------------------------------------------------------------------------
--- very useful function for turning templates into real code
--- json tags are expressed as #JsonTagName# and replaced by their json values
--- --------------------------------------------------------------------------
 Create Or Alter Function S#.MultipleReplaces (@Template nvarchar(max), @JsonDataSource Nvarchar(max))
 Returns Table
 as
@@ -952,6 +949,11 @@ Return
     )
     Select replacedTxt=LastReplace 
     from TagReplacements Where AttributeNbOfRow = AttributeRowSeq
+-- --------------------------------------------------------------------------
+-- very useful function for turning templates into real code
+-- json tags are expressed as #JsonTagName# and replaced by their json values
+-- --------------------------------------------------------------------------
+
 /*======= some test example by calling the function itself ===============
   Select replacedTxt
   From 
@@ -1003,7 +1005,9 @@ TEXTIMAGE_ON
 /*===KeyWords===
 Scripting
 ===KeyWords===*/
+
 GO
+Create Or Alter Function S#.GetTemplateFromCmtAndReplaceTags (@delim sysname, @CmtSource Sql_Variant, @JSonDataSource Nvarchar(max))
 -------------------------------------------------------------------------------------
 -- combine two useful functions for code template processing
 -- S#.GetCmtBetweenDelim and S#.MultipleReplaces
@@ -1021,15 +1025,23 @@ GO
 -- It is cleaner to produce the @jsonDataSource with a cross apply query that returns 
 -- a single row with a single column in the form of 
 -- Cross Apply (select jsonDataSource=(Select * from (Values ('tag1', 'value1'), ('tag2', 'value2')) as t(tag, value) for json auto)) as JsonDataSource
+-- Avoid the use of the option Without_array_wrapper in the JSON expression (array wrappers are needed for openjson)
 -------------------------------------------------------------------------------------
-Create Or Alter Function S#.GetTemplateFromCmtAndReplaceTags (@delim sysname, @CmtSource Sql_Variant, @JSonDataSource Nvarchar(max))
 Returns table
 As
 Return
-  Select Code=Code.replacedTxt, Template.moduleName 
+  Select 
+    Code=Code.replacedTxt
+  , Prm.Delim
+  , Prm.CmtSource
+  , Template.moduleName
+  , FailedGetTemplate
+  , TxtInCmt 
+  , Prm.JSonDataSource
   From 
-    S#.GetCmtBetweenDelim (@delim, @CmtSource) as Template
-    CROSS APPLY S#.MultipleReplaces (Template.TxtInCmt, @JsonDataSource) as Code
+    (Select Delim=@Delim, CmtSource=@CmtSource, JSonDataSource=@JSonDataSource) as Prm
+    CROSS APPLY S#.GetCmtBetweenDelim (Prm.delim, Prm.CmtSource) as Template   
+    OUTER APPLY (Select * From S#.MultipleReplaces (Template.TxtInCmt, Prm.JsonDataSource) Where FailedGetTemplate IS NULL)  as Code
 GO
 -- -------------------------------------------------------------------------------------------------------------
 -- Function return full object name of a specific object_id.  Very useful to get fully qualified 
@@ -7811,6 +7823,122 @@ Begin
   
 End -- yMaint.MakeBackupFileName
 GO
+Create Or Alter Function yMaint.iTvf_MakeBackupCmd
+-- ------------------------------------------------------------------------------
+-- Function iTVF that builds backup command
+-- Can be used in a set based fashion, into a compound query
+-- or directly from a udf wrapper
+-- ------------------------------------------------------------------------------
+(
+  @DbName sysname
+, @bkpTyp Char(1)
+, @fileName nvarchar(512)
+, @overwrite Int
+, @name nvarchar(512)
+, @EncryptionAlgorithm nvarchar(10)
+, @EncryptionCertificate nvarchar(100)
+)
+Returns Table
+as
+Return
+SELECT Sql=Internals.Code, Internals.*
+FROM
+  (Select DebugMode=0) as DebugMode
+  CROSS APPLY
+  (
+  Select *
+  From 
+    (
+    SELECT
+      DbName                = @DbName
+    , prmBkpTyp             = @bkpTyp
+    , FileName              = @fileName
+    , prmOverwrite          = @overwrite
+    , prmName               = @name
+    , EncryptionAlgorithm   = @EncryptionAlgorithm
+    , EncryptionCertificate = @EncryptionCertificate
+    , Self                  = 'yMaint.iTvf_MakeBackupCmd'
+    Where DebugMode = 0
+    Union All
+    Select 
+      DbName                = N'TestDb'
+    , bkpTyp                = 'F'
+    , fileName              = N'c:\temp\TestDb_full.bak'
+    , overwrite             = 1
+    , name                  = N'TestDb full backup'
+    , EncryptionAlgorithm   = N'AES_256'
+    , EncryptionCertificate = N'MyBackupCert'
+    , Self                  = 'yMaint.iTvf_MakeBackupCmd' -- select NULL if selected code run from proc
+    Where DebugMode = 1
+    ) AS PrmsFct
+    OUTER APPLY
+    (
+    Select fBkpTyp='Database', fDiffOption= '' Where prmBkpTyp = 'F' Union All
+    Select fBkpTyp='Database', fDiffOption= ', DIFFERENTIAL' Where prmBkpTyp = 'D'
+    ) As BkpTyp
+    CROSS APPLY (Select BkpTyp=ISNULL (fBkpTyp, 'Log'), DiffOption=ISNULL(fDiffOption,'')) as TypAndDiffOpt
+    CROSS APPLY
+    (
+    Select overWrite='Init, Format' Where prmOverwrite = 1 Union All
+    Select overWrite='noInt' Where ISNULL(prmOverwrite,0) <> 1 
+    ) as OverWrite
+    CROSS APPLY (Select EncryptionTemplate = ', ENCRYPTION (ALGORITHM = #EncryptionAlgorithm#, SERVER CERTIFICATE = #EncryptionCertificate#)') As EncryptionTemplate 
+    CROSS APPLY (Select EncryptionOpt=IIF(EncryptionAlgorithm<>'' and EncryptionCertificate<>'', EncryptionTemplate, '')) as EncryptionOpt
+    -- produce different name, depending of the caller only 2 possibility, the default is YourSqlDba, the other is a utiliy function of YourSqlDba
+    CROSS APPLY (Select HeaderName=IIF(prmName Like 'SaveDbOnNewFileSet%', 'SaveDbOnNewFileSet','YourSQLDba')) as HeaderName
+    -- include some date information creation in the name
+    CROSS APPLY (Select FullLenName=HeaderName+':'+replace(left(convert(varchar(8), getdate(), 108),5), ':', 'h')+': '+FileName) as FullLenName
+    -- backup name (not file backup name, but name parameter of backup command)
+    -- is limited to 128, must be truncated accordingly before time stamps
+    -- patindex below finds position just before timestamps in the name
+    OUTER APPLY (Select TruncName=1 Where Len(FullLenName)>128) as TruncName
+    CROSS APPLY 
+    (
+    Select Name=FullLenName Where TruncName IS NULL UNION ALL
+    -- this part of the union all is canceled of the condition TruncName is not 1
+    Select Name=TruncatedName
+    From 
+      (Select DoIt=1 Where TruncName=1) as DoIt
+      CROSS APPLY
+      (
+      Select posInName=Patindex ('%[_]_________________________[_]database.Bak', FullLenName) Where BkpTyp = 'Database' Union All
+      Select posInName=Patindex ('%[_]_________________________[_]logs.trn', FullLenName) Where BkpTyp = 'Log' 
+      ) as PosInName
+      CROSS APPLY (Select SuffixPart=Substring(FullLenName, posInName, 255)) as SuffixPart
+      CROSS APPLY (Select TruncatedName=Left(FullLenName, 128 - Len(SuffixPart)) + '...' + SuffixPart) as TruncatedName
+    ) as Name
+    CROSS APPLY 
+    (
+    Select 
+      SerializeIfLogBkp=IIF(bkpTyp='log', Ser.TxtInCmt, '')
+    , EndSerializeIfLogBkp=IIF(bkpTyp='log', EndSer.TxtInCmt, '')
+    From 
+      S#.GetCmtBetweenDelim('===SerializeIfLogBkp===', Self) as Ser
+      CROSS Apply S#.GetCmtBetweenDelim('===EndSerializeIfLogBkp===', Self) As EndSer
+  /*===SerializeIfLogBkp=== 
+    Exec Sp_getapplock @Resource = 'SerializeLogShip_#DbName#', @LockOwner = 'Session', @LockMode = 'Exclusive', @LockTimeout = 60000;  -- 60s
+  ===SerializeIfLogBkp===*/
+  /*===EndSerializeIfLogBkp=== 
+    EXEC sp_releaseapplock @Resource = 'SerializeLogShip_#DbName#', @LockOwner = 'Session';
+  ===EndSerializeIfLogBkp===*/
+    ) As Ser
+    CROSS APPLY 
+    (SELECT 
+       jPrms = 
+       (SELECT 
+         SerializeIfLogBkp, EndSerializeIfLogBkp
+       , BkpTyp,DbName, FileName, Name, OverWrite, DiffOption, EncryptionOpt
+       , EncryptionAlgorithm,EncryptionCertificate For JSON PATH)
+    ) as J
+    CROSS APPLY (Select * From S#.GetTemplateFromCmtAndReplaceTags('===BkpCmdTempl===', Self, jPrms) as C) as Sql
+  ) Internals
+-- here is the templace for backup commands
+/*===BkpCmdTempl===
+#SerializeIfLogBkp# backup #BkpTyp# [#DbName#] 
+   to disk = '#fileName#' 
+   with #OverWrite##DiffOption#, checksum, name = '#Name#', bufferCount = 20, MAXTRANSFERSIZE = 1048576 #EncryptionOpt# #EndSerializeIfLogBkp#
+===BkpCmdTempl===*/
+GO
 -- ------------------------------------------------------------------------------
 -- Function that builds backup command
 -- ------------------------------------------------------------------------------
@@ -7827,70 +7955,11 @@ Create Or Alter Function yMaint.MakeBackupCmd
 returns nvarchar(max)
 as
 Begin
-
-  Declare @sql       nvarchar(max)
-
-  -- Make query boilerplate with replaçable parameters delimited by "<" and ">"
-  -- double quotes are replaced by 2 single quotes. This trick avoid the unreadability
-  -- of double single quotes
-  Set @sql = 
-  '
-   backup <typ> [<DbName>] 
-   to disk = "<fileName>" 
-   with <repl><diff>, checksum, name = "<name>", bufferCount = 20, MAXTRANSFERSIZE = 4096000 <Encryption>
-   '
-
-  set @sql = replace(@sql,'"','''') -- trick that avoid doubling single quote in the boilerplate
-
-  If @bkpTyp = 'F' Or @bkpTyp = 'D'
-     Set @sql = replace(@sql,'<typ>', 'database')
-  Else   
-     Set @sql = replace(@sql,'<typ>', 'log')
-
-  Set @sql = replace(@sql,'<DbName>', @DbName) -- nom de la Bd
-  
-  Set @sql = replace(@sql,'<repl>', case when @overwrite = 1 Then 'Init, Format' else 'noInit' end) 
-
-  Set @sql = replace(@sql,'<diff>', case when @bkpTyp = 'D' Then ', DIFFERENTIAL' else '' end) 
-
-  Set @sql = Replace(@sql, '<Filename>', @filename)
-
-  If @EncryptionAlgorithm<>'' and @EncryptionCertificate<>''
-  BEGIN
-     Set @sql = Replace(@sql, '<Encryption>',',ENCRYPTION (ALGORITHM = <Algorithm>, SERVER CERTIFICATE = <Certificate>)')
-     Set @sql = Replace(@sql, '<Algorithm>',@EncryptionAlgorithm)
-     Set @sql = Replace(@sql, '<Certificate>',@EncryptionCertificate)
-  END
-  ELSE
-     Set @sql = Replace(@sql, '<Encryption>','')
-
-  Set @name = 
-      case 
-        when @name like 'SaveDbOnNewFileSet%' Then 'SaveDbOnNewFileSet'
-        Else 'YourSQLDba'
-      End + ':'+replace(left(convert(varchar(8), getdate(), 108),5), ':', 'h')+': '+@filename
- 
-  -- backup name (not file backup name, but name parameter of backup command)
-  -- is limited to 128, must be truncated accordingly before time stamps
-  -- patindex below finds position just before timestamps in the name
-  Declare @pos int
-  Declare @fin nvarchar(100)
-
-  If len(@name) > 128
-  Begin
-    If @bkpTyp = 'F' 
-      Set @pos = Patindex ('%[_]_________________________[_]database.Bak', @name)
-    Else 
-      Set @pos = Patindex ('%[_]_________________________[_]logs.trn', @name);
-
-    Set @fin = Substring(@name, @pos, 255)
-    Set @name = left(@name, 128 - len(@fin) - 3) + '...' + @fin
-  End
-  
-  Set @sql = replace(@sql,'<name>', @name)
-
-  Return (@sql)
-  
+  Return 
+  (
+  Select Sql 
+  From yMaint.iTvf_MakeBackupCmd( @DbName, @bkpTyp, @fileName, @overwrite, @name, @EncryptionAlgorithm, @EncryptionCertificate)
+  )
 End -- yMaint.MakeBackupCmd
 GO
 -------------------------------------------------------------------------------------
@@ -10169,7 +10238,7 @@ Begin
   If @DoInteg=1 And @DoBackup = 'F'
   Begin
     exec yMaint.LogCleanup 
-    Delete Mirroring.RestoreQueue -- remove leftover from previous exec with error flag E
+    Delete Mirroring.RestoreQueue -- remove leftover from previous exec
   End
 
   -- ==============================================================================
@@ -10197,13 +10266,15 @@ Begin
   -- on complete backups suppress old files just before backup start
   If @DoBackup IN ('F', 'L', 'D')
   Begin
-    Exec yMaint.backups
+    Exec yMaint.backups -- get its parameters from Job context...
   End -- If @DoBackup  
 
-  -- Wait for emptying the Mirroring.RestoreQueue
+  -- Wait for emptying the Mirroring.RestoreQueue, including log backup, to have 
+  -- also log restores into the same job.
+  -- typically Mirroring.RestoreQueue has nothing in it when @MirrorServer is not completed
+  -- but someone could re-run the job 
   -- If backups are to be mirrored than we Launch a login synchronisation on the mirror server
-  If isnull(@MirrorServer, '') <> ''
-    And (@DoBackup = 'F' Or @DoBackup = 'D')
+  If isnull(@MirrorServer, '') <> '' And @DoBackup IN ('F', 'L', 'D') 
   Begin
     While (1=1) -- wait all mirrored backup to be done before lauching login synchro
     Begin
@@ -10212,7 +10283,7 @@ Begin
         Waitfor Delay '00:01:00' -- wait a minute for a second test
       Else
       Begin
-        -- there is nothing else to process but restores in error remain
+        -- there is nothing else to process but it remains some restores in error log an error
         If Exists (Select * From Mirroring.RestoreQueue Where ErrorN <> 0)
         Begin
           Exec yExecNLog.LogAndOrExec 
@@ -12725,7 +12796,7 @@ EXEC
       , @sql     = @sql
       , @errorN  = @errorN OUTPUT
 
-      REVERT;
+      REVERT; -- EXECUTE AS LOGIN = 'YourSqlDba';
 
       Exec Dbo.LogEvent 
         @MsgTemplate = 'JobNo:#JobNo# - Restore (#bkpTyp#) #DbName# processed at server #MirrorServer#'
@@ -13018,7 +13089,7 @@ Begin
         Raiserror (N'To restore a full backup to the mirror server the database %s must be in «RESTORING» state or not exists', 11, 1, @DbName)
       End
 
-      -- previous database must be removed to have accurate information abut its last_lsn in msdb
+      -- previous database must be removed to have accurate information about its last_lsn in msdb
       -- Generate restore command
       Set @sql = 
       '
@@ -13115,7 +13186,7 @@ Begin
     -- so we skip request for this type of restore
     If @BackupType='D' And @MigrationTestMode = 0 
     Begin
-      Set @sql = '<RestoreCmd>'
+      Set @sql = ''
       Set @Position = 0
       
       -- To restore a log backup the database must exists and have the status «RESTORING»
@@ -13179,7 +13250,7 @@ Begin
     -- so we skip request for this type of restore
     If @BackupType='L' And @MigrationTestMode = 0 
     Begin
-      Set @sql = '<RestoreCmd>'
+      Set @sql = ''
       Set @Position = 0
       
       -- To restore a log backup the database must exists and have the status «RESTORING»
@@ -13189,54 +13260,42 @@ Begin
         Raiserror (N'To restore a LOG backup to the mirror server the database %s must be in «RESTORING» state', 11, 1, @DbName)
       End
          
-      while 1=1
-      Begin
-        -- check database state to see which file of the log backup has to be restored
-        -- funny enough restore database appears also in msdb.dbo.backupSet
-        -- this information (position) is obtained through the last_lsn restore versus
-        -- last_lsn into the backup
+      -- check database state to see which file of the log backup has to be restored
+      -- funny enough restore database appears also in msdb.dbo.backupSet
+      -- this information (position) is obtained through the last_lsn restore versus
+      -- last_lsn into the backup
 
-        Select Top 1 @Position = H.Position --first position that match the last_lsn
+      -- Generate restore log commands.  
+      -- Do not handle move command.  To acheive this there is an need to add column createLsn
+      -- to Maint.TemporaryBackupFileListInfo and generate the move command only for the lsn
+      -- that is between the backup lsn.  Also proceeed to replace in the file name.
+      -- Some job but not overwhelming
+
+      Select 
+        @Sql=
+        STRING_AGG(Sql.Code, '') WITHIN GROUP (ORDER BY H.Position ASC) 
+      From 
+        (
+        Select database_name, Max(last_lsn) as last_lsn
         From 
-          (
-          Select database_name, Max(last_lsn) as last_lsn
-          From 
-            msdb.dbo.backupset B 
-          Group By database_name        
-          ) X
-          Join
-          Maint.TemporaryBackupHeaderInfo H
-          ON   H.spid = @@spid
-           And H.DatabaseName = X.database_name collate database_default
-           AND H.LastLSN > X.last_lsn
-        Where H.Position > @Position
-        Order By H.Position
-        
-        If @@rowcount = 0
-          break
-          
-        -- Generate restore command.  
-        -- Do not handle move command.  To acheive this there is an need to add column createLsn
-        -- to Maint.TemporaryBackupFileListInfo and generate the move command only for the lsn
-        -- that is between the backup lsn.  Also proceeed to replace in the file name.
-        -- Some job but not overwhelming
-        Set @sqlcmd = 
-        'RESTORE LOG [<DbNameDest>]
-         FROM DISK="<nomSauvegarde>" 
-         WITH FILE=<Position>, NORECOVERY, CHECKSUM,bufferCount = 20,MAXTRANSFERSIZE = 4096000
-        '    
-        Set @sqlcmd = replace (@sqlcmd, '"', '''')
-        Set @sqlcmd = replace (@sqlcmd, '<DbNameDest>', @DbName)
-        Set @sqlcmd = replace (@sqlcmd, '<nomSauvegarde>', @Filename)
-        Set @sqlcmd = replace (@sqlcmd, '<Position>', CONVERT(nvarchar(10), @Position))
-
-        Set @sql = REPLACE( @sql, '<RestoreCmd>', @sqlcmd)
-        Set @sql = @sql + char(10) + '<RestoreCmd>'
-            
-      End
-      
-      Set @sql = REPLACE( @sql, '<RestoreCmd>', '')
-      
+          msdb.dbo.backupset B 
+        Group By database_name        
+        ) X
+        Join
+        Maint.TemporaryBackupHeaderInfo H
+        ON   H.spid = @@spid
+         And H.DatabaseName = X.database_name collate database_default
+         AND H.LastLSN > X.last_lsn
+        CROSS APPLY (Select DbName=DatabaseName, FileName=@FileName, Position=CONVERT(nvarchar(10), H.Position), Self=NULL) as Prm
+        CROSS APPLY (Select jPrms=(Select Prm.* For JSON Path)) as jPrms
+        CROSS APPLY (Select * From S#.GetTemplateFromCmtAndReplaceTags ('===DoRestoreTempl===', Self, jPrms) as C) as Sql
+/*===DoRestoreTempl===
+          Exec Sp_getapplock @Resource = 'SerializeLogShip_#DbName#', @LockOwner = 'Session', @LockMode = 'Exclusive', @LockTimeout = 60000;  -- 60s
+          RESTORE LOG [#DBName#]
+          FROM DISK='#FileName#'
+          WITH FILE=#Position#, NORECOVERY, CHECKSUM,bufferCount = 20,MAXTRANSFERSIZE = 4096000
+          EXEC sp_releaseapplock @Resource = 'SerializeLogShip_#DbName#', @LockOwner = 'Session';
+===DoRestoreTempl===*/            
     End
     
     If @sql <> ''  -- could be still NULL which is also false.
