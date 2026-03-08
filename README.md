@@ -64,6 +64,8 @@ The PowerShell script (this tool) scans the current source, builds a table of th
 You can scroll through the list or search for a specific string. Once an item is selected, click OK. No text must be selected when doing so.
 
 These comments highlight the architectural elements of YourSqlDba. Reading them helps provide an overview of the project. They also make it easier to locate those elements in YourSqlDba, which is a very large script.
+
+
 **Version 7.1.0.2**
 
 In mirroring mode, restore could block log backups. Added internal locking to prevent this.
