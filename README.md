@@ -44,22 +44,11 @@ A valid alternative is to import the binary content into SQL Server and create t
 Code maintenance was also done to improve clarity. No features were added or changed.
 
 Some tooling was added to help with code maintenance.
-
-A permanent bookmark system is now used, based on special comments in the code of the form:
-
+A permanent bookmark system is now used, based on special comments in the code of the form. The comment is the name of the bookmark.
 ```sql
 -- @@MARK: Some comment explaining the purpose of this section of code
 ```
-
-Code maintenance was done to improve code clarity, no new feature changed.
-
-Some tooling added for helping code maintenance:
-
-Permanent bookmark system with special comments put in code in the form of
- 
--- @@MARK: Some comment explaining the purpose of this section of code
-
-To add it, in SSMS 22.3 or above goto Tools/External Tools,click add:
+To add this tooling, in SSMS 22.3 or above (not tested in previous versions) goto Tools/External Tools, click add:
 
 Via Tools/External Tools
 
