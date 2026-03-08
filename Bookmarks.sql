@@ -1,0 +1,125 @@
+-------------------------------------------------------------------------------------------
+-- To obtain this list updated run C:\GitHub\YourSqlDba\Show-Marks.ps1 in C:\GitHub\YourSqlDba\
+-------------------------------------------------------------------------------------------
+-- In SSMS : Do Ctrl+G → and supply matching line number.
+-- 193  -- @@MARK: Upgrading process
+-- 387  -- @@MARK: Recreate YourSqlDba
+-- 490  -- @@MARK: MaintenanceEnums
+-- 612  -- @@MARK: Generating code - Get Template
+-- 799  -- @@MARK: Generating code - S#.ConcatFromJson - Use instead STRING_AGG
+-- 882  -- @@MARK: Generating code - Multiple replaces in one call, using Json key pair list
+-- 1018 -- @@MARK: Generating code - Get template and do multiple replaces from Json key pair list
+-- 1077 -- @@MARK: Running batch of generated code -- Set Log table
+-- 1177 -- @@MARK: Running batch of generated code -- return SQL on multiple lines for readability
+-- 1218 -- @@MARK: Running batch of generated code -- return SQL on multiple lines (numbered) for readability
+-- 1233 -- @@MARK: Running batch of generated code -- print SQL on multiple lines for readability
+-- 1313 -- @@MARK: Running batch of generated code -- Error message reporting
+-- 1384 -- @@MARK: Running batch of generated code -- Error message reporting - With user defined msgTemplate or default
+-- 1421 -- @@MARK: Execute DBCC and report errors
+-- 1549 -- @@MARK: Running batch of generated code -- Error message reporting - Intercepting multiple messages (error or not) for reporting
+-- 1745 -- @@MARK: Running batch of generated code -- Error message reporting - Get Error messages and info from extended event target
+-- 1940 -- @@MARK: Running batch of generated code -- table for SQL batches generated and to run
+-- 1961 -- @@MARK: Running batch of generated code -- view to simplify access to table of SQL batches generated and to run
+-- 1970 -- @@MARK: Running batch of generated code -- automation to cleanup before inserts to table of SQL batches generated and to run
+-- 1986 -- @@MARK: Running batch of generated code -- automation to simplify inserts to table of SQL batches generated and to run
+-- 1996 -- @@MARK: Running batch of generated code -- automation to cleanup append inserts to table of SQL batches generated and to run
+-- 2017 -- @@MARK: Running batch of generated code -- logging of last query run in the batch
+-- 2074 -- @@MARK: Running batch of generated code -- S#.RunScript - Main procedure to run code generated and log
+-- 2346 -- @@MARK: Dynamic SQL -- CLR and TSQL that run SQL and return all messages with a given exec.
+-- 2539 -- @@MARK: File operations -- CLR and TSQL code parts that does some file operations
+-- 2786 -- @@MARK: Assembly management -- Generated all code to compile, create, Authorize, Drop assembly
+-- 3127 -- @@MARK: Assembly management -- make all code to Drop assembly
+-- 3178 -- @@MARK: Assembly management -- make all code to compile assembly
+-- 3216 -- @@MARK: Assembly management -- make all code needed to compile one assembly and create its SQL
+-- 3225 -- @@MARK: Assembly management -- make all code needed to compile assemblies and create their SQL
+-- 3274 -- @@MARK: String function S#.DedupSeqOfChar
+-- 3305 -- @@MARK: Pedigree of the caller for improving logging or maintenance queries
+-- 3349 -- @@MARK: Generate code to set a session context that make accessible global param of maintenance to the callees
+-- 3442 -- @@MARK: Object naming vs Object Id
+-- 3578 -- @@MARK: String - remove repeating spaces
+-- 3587 -- @@MARK: Best practices reporting
+-- 3669 -- @@MARK: Report unapplied best practices
+-- 3688 -- @@MARK: Todo: Remove or replace this function by S#.MultipleReplaces or better
+-- 3727 -- @@MARK: TODO : Replace this code with more suitable fonction
+-- 3748 -- @@MARK: Logging SQL UnIndent
+-- 3776 -- @@MARK: TODO : check if this function is still needed
+-- 3804 -- @@MARK: TODO : check if this function is still needed
+-- 3879 -- @@MARK: Performance : analyse waitstats -- reset
+-- 4002 -- @@MARK: Performance : see current queries
+-- 4252 -- @@MARK: TODO : check if this function is still needed
+-- 4265 -- @@MARK: Install : Reimport data for jobHistory
+-- 4336 -- @@MARK: Maintenance : Return context info of the maintenance
+-- 4418 -- @@MARK: Install : Reimport data for other table
+-- 4661 -- @@MARK: TODO : check if this function is still needed and see the alternate S#.Sqlcode...
+-- 4838 -- @@MARK: TODO : check if this function is still needed
+-- 4853 -- @@MARK: TODO : check if this function is still needed
+-- 4877 -- @@MARK: TODO : check if this function is still needed
+-- 4909 -- @@MARK: TODO : check if this function is still needed
+-- 4942 -- @@MARK: TODO : improve this function to new functional style
+-- 5031 -- @@MARK: TODO : check code use
+-- 5175 -- @@MARK: TODO : very code use
+-- 5200 -- @@MARK: TODO : very code use
+-- 5251 -- @@MARK: TODO : very code use
+-- 5296 -- @@MARK: Dynamic SQL for YourSqlDba
+-- 5340 -- @@MARK: Dynamic SQL and Logging for YourSqlDba
+-- 5690 -- @@MARK: TODO : In-progress Dynamic SQL for YourSqlDba through a SQL Batch - to use and test
+-- 5761 -- @@MARK: Dynamic creation of header info table for RESTORE HEADERONLY with extra columns for each version
+-- 5874 -- @@MARK: Dynamic creation of flie list table for RESTORE FileListOnly with extra columns for each version
+-- 6008 -- @@MARK: Maintenance - PutDbOffline
+-- 6056 -- @@MARK: Maintenance - Mail diag
+-- 6090 -- @@MARK: TODO : Check Use
+-- 6208 -- @@MARK: Reporting: HitoryView
+-- 6456 -- @@MARK: Reporting : Prep message to send to User
+-- 6597 -- @@MARK: Reporting : Mail message to send to User
+-- 6735 -- @@MARK: Maintenance : Apply Full recovery model policy
+-- 6794 -- @@MARK: Maintenance : shrink logs
+-- 6941 -- @@MARK: Maintenance : shrink all logs
+-- 6974 -- @@MARK: Maintenance : bring back online all
+-- 7009 -- @@MARK: Maintenance : logs cleanup
+-- 7104 -- @@MARK: Maintenance : process integrity testing
+-- 7382 -- @@MARK: Maintenance : update stats
+-- 7532 -- @@MARK: Maintenance : Todo : outaded way to reorganize / rebuild indexes
+-- 7788 -- @@MARK: Todo : better way?
+-- 7805 -- @@MARK: Todo : better way?
+-- 8049 -- @@MARK: Mirroring - Set restore Job
+-- 8146 -- @@MARK: Mirroring - Start restore job
+-- 8228 -- @@MARK: Mirroring - Queue restore
+-- 8310 -- @@MARK: Mirroring - Replicate logins - cleanup before
+-- 8373 -- @@MARK: Maintenance - Old backup cleanup
+-- 8647 -- @@MARK: Mirroring - Replicate on login to mirror
+-- 8773 -- @@MARK: Mirroring - Replicate logins to mirror
+-- 8925 -- @@MARK: Mirroring - Diag matching versions
+-- 9066 -- @@MARK: Maintenance - Process backups
+-- 9608 -- @@MARK: Maintenance Mirroring - ConfigureSecurity
+-- 9732 -- @@MARK: Maintenance Mirroring - Cleanup and diag Linked Server for Mirroring
+-- 9890 -- @@MARK: TODO : Check for use and duplicate fonction in S#, check also if function that dedup space can be replaced by this
+-- 9909 -- @@MARK: Maintenance : CommVault - Sync with backups done by external backup tooling
+-- 9921 -- @@MARK: Maintenance : CommVault - Sync with backups done by external backup tooling
+-- 9930 -- @@MARK: Maintenance : DoMaint !
+-- 10464 -- @@MARK: TODO : Check for use of function parse file parts
+-- 10494 -- @@MARK: Maintenance : Tool for Admin - Backups
+-- 10673 -- @@MARK: Maintenance : Tool for Admin - Duplicate Db
+-- 10828 -- @@MARK: Maintenance : Tool for Admin - DuplicateDb using backup history
+-- 11090 -- @@MARK: Maintenance : Tool to restoreDb with move clause
+-- 11318 -- @@MARK: TODO : Check for use
+-- 11368 -- @@MARK: TODO : To remove soon
+-- 11385 -- @@MARK: TODO : Question the need...
+-- 11826 -- @@MARK: Install YourSqlDba
+-- 12122 -- @@MARK: TODO : Question for need
+-- 12349 -- @@MARK: TODO : Check for use - Very old update
+-- 12607 -- @@MARK: TODO : Check for use
+-- 12678 -- @@MARK: TODO : Check for use
+-- 12690 -- @@MARK: TODO : Check for use
+-- 12728 -- @@MARK: Mirroring DropServer
+-- 12793 -- @@MARK: Mirroring Procedure to process restores
+-- 12934 -- @@MARK: Mirroring AddServer
+-- 13057 -- @@MARK: Mirroring DoRestore
+-- 13534 -- @@MARK: Tooling for database on application update
+-- 14036 -- @@MARK: TODO : Check for use
+-- 14289 -- @@MARK: TODO : Check for use Exporting database
+-- 17132 -- @@MARK: Mirroring : Upgrade SQL using failover
+-- 17159 -- @@MARK: Mirroring : failover
+-- 17540 -- @@MARK: TODO: Broker left over to cleanup until everybody use a mandatory version
+-- 17579 -- @@MARK: TODO : Soo old need to be removed
+-- 17627 -- @@MARK: Mirroring : Verify and clean up mirroring setups
+-- 17651 -- @@MARK: Version Message

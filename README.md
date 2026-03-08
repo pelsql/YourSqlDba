@@ -28,11 +28,58 @@ There is also, on the landing page, a **`QuickLinks`** table referencing frequen
 
 ### Version history
 
+
+**Version 7.1.0.3**
+
+**[Get script for version 7.1.0.3](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+
+Fix for the small number of users who use a gMSA (*group Managed Service Account*) to run the Database Engine service.
+
+This type of account slightly reduces the rights granted to the relational engine for disk access. As a result, creating an assembly directly from its DLL file can fail.
+
+A valid alternative is to import the binary content into SQL Server and create the assembly from that binary content.
+
+--- 
+
+Code maintenance was also done to improve clarity. No features were added or changed.
+
+Some tooling was added to help with code maintenance.
+
+A permanent bookmark system is now used, based on special comments in the code of the form:
+
+```sql
+-- @@MARK: Some comment explaining the purpose of this section of code
+```
+
+Code maintenance was done to improve code clarity, no new feature changed.
+
+Some tooling added for helping code maintenance:
+
+Permanent bookmark system with special comments put in code in the form of
+ 
+-- @@MARK: Some comment explaining the purpose of this section of code
+
+To add it, in SSMS 22.3 or above goto Tools/External Tools,click add:
+
+Via Tools/External Tools
+
+|To Complete | Sample Value |
+|---|---|
+|Title |Goto-Mark |
+|Command |C:\Program Files\PowerShell\7\pwsh.exe |
+|Arguments |-NoProfile -ExecutionPolicy Bypass -File "C:\Github\YourSqlDba\Goto-Mark.ps1" "$(ItemPath)" "$(ItemFileName)" |
+|Initial directory |$(ItemDir) |
+
+The PowerShell script (this tool) scans the current source, builds a table of these marks, and displays it in a grid window.
+
+You can scroll through the list or search for a specific string. Once an item is selected, click OK. No text must be selected when doing so.
+
+These comments highlight the architectural elements of YourSqlDba. Reading them helps provide an overview of the project. They also make it easier to locate those elements in YourSqlDba, which is a very large script.
 **Version 7.1.0.2**
 
 In mirroring mode, restore could block log backups. Added internal locking to prevent this.
 
-**[Get script for version 7.1.0.2](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+**[Get script for version 7.1.0.2](https://raw.githubusercontent.com/pelsql/YourSqlDba/5b53e48ee0da146731bca28e92a3088108d89d38/YourSQLDba_InstallOrUpdateScript.sql)**
 
 **Version 7.1.0.1**
 

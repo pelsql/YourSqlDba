@@ -1,0 +1,6 @@
+<Solution>
+  <Configurations>
+    <BuildType Name="Default" />
+    <Platform Name="Default" />
+  </Configurations>
+</Solution>

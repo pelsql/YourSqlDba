@@ -1,7 +1,7 @@
 ﻿-- Copyright 2008 Maurice Pelchat  
 -- YourSQLDba : Auto-maintenance tools for SQL Server Databases
 -- Author : Maurice Pelchat
-
+--
 -- GitHub Website Readme : https://github.com/pelsql/YourSqlDba#readme
 -- Latest release of YourSqlDba : https://github.com/pelsql/YourSqlDba/blob/master/YourSQLDba_InstallOrUpdateScript.sql?raw=true
 -- Online Documentation : https://1drv.ms/o/c/12c385255443c4ed/Eu3EQ1QlhcMggBKoGwAAAAABRvootARfhNKB2ZzsOSOrfA?e=usHzVk
@@ -14,11 +14,11 @@
 --       Job reporting and diagnostic
 --       More on diagnostics
 --       Version History
-
+--
 Drop Table if Exists #version
 create table #Version (version nvarchar(40), VersionDate datetime)
 set nocount on
-insert into #Version Values ('7.1.0.2', convert(datetime, '2025-12-03', 120))  
+insert into #Version Values ('7.1.0.3', convert(datetime, '2025-12-03', 120))  
 
 --Alter database yoursqldba set single_user with rollback immediate
 --go
@@ -190,6 +190,7 @@ If Db_name() <> 'TempDb'  Use TempDb;
 GO
 -- ****************************************************************************************************
 -- Save actual copy of YourSqlDba, in case a rollback is needed or past yoursqldba logs would be useful
+-- @@MARK: Upgrading process of actual YourSqlDba to this script version
 -- ****************************************************************************************************
 
 If databasepropertyEx('YourSQLDba','status') IS NOT NULL -- db is there
@@ -382,7 +383,8 @@ Select -- trick to select good values that comes from different rows, on a singl
 , @pathLog  = max(case when type = 1 Then path else '' End) 
 From RankBestFileLocations
 Where best = 1 
-   
+
+-- @@MARK: Recreate YourSqlDba Database
 Set @sql =
 '
 Create Database YourSQLDba
@@ -485,6 +487,7 @@ Exec('Create schema Tools authorization dbo;')
 Exec('Create schema yUtl authorization dbo;')
 Exec('Create schema S# authorization dbo;') -- for copying new code from S# library
 GO
+-- @@MARK: MaintenanceEnums - A way to get enums (or constants) in queries
 Create or Alter View Maint.MaintenanceEnums AS
 Select 
   -- useful, general use constants to describe maintenance parameters
@@ -605,6 +608,8 @@ From
 Enumeration,constants,parameters
 ===KeyWords===*/
 GO
+
+-- @@MARK: Generating code - Get code Template from comments (in batch, sp or other SQL module), so no more worrring about quote doubling even for nest code
 Create Or Alter Function [S#].[GetCmtBetweenDelim] (@delim sysname, @ModuleRef Sql_Variant)
 Returns table
 as
@@ -791,131 +796,11 @@ This function have a very extensive use in this library!
 -------------------------------------------------------------------------------------------------------------
 ) --S#.GetCmtBetweenDelim
 GO
-Create Or Alter Function S#.ConcatFromJson(@InitSeparator nvarchar(10), @Separator nvarchar(10), @json nvarchar(max)) -- makes concat easier to do
-Returns Table
-As
-Return
------------------------------------------------------------------------------------------------------
--- this fonction accept muti-row of a single column values put in a Json Auto with optional order 
-
--- expression to concat extract them with openjson and concat them using an XML expression.
--- some escaped char have to be removed because they are created by the XML concat expression
---
--- There is 3 parameters, Initial separator which replace separator on the first row value
--- If initial separator is NULL, separator is used everywhere, initial separator is the same as separator
--- if initial separator is non-null, it replace first separator by its value
------------------------------------------------------------------------------------------------------
-(
-  Select result
-  From
-    (Select Separator=ISNULL(@Separator,''), J=@json) as Prm0
-    -- no initSeparator, take same value as separator
-    CROSS APPLY (Select InitSeparator=ISNULL(@InitSeparator, Prm0.Separator), Prm0.J) as Prm
-    -- SQL do not mesure trailings spaces in LEN function, so add an extra non space char, mesure this len minus one.
-    CROSS APPLY (Select LenInitSeparator=LEN(InitSeparator+'|')-1) as LenInitSeparator
-    CROSS APPLY (Select lenSeparator=LEN(Separator+'|')-1) LenSeparator
-    -- concat everything with separator, so initSeparator is not there yet, separator is at its place
-    CROSS APPLY
-    (
-    Select 
-      allConcat=
-      (
-      Select isnull(Separator,'') +Conc.Col as [text()]
-      From  (Select * From openJson(Prm0.j) with (Col nvarchar(max))) as Conc
-      For XML Path(''),TYPE).value -- ,TYPE).value('.','NVARCHAR(MAX)') allow to make no escapes for ' " < > & in result
-      ('.','NVARCHAR(MAX)') 
-    ) As allConcat
-    -- cases to deal with
-
-    -- separator is empty string if @separator is null, and initSeparator is the same as separator, if InitSeparator is null
-    -- InitSeparator isn't null, remove start of string of the len of Separator, and put InitSeparator instead as first separator
-    -- Shortcut job work, if there is no sep, job done
-    Outer Apply (Select ConcatAllNoSep=allConcat Where InitSeparator = '' And Separator = '') as ConcatAllNoSep
-    -- otherwise Handle initialSeparator
-    OUTER Apply (Select ConcatAllButFirst=STUFF(allConcat, 1, LenSeparator, InitSeparator) Where ConcatAllNoSep Is NULL) as ConcatAllButFirst
-    CROSS APPLY (Select Result=COALESCE(ConcatAllNoSep, ConcatAllButFirst)) as Result
-/*-- some test
-Select J1.result, ExpectedRes, ok, Test=IIf(ok=1, 'Success', 'Fail')+' for '+TestName, ColsTbInJson, InitSep, Sep, Expected
-From 
-  (Values ('Set1')) as S(SetN)
-  cross join (Select Nl=char(13)+CHAR(10)) as Nl
-  cross apply
-  (  
-  Select 
-    ColsTbInJson=
-    (
-    Select Col=item+NL
-    From (Values ('Set1', 'Select item1&', 1), ('Set1', 'Select [item2]<', 2), ('Set1', 'Select {item3}"', 3)) as t(setN, item, ord) 
-    Where t.setN=S.setN
-    order by ord
-    FOR Json auto
-    )
-  ) as x
-  CROSS APPLY -- parameter for cases to test, and expected result
-  (
-  Select *
-  From
-    (
-    Values 
-         (NULL       , NULL   , 'Select item1&\nSelect [item2]<\nSelect {item3}"\n'          , 'Null separators, so no sep between them')
-    ,    (NULL       , ', '   , ', Select item1&\n, Select [item2]<\n, Select {item3}"\n'    , 'NULL Initial separator, separator initial separator = separator')
-    ,    ('          '      , 'Union all '  , '          Select item1&\nUnion all Select [item2]<\nUnion all Select {item3}"\n' , 'some initial separator to substitute to first occurence of separator' )
-    ) as t(initSep, Sep    , Expected                             , TestName)
-    CROSS APPLY (Select expectedRes=REPLACE(expected, '\n', NL)) as ExpectedRes
-  ) TestData
-  Cross apply S#.ConcatFromJson(initSep, Sep,  colsTbInJson) as J1
-  Outer apply (select Ok=1 Where result=ExpectedRes) as Ok
--- end of test cases
-*/
-
-/*===KeyWords===
-Scripting
-===KeyWords===*/
-) -- S#.ConcatFromJson
-GO
+-- @@MARK: Generating code - Multiple replaces in one call, using Json key pair list
 Create Or Alter Function S#.MultipleReplaces (@Template nvarchar(max), @JsonDataSource Nvarchar(max))
 Returns Table
 as
 Return 
----
---- JSON support makes Dbo.ReplaceTagsMatchingXMLAttributesNamesByTheirValue obsolete.
---- This version does the same thing faster.
----
--- keep this commented code below to test inner working of the query
---
---declare @JsonDataSource as nvarchar(max) =
---'
---[
---    {
---        "TbName": "[S#].[RealRestoreFileListOnly]",
---        "Cols": "  [spid] int NULL Default (@@spid)\n, [LogicalName] nvarchar(128) NULL\n, [PhysicalName] nvarchar(260) NULL\n, [Type] nchar(1) NULL\n, [FileGroupName] nvarchar(128) NULL\n, [Size] numeric(20, 0) NULL\n, [MaxSize] numeric(20, 0) NULL\n, [FileID] bigint NULL\n, [CreateLSN] numeric(25, 0) NULL\n, [DropLSN] numeric(25, 0) NULL\n, [UniqueID] uniqueidentifier NULL\n, [ReadOnlyLSN] numeric(25, 0) NULL\n, [ReadWriteLSN] numeric(25, 0) NULL\n, [BackupSizeInBytes] bigint NULL\n, [SourceBlockSize] int NULL\n, [FileGroupID] int NULL\n, [LogGroupGUID] uniqueidentifier NULL\n, [DifferentialBaseLSN] numeric(25, 0) NULL\n, [DifferentialBaseGUID] uniqueidentifier NULL\n, [IsReadOnly] bit NULL\n, [IsPresent] bit NULL\n, [TDEThumbprint] varbinary(32) NULL\n, [SnapshotURL] nvarchar(36) NULL\n"
---    },
---    {
---        "TbName": "[S#].[RealRestoreHeaderOnly]",
---        "Cols": "  [spid] int NULL Default (@@spid)\n, [BackupName] nvarchar(128) NULL\n, [BackupDescription] nvarchar(255) NULL\n, [BackupType] smallint NULL\n, [ExpirationDate] datetime NULL\n, [Compressed] tinyint NULL\n, [Position] smallint NULL\n, [DeviceType] tinyint NULL\n, [UserName] nvarchar(128) NULL\n, [ServerName] nvarchar(128) NULL\n, [DatabaseName] nvarchar(128) NULL\n, [DatabaseVersion] int NULL\n, [DatabaseCreationDate] datetime NULL\n, [BackupSize] numeric(20, 0) NULL\n, [FirstLSN] numeric(25, 0) NULL\n, [LastLSN] numeric(25, 0) NULL\n, [CheckpointLSN] numeric(25, 0) NULL\n, [DatabaseBackupLSN] numeric(25, 0) NULL\n, [BackupStartDate] datetime NULL\n, [BackupFinishDate] datetime NULL\n, [SortOrder] smallint NULL\n, [CodePage] smallint NULL\n, [UnicodeLocaleId] int NULL\n, [UnicodeComparisonStyle] int NULL\n, [CompatibilityLevel] tinyint NULL\n, [SoftwareVendorId] int NULL\n, [SoftwareVersionMajor] int NULL\n, [SoftwareVersionMinor] int NULL\n, [SoftwareVersionBuild] int NULL\n, [MachineName] nvarchar(128) NULL\n, [Flags] int NULL\n, [BindingID] uniqueidentifier NULL\n, [RecoveryForkID] uniqueidentifier NULL\n, [Collation] nvarchar(128) NULL\n, [FamilyGUID] uniqueidentifier NULL\n, [HasBulkLoggedData] bit NULL\n, [IsSnapshot] bit NULL\n, [IsReadOnly] bit NULL\n, [IsSingleUser] bit NULL\n, [HasBackupChecksums] bit NULL\n, [IsDamaged] bit NULL\n, [BeginsLogChain] bit NULL\n, [HasIncompleteMetaData] bit NULL\n, [IsForceOffline] bit NULL\n, [IsCopyOnly] bit NULL\n, [FirstRecoveryForkID] uniqueidentifier NULL\n, [ForkPointLSN] numeric(25, 0) NULL\n, [RecoveryModel] nvarchar(60) NULL\n, [DifferentialBaseLSN] numeric(25, 0) NULL\n, [DifferentialBaseGUID] uniqueidentifier NULL\n, [BackupTypeDescription] nvarchar(60) NULL\n, [BackupSetGUID] uniqueidentifier NULL\n, [CompressedBackupSize] bigint NULL\n, [Containment] tinyint NULL\n, [KeyAlgorithm] nvarchar(32) NULL\n, [EncryptorThumbprint] varbinary(20) NULL\n, [EncryptorType] nvarchar(32) NULL\n"
---    },
---    {
---        "TbName": "[S#].[InstallYourSqlDba]",
---        "Cols": "  [Version] varchar(7) Not NULL\n, [RevisionDate] date NULL\n"
---    },
---    {
---        "TbName": "[S#].[RealScriptToRun]",
---        "Cols": "  [spid] int Not NULL Default (@@spid)\n, [nestLevel] int Not NULL Default (@@nestlevel)\n, [seq] int Not NULL\n, [eventTime] datetime2(7) NULL Default (sysdatetime())\n, [Sql] nvarchar(Max) NULL\n, [label] nvarchar(Max) NULL\n, [db] sysname NULL\n"
---    },
---    {
---        "TbName": "[S#].[ProcessMaintenancePrm]",
---        "Cols": "  [PrmSetInJson] nvarchar(Max) NULL\n, [JsonJobStates] nvarchar(Max) NULL\n"
---    }
---]
---'
---Declare @template nvarchar(max)=
---'
---Create Table #TbName#
---(
---#Cols#)
---TEXTIMAGE_ON 
---'
---;
   With 
     TagSrc as
     (
@@ -929,18 +814,25 @@ Return
     , AttributeTag = '#'+[Key]+'#' collate database_default
     , AttributeValue = isnull(Value,'') collate database_default -- tags with no values are replaced by empty string
     , rowvalue
+    , SrcTemplate
     From 
-      (Select JsonDataSource=@JsonDataSource) as JsonDataSource
+      (Select JsonDataSource=@JsonDataSource, SrcTemplate=@Template) as Prm
+      -- for internal testing use the alternate Prm derived table below and comment the above one
+       --(
+       --Select 
+       --  SrcTemplate='Backup #DbName# TO Disk =''#path#'' With #appendOption#'
+       --, JsonDataSource=(Select dbName='Msdb', path='C:\SQL\Bkps', AppendOption='Init' For JSON Path)
+       --) as Prm
       CROSS APPLY (select Rowkey=[key], RowValue=Value, Pos=CharIndex('"'+[Key]+'":', JsonDataSource) From openjson (JsonDataSource)) as Rows
       cross apply openJson (RowValue)
     )
   , TagReplacements As
     (
-    Select RowKey, AttributeRowSeq, AttributeNbOfRow, AttributeTag, AttributeValue, LastReplace=Cast (REPLACE (@template, AttributeTag, AttributeValue) as nvarchar(max)) 
+    Select RowKey, AttributeRowSeq, AttributeNbOfRow, AttributeTag, AttributeValue, LastReplace=Cast (REPLACE (SrcTemplate, AttributeTag, AttributeValue) as nvarchar(max))
     From tagSrc 
     Where AttributeRowSeq = 1
     UNION ALL 
-    Select T.Rowkey, T.AttributeRowSeq, T.AttributeNbOfRow, T.AttributeTag, T.AttributeValue, LastReplace=Cast (REPLACE (LastReplace, T.AttributeTag, T.AttributeValue) as nvarchar(max)) 
+    Select T.Rowkey, T.AttributeRowSeq, T.AttributeNbOfRow, T.AttributeTag, T.AttributeValue, LastReplace=Cast (REPLACE (LastReplace, T.AttributeTag, T.AttributeValue) as nvarchar(max))
     From 
       (Select Rowkey, LastReplace, LastAttributeRowSeq=AttributeRowSeq From TagReplacements) as Prev
       JOIN TagSrc AS T
@@ -951,62 +843,15 @@ Return
     from TagReplacements Where AttributeNbOfRow = AttributeRowSeq
 -- --------------------------------------------------------------------------
 -- very useful function for turning templates into real code
--- json tags are expressed as #JsonTagName# and replaced by their json values
+-- S#.GetCmtBetweenDelim get template and cross apply it to this function
+-- use json key pairs. For example SomeTagName="value" replace #SomeTagName# by its "Value"
 -- --------------------------------------------------------------------------
-
-/*======= some test example by calling the function itself ===============
-  Select replacedTxt
-  From 
-    (
-    Select 
-      jMain =
-      (
-      Select --- ********** if complex expressions are used it is important to put all columns 
-             --- ********** at the same select level otherwise json will not be properly formatted by Auto option
-        TbName
-      , Cols
-      From 
-        ( -- choose table
-        Select TbName = Dbo.FullObjName (object_id) 
-        From sys.tables
-        --Where Dbo.FullObjName (object_id)  like '%realRestore%'
-        ) as TbName
-        cross apply
-        (  
-          Select 
-            ColsTbInJson=
-            ( -- get cols list and express it in json
-            Select Col=CI.ColDef+nchar(10) 
-            From Dbo.ColInfo(TbName, NULL) as CI 
-            order by Ci.ColOrd 
-            FOR Json auto
-            )
-        ) as x
-        -- concat cols content from Json expression, and make put comma in front of each except the first one
-        --cross apply (Select top 1 cols=j.CAT From Dbo.ConcatColFromJson('', ', ',  colsTbInJson) as J) as cols
-        cross apply (Select Cols=convert(nvarchar(max),result) From S#.ConcatFromJson('', ', ',  colsTbInJson)) as cols
-      For json Auto
-      )
-    ) as V
-    cross apply
-    (
-    SELECT MainSyntaxTb.replacedTxt
-    From 
-      (Select CreateTbTemplate=TxtInCmt From S#.GetCmtBetweenDelim ('===temp===', null)) as CreateTbTemplate
-/*===temp===
-Create Table #TbName#
-(
-#Cols#)
-TEXTIMAGE_ON 
-===temp===*/
-      Cross Apply S#.MultipleReplaces(CreateTbTemplate, jMain) as MainSyntaxTb
-   ) MainSyntaxTb
-=================== end sample test =================================*/
 /*===KeyWords===
 Scripting
 ===KeyWords===*/
-
 GO
+
+-- @@MARK: Generating code - Get template and do multiple replaces from Json key pair list (combination of S#.GetCmtBetweenDelim and S#.MultipleReplaces)
 Create Or Alter Function S#.GetTemplateFromCmtAndReplaceTags (@delim sysname, @CmtSource Sql_Variant, @JSonDataSource Nvarchar(max))
 -------------------------------------------------------------------------------------
 -- combine two useful functions for code template processing
@@ -1026,6 +871,8 @@ Create Or Alter Function S#.GetTemplateFromCmtAndReplaceTags (@delim sysname, @C
 -- a single row with a single column in the form of 
 -- Cross Apply (select jsonDataSource=(Select * from (Values ('tag1', 'value1'), ('tag2', 'value2')) as t(tag, value) for json auto)) as JsonDataSource
 -- Avoid the use of the option Without_array_wrapper in the JSON expression (array wrappers are needed for openjson)
+--
+-- Code is the useful column, the other are useful for diagnosis in case of problems.
 -------------------------------------------------------------------------------------
 Returns table
 As
@@ -1064,6 +911,9 @@ GO
 -- Ensure there is at least a S#.LogTable function
 If Object_id('S#.LogTable') IS NULL Exec ('Create Or Alter Function S#.LogTable() Returns sysname as Begin Return('''') End')
 GO
+
+-- @@MARK: Running batch of generated code -- Set Log table
+
 -- -------------------------------------------------------------------------------------------
 -- Register log table for RunScriptToRun and create a function that returns its name
 -- -------------------------------------------------------------------------------------------
@@ -1162,6 +1012,7 @@ From
 Scripting,Logging
 ===KeyWords===*/
 GO
+-- @@MARK: Running batch of generated code -- return SQL on multiple lines for readability
 -- -------------------------------------------------------------------------------------------
 -- Help printing out SQL Code, by dividing lines at cr/lf
 -- Workaround for SQL Print output limited to 8000 chars in SQL Management Studio 
@@ -1202,6 +1053,7 @@ End
 Scripting,Logging
 ===KeyWords===*/
 GO
+-- @@MARK: Running batch of generated code -- return SQL on multiple lines (numbered) for readability
 Create Or Alter Function S#.SplitSqlCodeInNumberedRowLines(@Sql Nvarchar(Max))
 Returns table
 as
@@ -1216,6 +1068,7 @@ GO
 -- This procedure add error message if text of the query to print is found NULL
 -- and add a workaround to help push out faster print output to client
 -- -------------------------------------------------------------------------------------------
+-- @@MARK: Running batch of generated code -- print SQL on multiple lines for readability
 Create Or Alter Procedure S#.PrintSplittedSqlCode 
   @Sql Nvarchar(Max)
 , @Label Nvarchar(Max) = Null
@@ -1295,6 +1148,7 @@ GO
 -- to the error message, it they aren't null
 -- help to improve consistency in error messages
 ------------------------------------------------------------------------
+-- @@MARK: Running batch of generated code -- Error message reporting
 Create Or Alter Function S#.FormatRunTimeMsg 
 (
   @MsgTemplate Nvarchar(max)
@@ -1323,14 +1177,14 @@ From
   Select ErrorMsgFormatTemplate = @MsgTemplate 
   Where @MsgTemplate IS NOT NULL
   ) as MsgTemplate
-  CROSS APPLY (Select ErrMessage=@error_message) as ErrMessage
-  CROSS APPLY (SeLect ErrNumber=@error_number) as ErrNumber
+  CROSS APPLY (Select ErrMessage=ISNULL(@error_message, 'No Err Message')) as ErrMessage
+  CROSS APPLY (SeLect ErrNumber=ISNULL(CAST(@error_number as nvarchar), 'No Err Number')) as ErrNumber
   CROSS APPLY (SeLect ErrSeverity=@error_severity) as ErrSeverity
   CROSS APPLY (SeLect ErrState=@error_state) as ErrState
   CROSS APPLY (SeLect ErrLine=@error_line) as ErrLine
   CROSS APPLY (SeLect ErrProcedure=@error_procedure) as vStdErrProcedure
   Cross Apply (Select FmtErrMsg0=Replace(ErrorMsgFormatTemplate, '#ErrMessage#', ErrMessage) ) as FmtStdErrMsg0
-  Cross Apply (Select FmtErrMsg1=Replace(FmtErrMsg0, '#ErrNumber#', CAST(ErrNumber as nvarchar)) ) as FmtErrMsg1
+  Cross Apply (Select FmtErrMsg1=Replace(FmtErrMsg0, '#ErrNumber#', ErrNumber)) as FmtErrMsg1
   Cross Apply (Select FmtErrMsg2=Replace(FmtErrMsg1, '#ErrSeverity#', CAST(ErrSeverity as nvarchar)) ) as FmtErrMsg2
   Cross Apply (Select FmtErrMsg3=Replace(FmtErrMsg2, '#ErrState#', CAST(ErrState as nvarchar)) ) as FmtErrMsg3
   Cross Apply (Select AtPos0=ISNULL(' at Line:'+CAST(ErrLine as nvarchar), '') ) as vAtPos0
@@ -1353,6 +1207,7 @@ From
   ) as MsgTemplate
   CROSS APPLY S#.FormatRunTimeMsg (MsgTemplate, ERROR_NUMBER (), ERROR_SEVERITY(), ERROR_STATE(), ERROR_LINE(), ERROR_PROCEDURE (), ERROR_MESSAGE ()) as Fmt
 END CATCH;  
+
 ======= Keep this comment for manual tests!!! =====*/
 )
 /*===KeyWords===
@@ -1365,6 +1220,7 @@ GO
 -- Returns:
 --   A table containing the formatted error message using the latest error context (ERROR_* functions).
 -- This function is the one mostly typically used for default error messaging
+-- @@MARK: Running batch of generated code -- Error message reporting - With user defined msgTemplate or default 
 CREATE OR ALTER FUNCTION S#.FormatCurrentMsg (@MsgTemplate nvarchar(4000))
 Returns table
 as 
@@ -1401,6 +1257,7 @@ GO
 -- WARNING : THIS FUNCTION MUST BE CAREFULLY MANUALLY TESTED, BECAUSE IT IS HEAVILY USED IN AUTOMATIC 
 -- TESTS FOR THIS LIBRARY
 --------------------------------------------------------------------------------------------------------
+-- @@MARK: Execute DBCC and report errors
 Create Or Alter Procedure S#.PerformCheckDbAndReportErrorsIfAny @Db Sysname
 As
 Begin
@@ -1528,6 +1385,7 @@ GO
 --
 -- It is also used for testing purposes of function GetErrorMessagesAndInfo
 ------------------------------------------------------------------------------------------------
+-- @@MARK: Running batch of generated code -- Multiple Error message handling - Setup tool for extended events for this purpose
 Create Or Alter Function S#.ScriptManageEventSession(@action as Integer)
 Returns table
 as
@@ -1723,6 +1581,7 @@ GO
 -- and many other uses where a string expression has to become nvarchar(max) string
 -- -------------------------------------------------------------------------------------------
 GO
+-- @@MARK: Running batch of generated code -- Multiple Error message handling from extended event target - Get Error messages and info 
 Create Or Alter Function S#.GetErrorMessagesAndInfo()
 Returns Table
 as
@@ -1917,13 +1776,14 @@ GO
 -- ------------------------------------------------------------------------------------------
 -- Table used to store commands to run (segregated by connection)
 -- ------------------------------------------------------------------------------------------
+-- @@MARK: Code generation - table to store generated code to be ran
 Drop View If Exists S#.ScriptToRun
 Drop View If Exists S#.AppendToScriptToRun
 Drop Table If Exists S#.RealScriptToRun
 Create Table S#.RealScriptToRun 
 (
-  spid int constraint DF_RealScriptToRun_Spid default @@spid
-, nestLevel Int constraint DF_RealScriptToRun_nestLevel default @@NESTLEVEL -- allow reentrancy when working with this S#.ScriptToRun and S#.RunScript
+  spid int constraint DF_RealScriptToRun_Spid default @@spid -- segregated by current user connection
+, nestLevel Int constraint DF_RealScriptToRun_nestLevel default @@NESTLEVEL -- allow reentrancy when working with this S#.ScriptToRun and 77Script
 , seq int 
 , eventTime datetime2 constraint DF_RealScriptToRun_eventime default SYSDATETIME()
 , Sql Nvarchar(max) 
@@ -1937,14 +1797,16 @@ Create Table S#.RealScriptToRun
 , forDiagOnly  int NULL
 )
 GO
+-- @@MARK: Code generation - view to simplify insert into to table (S#.RealScriptToRun) of generated code
 Create View S#.ScriptToRun as 
 Select Sql, db, label, Seq, nestLevel, Context, info, raiseErrorFlag, forDiagOnly
 From S#.RealScriptToRun 
-Where spid = @@spid
+Where spid = @@spid -- filtered by the current user connection
 GO
 -- ------------------------------------------------------------------------------------------
 -- When inserting through this view, previous rows inserted are automatically cleanuped
 -- ------------------------------------------------------------------------------------------
+-- @@MARK: Code generation - Instead of insert trigger on S#.ScriptToRun to clean it before inserting generated code
 Drop Trigger If Exists S#.ScriptToRunInsertTrigger
 GO
 Create Trigger S#.ScriptToRunInsertTrigger
@@ -1960,15 +1822,17 @@ Begin
 From Inserted
 End
 GO
+-- @@MARK: Code generation - with a different view trigger that appends code generated until ran.
 Create View S#.AppendToScriptToRun  as 
 Select Sql, db, label, Seq, nestLevel, Context, info, raiseErrorFlag, forDiagOnly 
 From S#.RealScriptToRun 
-Where spid = @@spid
+Where spid = @@spid -- filtered by the current user connection
 GO
 -- ------------------------------------------------------------------------------------------
 -- When inserting through this view, previous rows inserted are not automatically cleanuped
 -- It allows to add script lines in many inserts before running them
 -- ------------------------------------------------------------------------------------------
+-- @@MARK: Code generation - Instead of insert trigger on S#.AppendToScriptToRun to set starting seq for append
 Drop Trigger If Exists S#.AppendToScriptToRunInsertTrigger
 GO
 Create Trigger S#.AppendToScriptToRunInsertTrigger
@@ -1989,6 +1853,7 @@ GO
 -- This procedure is altered at every query run by RunScript
 -- It conveniently displays last running query attempted to be run
 ------------------------------------------------------------------------------
+-- @@MARK: Running batch of generated code -- logging of last query run in the batch
 Create Or Alter Procedure S#.ShowLastRunScriptQry
 as
 /*===QueryToDisplay===
@@ -2045,6 +1910,7 @@ GO
 -- Run commands stored in scriptTable (segregated by connection)
 -- Useful for big scripting
 -- ------------------------------------------------------------------------------------------
+-- @@MARK: Running batch of generated code -- S#.RunScript - Main procedure to run code generated and log
 Drop Proc If Exists S#.RunScript
 GO
 create Proc S#.RunScript 
@@ -2316,7 +2182,7 @@ GO
 -- must start with S#.ReturnClrDefFor_
 -- and must be defined on this model, so read the comments inside to take this one as a model
 ------------------------------------------------------------------------------------------------
-
+-- @@MARK: Dynamic SQL -- CLR and TSQL proc for an assembly who run SQL and get all messages for a given exec.
 Create Or Alter Function S#.ReturnClrDefFor_ClrExecSqlWithMsgs (@pathAssemblyDll nvarchar(512))
 -- ==========================================================================================
 -- The function prefix must be S#.ReturnClrDefFor_ follow by the assembly name (for clarity)
@@ -2349,7 +2215,7 @@ Return
           (1,'Assembly', Prm.AssemblyName)
           /*===ClrExecSqlWithMsgs===
           CREATE ASSEMBLY #AssemblyName# AUTHORIZATION [dbo]
-          FROM '#pathAssemblyDll#'
+          FROM #Bits#
           WITH PERMISSION_SET = EXTERNAL_ACCESS
           ===ClrExecSqlWithMsgs===*/
         , (2,'Procedure', 'S#.Clr_ExecAndLogAllMsgs')
@@ -2509,6 +2375,7 @@ namespace CLR_ExecSqlWithMsg
 ===C#===*/
 ) -- S#.ReturnClrDefFor_YourSqlDba_ClrExec
 GO
+-- @@MARK: File operations -- CLR and TSQL code parts for an assembly that does some file operations
 Create Or Alter Function S#.ReturnClrDefFor_FileOpCS (@pathAssemblyDll nvarchar(512))
 -- ==========================================================================================
 -- This function returns CSharp code for an SQLCLR assembly that allows some file operations
@@ -2541,7 +2408,7 @@ Return
           (1,'Assembly', 'SomeFileOps')
           /*===SomeFileOps===
           CREATE ASSEMBLY #AssemblyName# AUTHORIZATION [dbo]
-          FROM '#pathAssemblyDll#'
+          FROM #Bits#
           WITH PERMISSION_SET = EXTERNAL_ACCESS
           ===SomeFileOps===*/
         , (2,'Function', 'S#.clr_FileExists')
@@ -2742,6 +2609,17 @@ GO
 -- start of section and tools about deploying native c# code into CLR
 -- --------------------------------------------------------------------
 --
+-- Import the assembly bits into a table, to be able to use it in the function that generate 
+-- the code to create the assembly in SQL Server
+--
+DROP TABLE IF EXISTS S#.AssemblyBits;
+CREATE TABLE S#.AssemblyBits
+(
+  AssemblyDllPath     NVARCHAR(4000) NOT NULL  -- ex: MonAssembly.dll
+, Bits VARBINARY(MAX) NOT NULL  -- le contenu du .dll
+);
+GO
+--
 -- This function generate code to perform all aspects of CLR code deployment
 -- When invoked, is generates all those steps, but it is possible to filter output on "action" column
 -- made equal to one of those columns.
@@ -2755,6 +2633,7 @@ GO
 -- To get the code to compile one special cratfed function must be supplied in paramter @AssembleSourceCodeView
 -- See as exemple S#.ReturnClrDefFor_FileOpCS
 --
+-- @@MARK: Assembly management -- Generated all code to compile, create, Authorize, Drop assembly
 Create Or Alter Function S#.ScriptAssemblyMgmt (@assemblyName Sysname, @Db sysname, @AssemblySourceCodeView sysname, @Silent int = 1)
 Returns Table
 as
@@ -2791,27 +2670,18 @@ From
   (
   Select *
   From 
-    ( -- get errorLog parameter
-    Select *
-    From 
-      sys.dm_server_registry 
-      CROSS APPLY (Select InstancePathPrms=convert(nvarchar(max),value_data) ) as InstancePathPrms
-      -- Remove NUL char that wreak avoc in SQL string functions
-      CROSS APPLY (Select InstanceErrorLogPrm=Left(InstancePathPrms, Len(InstancePathPrms)-1) Where InstancePathPrms Like '-e%') as InstanceErrorLogPrm 
-      CROSS APPLY (Select RevInstanceErrorLogPrm=REVERSE(InstanceErrorLogPrm)) as RevInstanceErrorLogPrm
-      CROSS APPLY (Select lastBkSlashPos=CHARINDEX('\', RevInstanceErrorLogPrm)-1) as lastBkSlashPos
-      -- remove the file name after the path and remove -e parameter identifier in front of it
-      CROSS APPLY (Select pathErrLog=Stuff(LEFT(InstanceErrorLogPrm, LEN(InstanceErrorLogPrm)-lastBkSlashPos),1,2,'')) as pathErrLog
-    Where value_name Like 'SqlArg%' And InstanceErrorLogPrm Like '-e%'
-    ) as pathErrorLog
-    CROSS APPLY (Select pathAssemblySourceCode=pathErrLog+aName+'.cs') as pathAssemblySourceCode
-    CROSS APPLY (Select pathAssemblyDll=pathErrLog+aName+'.Dll') as pathAssemblyDll
-    CROSS APPLY (Select pathAssemblyDirAll=pathErrLog+aName+'.*') as pathAssemblyDirAll
+    (Select prm=CAST(value_data as nvarchar(100)) From sys.dm_server_registry Where value_name = 'SQLArg0') as prm
+    Cross Apply (Select NoNulChar=Left(prm,Len(prm)-1)) as NoNulChar
+    Cross Apply (Select NoFile=Replace(NoNulChar, '\master.mdf','\')) as NoFile
+    Cross Apply (Select PathMaster=Stuff(NoFile, 1,2,'')) as PathMaster
+    CROSS APPLY (Select pathAssemblySourceCode=pathMaster+aName+'.cs') as pathAssemblySourceCode
+    CROSS APPLY (Select pathAssemblyDll=pathMaster+aName+'.Dll') as pathAssemblyDll
+    CROSS APPLY (Select pathAssemblyDirAll=pathMaster+aName+'.*') as pathAssemblyDirAll
   ) as Path
   CROSS APPLY (Select ServerName =CONVERT(sysname, ServerProperty ('Servername'))) as ServerName 
   CROSS APPLY (Select SqlDotNetDirValue=Value from sys.dm_clr_properties Where name = 'directory') as SqlDotNetDirValue 
   -- remove nul char at the end of the string, problematic in SQL replaces
-  CROSS APPLY (Select SqlDotNetDirBs=IIF(unicode(right(SqlDotNetDirValue,1))=0, Substring(SqlDotNetDirValue , 1, len(SqlDotNetDirValue )-1), SqlDotNetDirValue )) as SqlDotNetDirBs
+  CROSS APPLY (Select SqlDotNetDirBs=IIF(unicode(right(SqlDotNetDirValue,1))=0, Left(SqlDotNetDirValue, len(SqlDotNetDirValue )-1), SqlDotNetDirValue )) as SqlDotNetDirBs
   -- ensure path ends with '\'
   CROSS APPLY (Select SqlDotNetDir=SqlDotNetDirBs+IIF(RIGHT(SqlDotNetDirBs,1)<>'\', '\', '')) as SqlDotNetDir
   CROSS APPLY (Select AssemblyDefInfo=
@@ -2916,10 +2786,13 @@ From
         + compilerOutput
         + '-- '+replicate('=',80)+E.Lf
         ) as C
+      -- Run this script to report the error in the same session that do the deployment, so it is easier to correlate error and source code and fix it.
       Exec S#.RunScript @printOnly=0, @Silent=#Silent#
     End 
   End
-  Delete #xp_cmdShellOutput 
+  Delete #xp_cmdShellOutput
+  
+  -- check that the DLL is here, otherwise it means that it was not compiled and there is a problem with the compiler command or the source code that make the compiler fail without producing a DLL
   insert into #xp_cmdShellOutput exec xp_cmdShell 'dir /b "#pathAssemblyDll#"'
   -- the DLL could not be created
   If Not Exists(Select * From #xp_cmdShellOutput Where l like '#AssemblyName#.%')
@@ -2928,6 +2801,43 @@ From
     Return
   End
 
+  -- Load assembly bits into SQL table to be able to create assembly from bits in SQL, which doesn't require any right on the folder for the service account as long as the file can be read by xp_cmdshell command (which is the case if it is created by xp_cmdshell itself)
+  Delete S#.AssemblyBits -- clean previous bits if any
+  Declare @cmdShellForPS varchar(8000) = ''
+  Select  @cmdShellForPS = CmdCallForPs
+  From 
+    (
+    Select 
+      PsPrefix = 'Powershell -NoProfile -NoLogo -NonInteractive -OutputFormat Text -EncodedCommand '
+    , PsCmd = 
+    N'
+    $bytes = [IO.File]::ReadAllBytes("#pathAssemblyDll#");
+    $cn = New-Object System.Data.SqlClient.SqlConnection "Server=#ServerName#;Database=#CurrentDb#;Integrated Security=SSPI";
+    $cn.Open();
+    $cmd = $cn.CreateCommand();
+    $cmd.CommandText = "INSERT INTO S#.AssemblyBits (AssemblyDllPath, Bits) VALUES (@n, @b)";
+    $cmd.Parameters.Add("@n", [System.Data.SqlDbType]::VarChar, 200).Value = "#pathAssemblyDll#";
+    $cmd.Parameters.Add("@b", [System.Data.SqlDbType]::VarBinary, -1).Value = $bytes;
+    $cmd.ExecuteNonQuery();
+    $cn.Close();
+    '
+    ) as Ml
+    CROSS APPLY (Select PsCmdBase64=(Select cast(PsCmd as varbinary(max)) for xml path(''), binary base64)) as PsCmdBase64
+    CROSS APPLY (Select CmdCallForPs=PsPrefix+PsCmdBase64) as CmdCallForPs
+    Exec Xp_cmdShell @cmdShellForPS, NO_OUTPUT    
+
+  If Not Exists(Select * From S#.AssemblyBits)
+  Begin
+    Raiserror ('PS failed to load #AssemblyName# bits from "#pathAssemblyDirAll#" into S#.AssemblyBits ',11,1)
+    Return
+  End
+
+  -- CREATE ASSEMBLY is going to be done as next step, but with gMSA account, by default
+  -- it doesn't have right to read the DLL and I do not want to introduce a new requirement of rights setup
+  -- for the service account using gMSA on the folder where the DLL is, so I will get the bits using xp_cmdshell + powershell and put them 
+  -- in a SQL table, and then create the assembly from the bits in SQL, which doesn't require any external right on the folder for the service account as long as the file can be read by xp_cmdshell command (which is the case if it is created by xp_cmdshell itself)
+  -- and then create the assembly from the bits in SQL, which doesn't require any right on the folder for the service account as long as the file can be read by xp_cmdshell command (which is the case if it is created by xp_cmdshell itself)
+  --
   -- If here job is done, erase memory of the process
   If    Object_id('S#.XpCmdShellWasOn') IS NOT NULL 
     And Exists(Select * From sys.Configurations Where name = 'xp_cmdshell' And value_in_Use=1)
@@ -3002,8 +2912,16 @@ From
   -- It can be turned off as we will sign the assembly later
   Alter database [#Db#] Set TRUSTWORTHY On;
   Insert into S#.ScriptToRun (Sql, Seq)
-  Select Sql=Code, Seq 
-  From #AssemblySourceCodeView#('#pathAssemblyDll#') 
+  Select Sql=CodeAndHex, Seq 
+  From 
+    #AssemblySourceCodeView#('#pathAssemblyDll#') as SourceCode
+    CROSS APPLY 
+    (
+    Select CodeAndHex=Replace(SourceCode.Code, '#Bits#', CONVERT(nvarchar(max), Bits, 1) )
+    From S#.AssemblyBits 
+    Where AssemblyDllPath='#pathAssemblyDll#'
+    ) as Code
+
   Where Language=Sql
   -- note the param @RunOnThisDb='#Db#' which make commands redirected to the destination database which may be the current or not
   Exec S#.RunScript @printOnly=0, @Silent=#Silent#,  @RunOnThisDb='#Db#'
@@ -3095,6 +3013,7 @@ From
   Where action = CompileAssembly
   */
 Go
+-- @@MARK: Assembly management -- make all code to Drop assembly
 Create Or Alter Function S#.ScriptDropAssembly (@assemblyName sysname)
 Returns Table
 -- ----------------------------------------------------------------------------
@@ -3145,6 +3064,7 @@ From
 
 ) -- S#.ScriptDropAssembly 
 GO
+-- @@MARK: Assembly management -- make all code to compile assembly
 Create Or Alter Function S#.ScriptCompileAssemblyAndCreateSql (@AssemblySourceCodeView sysname, @AssemblyName sysname, @Silent Int, @Db Sysname = NULL)
 Returns table
 as
@@ -3182,6 +3102,7 @@ Return
 ) -- S#.ScriptCompileAssemblyAndCreateSql 
 
 go
+-- @@MARK: Assembly management -- make all code needed to compile one assembly and create its SQL 
 Create Or Alter Proc S#.CompileAssemblyAndCreateSql (@SourceCodeView sysname, @AssemblyName sysname, @Silent Int, @destDb Sysname)
 as
   Insert Into S#.ScriptToRun(Sql, Seq)
@@ -3190,6 +3111,8 @@ as
   Exec S#.RunScript @printOnly=0, @silent=@silent
 -- Exec S#.CompileAssemblyAndCreateSql @SourceCodeView = 'S#.ReturnClrDefFor_FileOpCS', @AssemblyName ='ClrFileOp_DirAndDel', @Silent=0
 GO
+-- @@MARK: Assembly management -- make all code needed to compile assemblies and create their SQL 
+-- Find assemblies and create them
 Create Or Alter Function S#.ScriptDeployAllClrDef(@Silent Int, @DestDb Sysname = NULL)
 Returns table
 as
@@ -3218,7 +3141,9 @@ GO
 -- =========================================================================
 -- Deploy CSharp code defined in this script
 -- =========================================================================
-Declare @silent Int = 1
+-- @@MARK: Assembly management -- Deploy all assemblies defined in this script by finding them with a filter on their name and by calling the function that compile and create them
+-- Find assemblies and create them
+Declare @silent Int = 1 -- change to 1 to suppress verbose output
 Print ''
 Print '**************************************************************************************************************************************'
 Print '-------------------------------- Compiling and signing YourSqlDba assemblies from C# source code in this script ----------------------'
@@ -3237,6 +3162,7 @@ GO
 ---------------------------------------------------------------------------------------------------------
 -- This function is useful to deduplicate duplicated sequence of char into a string
 ---------------------------------------------------------------------------------------------------------
+-- @@MARK: String function S#.DedupSeqOfChar 
 Create Or Alter Function S#.DedupSeqOfChar (@Dup nvarchar(5), @Str Nvarchar(max))
 Returns table
 As
@@ -3267,6 +3193,7 @@ String
 ===KeyWords===*/
 )
 GO
+-- @@MARK: Pedigree of the caller for improving logging or maintenance queries
 Create Or Alter View dbo.WhoCalledWhat
 As
 -- ---------------------------------------------------------------------------------------------
@@ -3310,6 +3237,7 @@ from
   Exec A
   */
 GO
+-- @@MARK: Generate code to set a session context that make accessible global param of maintenance to the callees
 Create Or Alter Function dbo.ScriptSetGlobalAccessToPrm (@PrmSetInJson as Nvarchar(max))
 returns table
 -- =============================================================================================================
@@ -3402,6 +3330,7 @@ GO
 -- and from then, returns many naming combinations, quoted or unquoted, partially qualified of schema qualified
 -- or database+schema+name
 -- -------------------------------------------------------------------------------------------------------------
+-- @@MARK: Object naming vs Object Id
 Create Or Alter Function Dbo.InferObjectNamings(@objRef SQL_Variant, @DbId Int) 
 Returns Table
 as
@@ -3537,6 +3466,7 @@ Begin
 End
 GO
 -- this function reduce repeating spaces to a single one in one quick replace
+-- @@MARK: String - remove repeating spaces
 Create Or Alter Function yUtl.ReduceRepeatingSpaceToOne(@s nvarchar(max) )
 returns nvarchar(max) 
 as
@@ -3545,6 +3475,7 @@ Begin
 End
 go
 -- this procedure reports bestPractices to follow
+-- @@MARK: Best practices reporting
 Create Or Alter Function PerfMon.GetBestPracticesMsgs ()
 returns Table
 as
@@ -3626,6 +3557,7 @@ From
   CROSS APPLY (Select REPLACE (r2.s, '&#x0D;', '<Br>')) as r3(s)
 )
 GO
+-- @@MARK: Report unapplied best practices
 Create Or Alter Proc PerfMon.ReportIgnoredBestPractices @email_Address sysname
 As
 Begin
@@ -3641,32 +3573,8 @@ Begin
     , @body = @Msg
     , @body_format = 'HTML'
 
--- Exec PerfMon.ReportIgnoredBestPractices 'pelchatm@grics.ca'
+-- Exec PerfMon.ReportIgnoredBestPractices ''
 End
-GO
-Create Or Alter Procedure yExecNLog.QryReplace -- do multiple replace on dynamic SQL generation
-  @sql nvarchar(max) Output
-, @srch1 nvarchar(1000) 
-, @by1 nvarchar(1000)
-, @srch2 nvarchar(1000) = ''
-, @by2 nvarchar(1000) = ''
-, @srch3 nvarchar(1000) = ''
-, @by3 nvarchar(1000) = ''
-, @srch4 nvarchar(1000) = ''
-, @by4 nvarchar(1000) = ''
-, @srch5 nvarchar(1000) = ''
-, @by5 nvarchar(1000) = ''
-, @srch6 nvarchar(1000) = ''
-, @by6 nvarchar(1000) = ''
-as
-Begin
-  set @sql = replace (@sql, @srch1, @by1)
-  If isnull(@srch2,'') <> '' Set @sql = replace (@sql, @srch2, @by2)
-  If isnull(@srch3,'') <> '' Set @sql = replace (@sql, @srch3, @by3)
-  If isnull(@srch4,'') <> '' Set @sql = replace (@sql, @srch4, @by4)
-  If isnull(@srch5,'') <> '' Set @sql = replace (@sql, @srch5, @by5)
-  If isnull(@srch6,'') <> '' Set @sql = replace (@sql, @srch6, @by6)
-End -- yExecNLog.QryReplace
 GO
 Create Or Alter Function yUtl.ColumnInfo (@tbName sysname, @colName sysname, @typeName sysname = NULL)
 returns table
@@ -3682,26 +3590,13 @@ as
     And (@typeName is NULL Or @typeName = TYPE_NAME (c.user_type_id) )
   )  
 GO -- yUtl.ColumnInfo
-Create Or Alter Function yExecNLog.FormatBasicBeginCatchErrMsg ()
-returns nvarchar(max) 
-as
-Begin
-  Return
-  (
-    'err :' 
-  + convert(nvarchar(10), ISNULL(error_number(),0)) + ' ' 
-  + ISNULL(ERROR_MESSAGE (),'No err Msg') + ' ' 
-  + case when error_procedure() is not null Then ' In procedure ' + error_procedure() + ':' End
-  + case when error_line() is not null Then ' at line ' + CONVERT(nvarchar, ERROR_LINE()) End
-  )
-End
-go
 -- ------------------------------------------------------------------------------
 -- This function unindent TSQL code so that the leftmost code is in column one
 -- It helps log log dynamic T-SQL that is originally generated indented relative 
 -- to it the code where it is defined.  It is to ease nice dynamic code formatting
 -- at code level, and avoid extra indentation of gnererated code in logs
 -- ------------------------------------------------------------------------------
+-- @@MARK: Logging SQL UnIndent
 Create Or Alter Function yExecNLog.Unindent_TSQL
 (
   @sql nvarchar(max)
@@ -3729,6 +3624,7 @@ Begin
   Return (@sql)
 End -- yExecNLog.Unindent_TSQL
 GO
+-- @@MARK: TODO : check if this function is still needed
 Create Or Alter Function yInstall.DoubleLastSpaceInFirst78Colums 
 (
   @msg nvarchar(max)
@@ -3756,6 +3652,7 @@ Begin
   Return @msg
 End -- yInstall.DoubleLastSpaceInFirst78Colums
 GO
+-- @@MARK: TODO : check if this function is still needed
 Create Or Alter Function yInstall.DoubleLastSpaceInFirst150Colums 
 (
   @msg nvarchar(max)
@@ -3830,6 +3727,7 @@ from
 GO
 ------------------------------------------------------------------------------------------------------------
 -- This procedure is derived from code obtained from Paul Randal blog's site
+-- @@MARK: Performance : analyse waitstats -- reset
 Create Or Alter Procedure PerfMon.ResetAnalyzeWaitStats 
 as DBCC SQLPERF ('sys.dm_os_wait_stats', CLEAR); 
 go
@@ -3952,6 +3850,7 @@ Select SUBSTRING (@batch, start, Stringlen) as RunningQuery
 from CalcStartEnd 
 );
 go
+-- @@MARK: Performance : see current queries
 create view perfmon.SessionInfo
 as
 select 
@@ -4201,7 +4100,7 @@ GO
 -- ------------------------------------------------------------------------------
 -- Création des tables d'historique
 -- ------------------------------------------------------------------------------
--- under construction
+-- @@MARK: TODO : check if this function is still needed
 If object_id('Maint.DbMaintPolicies') is not null 
    And Not Exists (select * from yUtl.ColumnInfo ('Maint.DbMaintPolicies', 'FullBkExt', NULL))
    Drop Table if Exists Maint.DbMaintPolicies
@@ -4214,7 +4113,7 @@ CREATE TABLE Maint.XpCmdShellSavedState
 , value_In_Use int 
 ) 
 go
-
+-- @@MARK: Install : Reimport data for jobHistory
 -- create the latest version by keep most recent data from previous version
 -- that match by columns names
 Declare @sql nvarchar(max)
@@ -4237,7 +4136,6 @@ Create table Maint.JobHistory
 , constraint Pk_HistMaintTrav primary key  clustered (JobNo)
 )
 '
-Exec yExecNLog.QryReplace @sql output, '"', ''''
 Exec (@sql)
 
 If object_id('tempdb..##JobHistory') is not null -- successfully created
@@ -4285,6 +4183,7 @@ Begin
   Exec (@sql)
 End
 GO
+-- @@MARK: Maintenance : Return context info of the maintenance
 Create Or Alter Function dbo.MainContextInfo (@jobNo Int)
 returns table
 as
@@ -4366,6 +4265,7 @@ return
     ) as JobSelected
     CROSS APPLY (Select JobNo, JobStart, JobEnd, JSonPrms, MainSqlCmd, Who, host, prog, SqlAgentJobName, JobId, StepId  From Maint.JobHistory Where jobNo = JobSelected) as AllCtx
 GO
+-- @@MARK: Install : Reimport data for other table
 -- create the latest version by keep most recent data
 -- this IF is just useful when testing some parts of the code oterwise it is always true when running the whole script
 If object_id('Maint.JobSeqCheckDb') is null 
@@ -4549,7 +4449,26 @@ Begin
     Set @Sql = Replace(@Sql, '"', '''')
     Exec (@sql)
   End
-End
+
+  -- MIGRATE OLD SQLNCLI% not supported provider to new MSOLEDBSQL (compatible with SQL Server 2012 and later)
+  Insert into S#.ScriptToRun (sql, seq)
+  Select sql, seq=ROW_NUMBER() over (Order by name)
+  From 
+    (SELECT name, data_source FROM sys.servers Where product = 'SQL Server' And provider like 'SQLNCLI%') as Prm
+    CROSS APPLY (Select j=(Select Prm.* for Json Path)) as j
+    CROSS APPLY (Select Sql=Code From S#.GetTemplateFromCmtAndReplaceTags ('===UpgradeSQlClient===', NULL, j)) as Sql
+  /*===UpgradeSQlClient===
+  -- migrate SQLNCLI% provider (deprecated) to MSOLEDBSQL (fully supported)
+  EXEC master.dbo.sp_dropserver '#Name#', 'dropLogins'
+  Print 'recreer le serveur lié #Name# avec Mirroring.AddServer. See https://onedrive.live.com/personal/12c385255443c4ed/_layouts/15/Doc.aspx?sourcedoc=%7B5443c4ed-8525-20c3-8012-a81b00000000%7D&action=view&redeem=aHR0cHM6Ly8xZHJ2Lm1zL28vYy8xMmMzODUyNTU0NDNjNGVkL0V1M0VRMVFsaGNNZ2dCS29Hd0FBQUFBQlJ2b290QVJmaE5LQjJaenNPU09yZkE_ZT11c0h6Vms&wd=target%28REFERENCE.one%7Cc7b30aeb-6ae2-4bd6-a550-14feb11d776d%2FMirroring.AddServer%7Ca71c4787-8076-4ed3-a6be-d6c5c3c8b6b3%2F%29&wdorigin=703&wdpartid=%7B2da72b12-728f-4f44-ba3b-477df906c323%7D%7B80%7D&wdsectionfileid=%7B12c385255443c4ed%21sfb02454d2d084363a169b209686c280b%7D '
+  Print 'SAMPLE:'
+  Print 'Exec YourSQLDba.Mirroring.AddServer'  
+  Print '@MirrorServer = ''#Name#'''
+  Print '@RemoteLogin = ''sa''  ' -- or equivalent login on the mirror server with enough right to create linked server and access to msdb for backup restore history and to the user databases for backup restore and integrity check, and also with right to view server state for monitoring session during restore and checkdb
+  Print '@RemotePassword = ''RemotePassword'' '  
+  ===UpgradeSQlClient===*/
+  Exec S#.RunScript
+END   
 GO
 
 -- this IF is just useful when testing some parts of the code oterwise it is always true when running the whole script
@@ -4574,7 +4493,6 @@ Begin
   )
   Create Index iCmdStartTime On Maint.JobHistoryDetails(CmdStartTime)
   '
-  Exec yExecNLog.QryReplace @sql output, '"', ''''
   Exec (@sql)
 
 End
@@ -4600,7 +4518,6 @@ Begin
     On delete cascade
   )
   '
-  Exec yExecNLog.QryReplace @sql output, '"', ''''
   Exec (@sql)
 End
 GO
@@ -4608,6 +4525,7 @@ GO
 -- Return SQL code or XML text string in multi-rows, 1 row per code line
 -- Workround of the 8000 char limit when printing SQL code.
 -- --------------------------------------------------------------------------------------------
+-- @@MARK: TODO : check if this function is still needed and see the alternate S#.Sqlcode...
 Create Or Alter Function yExecNLog.SqlCodeLinesInResultSet 
 (
 @sql nvarchar(max)
@@ -4784,6 +4702,7 @@ Begin
 
 End -- yInstall.NextUpdateTime
 GO
+-- @@MARK: TODO : check if this function is still needed 
 Create Or Alter Function yUtl.UnicodeCrLf
 (
 )
@@ -4798,6 +4717,7 @@ GO
 -- ----------------- fonction yUtl.SplitList ------------------------------------------------------------
 -- Function that split a string into a set of rows based on a @sep list
 -- -----------------------------------------------------------------------------------------------------------
+-- @@MARK: TODO : check if this function is still needed 
 If OBJECT_ID('yUtl.SplitList') is not null drop function yUtl.SplitList
 go
 Create Or Alter Function yUtl.SplitList (@Sep nvarchar(max), @list nvarchar(max))
@@ -4821,6 +4741,7 @@ Begin
   return  
 End
 GO
+-- @@MARK: TODO : check if this function is still needed 
 Create Or Alter Function yUtl.NormalizeLineEnds  -- line ends can be expressed as a pipe char or a regular line end except if it ends by \
 (
   @prm VARCHAR(max) = '' 
@@ -4852,6 +4773,7 @@ GO
 -- Function to select database from @incDb and @excDb parameters
 -- or replace pairs from @replace... parameters
 -- ------------------------------------------------------------------------------
+-- @@MARK: TODO : check if this function is still needed 
 Create Or Alter Function yUtl.SplitParamInRows
 (
   @prm VARCHAR(max) = '' 
@@ -4884,6 +4806,7 @@ Begin
   Return;
 End -- yUtl.SplitParamInRows
 GO
+-- @@MARK: TODO : improve this function to new functional style
 Create Or Alter Function yUtl.YourSQLDba_ApplyFilterDb 
 (
   @IncDb VARCHAR(max) = '' -- @IncDb : See following comments for explanation
@@ -4972,6 +4895,7 @@ Begin
 End -- yUtl.NormalizePath
 GO  
 -----------------------------
+-- @@MARK: TODO : check code use
 Create Or Alter Function yUtl.SearchWord
 (
   @mot sysname
@@ -5115,6 +5039,7 @@ Scripting,Logging
 ===KeyWords===*/
 End
 GO
+-- @@MARK: TODO : very code use
 Create Or Alter Procedure S#.QueryLog @like nvarchar(max) = NULL, @NomLog sysname = NULL
 as
 Begin
@@ -5139,6 +5064,7 @@ GO
 -- -------------------------------------------------------------------------------------------
 -- Print messages and log to a table if necessary
 -- -------------------------------------------------------------------------------------------
+-- @@MARK: TODO : very code use
 Create Or Alter Procedure S#.PrintAndLog
   @LogText Nvarchar(Max) -- text to log
 , @nextBatch Int = 0 -- 
@@ -5189,6 +5115,7 @@ GO
 -- ------------------------------------ yExecNLog.PrintSqlCode ----------------------------------
 -- Use yExecNLog.SqlCodeLinesInResultSet for sql code printing purposes
 -- ----------------------------------------------------------------------------------------------------------
+-- @@MARK: TODO : very code use
 Create Or Alter Procedure yExecNLog.PrintSqlCode
   @sql nvarchar(max)
 , @numberingRequired int = 0
@@ -5233,6 +5160,7 @@ End -- yExecNLog.PrintSqlCode
 GO
 -- ------------------------------------------------------------------------------
 -- This procedure wraps the call to the clr_exec
+-- @@MARK: Dynamic SQL for YourSqlDba
 Create Or Alter Procedure yExecNLog.ExecWithProfilerTrace @sql nvarchar(max), @maxSeverity int output, @Msgs nvarchar(max) = '' output
 as
 Begin
@@ -5286,6 +5214,7 @@ Create or Alter proc yExecNLog.LogAndOrExec
 , @raiseError int = 0 
 , @forDiagOnly  int = 0
 as
+-- @@MARK: Exec Dynamic SQL and Logging for YourSqlDba yExecNLog LogAndOrExec
 Begin
 -- ------------------------------------------------------------------------------
 --
@@ -5328,7 +5257,7 @@ Begin
     
   Set @errorN = 0 
   
-  --Don't ever drop table at run-time. It is here just for debugging. 
+  --********** DON'T EVER DROP THIS TABLE AT RUN-TIME. It is here just for debugging. 
   --Dropping the table cause reentrancy problem, by clearing caller's temporary table with same name
   --Drop table if Exists #PrmLogAndOrExec
   --I'm put a kind of unique name for temptable, in case a calling sp would also create a #prm table
@@ -5336,11 +5265,11 @@ Begin
   Create table #prmLogAndOrExec
   (
     JobNo INT NULL
-  , YourSqlDbaNo nvarchar(max) NULL
-  , context nvarchar(4000) NULL
-  , sql nvarchar(max) NULL
-  , Info nvarchar(max)  NULL
-  , err nvarchar(max)  NULL 
+  , YourSqlDbaNo nvarchar(max) Collate database_default 
+  , context nvarchar(4000) Collate database_default 
+  , sql nvarchar(max) Collate database_default 
+  , Info nvarchar(max) Collate database_default 
+  , err nvarchar(max) Collate database_default 
   , errorN Int NULL
   , [raiseError] int NULL
   , forDiagOnly  int NULL
@@ -5360,8 +5289,15 @@ Begin
 
     -- memorize parameters into #prmLogAndOrExec, which make queries easier to maintain with intellisence
     Insert into #prmLogAndOrExec 
-    Select M.JobNo, @YourSqlDbaNo, @Context, @sql, @Info, @err, @errorN, @raiseError, @forDiagOnly, @seq
-    From dbo.MainContextInfo(null) as M
+    Select M.JobNo, @YourSqlDbaNo, @Context, @sql, @Info, Err.err, @errorN, @raiseError, @forDiagOnly, @seq
+    From 
+      dbo.MainContextInfo(null) as M
+      -- S#.FormatCurrentMsg return the message 'No Err Message' if there is no error
+      -- otherwise the current error context
+      CROSS APPLY (Select ErrMsgCtx=ErrMessage From S#.FormatCurrentMsg (null)) as ErrMsgCtx
+      -- if @err is set to '?', it is a signal to take the current message from the err context
+      -- this which avoid to store it at call time into a variable and pass it as a parameter
+      CROSS APPLY (Select Err=IIF(@err='?', errMsgCtx, @err)) as Err 
 
     -- Required to build output to YourSqlDba log
     insert into #trcLogAndOrExec 
@@ -5446,7 +5382,7 @@ Begin
           UNION ALL
           -- When caller catch an unexpected error it can let the task to ExecAndLog 
           -- to get current error state and format it. This request is expressed by Err parameter being '?'
-          Select Err=yExecNLog.FormatBasicBeginCatchErrMsg () Where I.Err = '?'
+          Select Err=ErrMsg From S#.FormatCurrentMsg (null) Where I.Err = '?'
           ) as S
           -- Split over many rows, lines of the error message if is multi-line
           Cross Apply yExecNLog.SqlCodeLinesInResultSet(s.err) as x 
@@ -5579,10 +5515,15 @@ Begin
     Set @errorN = 1;
 
     -- describe the error to write it in YourSqlDba Job log
+    -- we are here in the context of an error that is not related to the dynamic SQL execution 
+    -- but to the logging mecanism itself (this procedure) that is supposed to log the error, 
+    -- which is a problem because it means that some error information may not be logged
+    -- but at least we will have some information about it in the log
+    -- which is better than nothing and can help to fix the problem
     declare @msg  nvarchar(4000)
     Select @Msg=E.Err 
     From 
-      (Select Err=yExecNLog.FormatBasicBeginCatchErrMsg () ) as E
+      (Select Err=ErrMsg From S#.FormatCurrentMsg(null)) as E
 
     -- write it into Maint.JobHistoryLineDetails 
     Insert Into Maint.JobHistoryLineDetails (jobNo, Seq, TypSeq, Typ, Line, Txt)
@@ -5625,6 +5566,7 @@ GO
 -- Allow multi-statement generation and processing by inserting multiple statement into view S#.ScriptToRun
 -- This proc read and execute each generated statements separately.
 -- ------------------------------------------------------------------------------------------
+-- @@MARK: TODO : In-progress Dynamic SQL for YourSqlDba through a SQL Batch - to use and test
 Create Or Alter Proc S#.RunScriptAndLog 
   @RunOnThisDb sysname = NULL -- remote database execution if database is specified
 as
@@ -5695,6 +5637,7 @@ Scripting,Logging
 ===KeyWords===*/
 End
 GO
+-- @@MARK: Dynamic creation of header info table for RESTORE HEADERONLY with extra columns for each version
 Create Or Alter Procedure yMaint.CollectBackupHeaderInfoFromBackupFile @bkpFile nvarchar(512)
 as
 Begin
@@ -5807,6 +5750,7 @@ Begin
   Return(0)
 End
 Go
+-- @@MARK: Dynamic creation of flie list table for RESTORE FileListOnly with extra columns for each version
 Create Or Alter Procedure yMaint.CollectBackupFileListFromBackupFile @bkpFile nvarchar(512)
 as
 Begin
@@ -5940,6 +5884,7 @@ Begin
   End
 End
 GO
+-- @@MARK: Maintenance - PutDbOffline 
 Create Or Alter Proc yMaint.PutDbOffline 
   @DbToLockOut nvarchar(128) = ''
 as
@@ -5987,6 +5932,7 @@ GO
 -- ---------------------------------------------------------------------------------------
 -- This procedures extract informations required for database mail diagnosis
 -- ---------------------------------------------------------------------------------------
+-- @@MARK: Maintenance - Mail diag
 Create Or Alter Procedure Maint.DiagDbMail 
 as
 Begin
@@ -6020,6 +5966,7 @@ GO
 -- Generated query is printed for debugging purposes.
 -- Column list is mandatoty, and at least one row source for the source and the target.
 ---------------------------------------------------------------------------------------
+-- @@MARK: TODO : Check Use
 Create Or Alter Proc Tools.CompareRows 
   @ColList nvarchar(max)  -- list of columns to compare (must include primary key)
 , @Srctab as sysname = '' -- schema mandatory, could be substituted by @SrcQry 
@@ -6137,6 +6084,7 @@ End
 --go
 ----------------------------------------------------------------------------------------
 go
+-- @@MARK: Reporting: HitoryView
 Create OR Alter Function maint.HistoryView (@StartDateTime Nvarchar(23), @EndDatetime Nvarchar(23), @FilterOption Int)
 -- ----------------------------------------------------------------------------------------------------------
 -- Function to list filter history in a more readeable form, based on a datetime range.
@@ -6384,6 +6332,7 @@ go
 -- and are replaced by the data of the matching columns.
 -- This replacement is done by the caller.
 -- ---------------------------------------------------------------------------------------
+-- @@MARK: Reporting : Prep message to send to User
 Create Or Alter Function yMaint.InstructionsToGetJobHistory 
 (
   @StartOfMaint datetime
@@ -6524,6 +6473,7 @@ go
 -- ------------------------------------------------------------------------------
 -- Procedure which send exec report and errors report
 -- ------------------------------------------------------------------------------
+-- @@MARK: Reporting : Mail message to send to User
 create or alter proc yMaint.SendExecReports
   @email_Address nvarchar(200)
 , @MaintJobName nvarchar(200)
@@ -6661,6 +6611,7 @@ Go
 -- model will generate an error of the maintenance.  It is possible to exclude
 -- this check for particular databases with the parameter @ExcDbFromPolicy_CheckFullRecoveryModel
 -- ------------------------------------------------------------------------------
+-- @@MARK: Maintenance : Apply Full recovery model policy
 Create Or Alter Proc yMaint.CheckFullRecoveryModelPolicy
 as
 Begin
@@ -6719,6 +6670,7 @@ GO
 -- ------------------------------------------------------------------------------
 -- Procedure who perform log shrink
 -- ------------------------------------------------------------------------------
+-- @@MARK: Maintenance : shrink logs
 Create Or Alter Proc yMaint.ShrinkLog
   @db Sysname
 , @MustLogBackupToShrink int output
@@ -6802,8 +6754,7 @@ Begin Try
 End Try
 Begin Catch
   Declare @errm nvarchar(4000);
-  Set @errm = YourSqlDba.yExecNLog.FormatBasicBeginCatchErrMsg ()  
-  Set @errm = YourSqlDba.yExecNLog.FormatBasicBeginCatchErrMsg ()
+  Select @errm = ErrMsg From YourSqlDba.S#.FormatCurrentMsg(null)
   -- first error already logged, do not do it again
   Insert into YourSqlDba.Maint.DbccShrinkLogState (DbName, FailedShrinkTime) 
   Select Db_name(), Getdate()
@@ -6865,6 +6816,7 @@ GO
 -- Must be call as Commvault post-job, through SQLCMD, to perform log shrinking 
 -- See https://tinyurl.com/YourSqlDbaAncCommVault for a more detailed overview.
 -- ------------------------------------------------------------------------------
+-- @@MARK: Maintenance : shrink all logs
 Create Or Alter Proc Maint.ShrinkAllLogs
 as
 Begin
@@ -6897,6 +6849,7 @@ GO
 -- Utility proc to bring back all Db offline in normal mode
 -- in case YourSqlDba put them offline because of a disconnected drive
 -- ------------------------------------------------------------------------------
+-- @@MARK: Maintenance : bring back online all
 Create Or Alter Proc Maint.BringBackOnlineAllOfflineDb
 as
 Begin
@@ -6916,7 +6869,7 @@ Begin
     Alter database [<DbName>] Set online
     '
     Set @sql = yExecNLog.Unindent_TSQL(@sql)
-    Exec yExecNLog.QryReplace @sql output, '<DbName>', @n
+    Set @Sql= Replace (@sql, '<DbName>', @n)
     Exec (@sql)
     print @sql
     Delete from #Db where name = @n
@@ -6931,6 +6884,7 @@ GO
 -- Job History in YourSqlDba Tables
 -- Cycle SQL Server error log
 -----------------------------------------------------------------------------
+-- @@MARK: Maintenance : logs cleanup
 Create Or Alter Proc yMaint.LogCleanup 
 as
 Begin
@@ -7025,6 +6979,7 @@ GO
 ----------------------------------------------------------------------------------------
 -- yMaint.IntegrityTesting
 -- Process integrity testing using 
+-- @@MARK: Maintenance : process integrity testing
 Create Or Alter Proc yMaint.IntegrityTesting 
 as
 Begin
@@ -7302,6 +7257,7 @@ Begin
 
 End -- yMaint.IntegrityTesting
 GO
+-- @@MARK: Maintenance : update stats
 Create Or Alter Proc yMaint.UpdateStats
 as
 Begin
@@ -7451,6 +7407,7 @@ Begin
   End Catch
 End -- yMaint.UpdateStats
 GO
+-- @@MARK: Maintenance : Todo : outaded way to reorganize / rebuild indexes
 Create Or Alter Proc yMaint.ReorganizeOnlyWhatNeedToBe
 as
 Begin
@@ -7706,6 +7663,7 @@ GO
 -- ------------------------------------------------------------------------------
 -- Function that get the installation language of the instance
 -- ------------------------------------------------------------------------------
+-- @@MARK: Todo : better way?
 Create Or Alter Procedure yInstall.InstallationLanguage
   @language nvarchar(512) output
 as
@@ -7722,6 +7680,7 @@ GO
 -- ------------------------------------------------------------------------------
 -- Function that builds backup file name
 -- ------------------------------------------------------------------------------
+-- @@MARK: Todo : better way?
 Create Or Alter Function yMaint.MakeBackupFileName
 (
   @DbName sysname
@@ -7965,6 +7924,7 @@ GO
 -------------------------------------------------------------------------------------
 -- Sp to ensure and or create specific SQL Agent Job for restore to MirrorServer
 -------------------------------------------------------------------------------------
+-- @@MARK: Mirroring - Set restore Job
 Create Or Alter Procedure Mirroring.HandleRestoreJobAsNecessary @MirrorServer Sysname, @dropJob Int = 0, @ForceRecreateJob Int = 0
 As
 Begin
@@ -8061,6 +8021,7 @@ GO
 -- ----------------------------------------------------------------------------------------------
 -- Start_Restart Restore job for mirrorServer
 -- ----------------------------------------------------------------------------------------------
+-- @@MARK: Mirroring - Start restore job
 Create or Alter Proc Mirroring.StartRestartRestoreJobForMirrorServer @MirrorServer Sysname
 as 
 Begin
@@ -8142,6 +8103,7 @@ BEGIN
   END CATCH;
 END;
 GO
+-- @@MARK: Mirroring - Queue restore
 Create Or Alter Procedure yMirroring.QueueRestoreToMirror
   @context nvarchar(4000) = ''
 , @DbName sysname
@@ -8223,6 +8185,7 @@ Begin
   
 End -- yMirroring.QueueRestoreToMirror
 GO
+-- @@MARK: Mirroring - Replicate logins - cleanup before
 Create Or Alter Procedure Maint.DropOrphanLogins
 as
 begin
@@ -8285,6 +8248,7 @@ go
 -- In all cases, the msdb database file backup is always deleted by  
 -- the Maint.DeleteOldBackups procedure when  @extension = .bak
 -- ------------------------------------------------------------------------------
+-- @@MARK: Maintenance - Old backup cleanup
 Create Or Alter Procedure Maint.DeleteOldBackups
   @oper nvarchar(200) = 'YourSQLDba_Operator'
 , @path nVARCHAR(max)  -- Path to the files
@@ -8558,6 +8522,7 @@ Begin
 
 End -- Maint.DeleteOldBackups
 GO
+-- @@MARK: Mirroring - Replicate on login to mirror
 Create Or Alter Procedure yMirroring.MirrorLoginSync
   @servername sysname
 , @loginname sysname
@@ -8683,6 +8648,7 @@ Begin
 
 End --yMirroring.MirrorLoginSync
 GO
+-- @@MARK: Mirroring - Replicate logins to mirror
 Create Or Alter Procedure yMirroring.LaunchLoginSync 
 As
 Begin
@@ -8834,6 +8800,7 @@ Begin
           
 End -- yMirroring.LaunchLoginSync
 GO
+-- @@MARK: Mirroring - Diag matching versions
 Create Or Alter Procedure yMirroring.ReportYourSqlDbaVersionOnTargetServers
   @MirrorServer sysname 
 , @LogToHistory int = 1
@@ -8974,6 +8941,7 @@ go
 -- Proc for doing backup.  MUST BE CALLED from YourSqlDba_DoMaint because
 -- many parameters are passed through a context
 -- ------------------------------------------------------------------------------
+-- @@MARK: Maintenance - Process backups
 Create Or Alter Proc yMaint.Backups
 as
 Begin
@@ -9515,6 +9483,7 @@ GO
 -- YourSqlDba account password on source servers, so the same account is going to be replicated 
 -- by every participating server.
 ----------------------------------------------------------------------------------------------------------
+-- @@MARK: Maintenance Mirroring - ConfigureSecurity
 Create Or Alter Procedure Mirroring.SetYourSqlDbaAccountForMirroring 
   @YourSqlDbaAccountForMirroringPwd Nvarchar(max) = NULL
 as
@@ -9638,6 +9607,7 @@ GO
 -- and action to do set YourSqlDba password and set YourSqlDba account bridge to MirrorServer.
 -- Return a success or status 
 ----------------------------------------------------------------------------------------------------------
+-- @@MARK: Maintenance Mirroring - Cleanup and diag Linked Server for Mirroring
 Create Or Alter Procedure yMirroring.CleanMirrorServerForMissingServerAndCheckServerAccessAsYourSqlDbaAccount
   @oper sysname = NULL
 , @MirrorServer sysname = NULL
@@ -9795,6 +9765,7 @@ Begin
   return 1
 End
 Go
+-- @@MARK: TODO : Check for use and duplicate fonction in S#, check also if function that dedup space can be replaced by this
 Create Or Alter Function yUtl.DedupSeqOfChars (@Dup nvarchar(5), @Str Nvarchar(max))
 Returns Table
 as
@@ -9813,6 +9784,7 @@ GO
 -------------------------------------------------------------------------------------------
 -- Wait for inactivity on YourSqlDba_DoMaint
 -------------------------------------------------------------------------------------------
+-- @@MARK: Maintenance : CommVault - Sync with backups done by external backup tooling
 Create Or Alter Proc Maint.SetSyncWith_YourSqlDba_DoMaint @WaitType Sysname = 'Exclusive'
 AS
 Begin
@@ -9824,6 +9796,7 @@ Begin
     Raiserror ('@WaitType parameter must either be Exclusive or Shared',11,1) with nowait;
 End
 GO
+-- @@MARK: Maintenance : CommVault - Sync with backups done by external backup tooling
 Create Or Alter Proc Maint.SignalEndOf_YourSqlDba_DoMaint 
 AS
   -- To cancel lock acquired by Maint.SetSyncWith_YourSqlDba_DoMaint 
@@ -9865,7 +9838,7 @@ Create Or Alter Proc Maint.YourSqlDba_DoMaint
 --, @StepId Int = NULL -- stepid of SQL Server Agent Jobstep  that launched the job
 as
 Begin
-  
+-- @@MARK: Maintenance : YourSqlDba_DoMaint Main DoMaint !
   Set nocount On 
 
   -- YourSqlDba does always a shared lock to prevent external backup process with CommVault
@@ -9896,6 +9869,7 @@ Begin
   -- Log viewer has a poor display of job history. It supresses line feeds and truncate output
   -- The only way to have a nice output is through a simple select, and by checking 
   -- option : Include Step output in history
+
   
 	 Set @SendOnErrorOnly = 0
 
@@ -9972,6 +9946,8 @@ Begin
   -- Execute SQL generated by previous query which adds a row to 
   -- Maint.JobHistory to record a new job
   Exec (@Sql) 
+
+  -- @@MARK: Full logging through emai starts here, because job context must be set.
 
   Exec yExecNLog.LogAndOrExec 
     @context = 'Maint.YourSqlDba_DoMaint'
@@ -10316,9 +10292,6 @@ Begin
   End Try
 
   Begin Catch -- make error go through the log
-    declare @msg  nvarchar(4000)
-    Select @Msg=yExecNLog.FormatBasicBeginCatchErrMsg()
-
     Exec yExecNLog.LogAndOrExec 
       @context = 'Maint.YourSqlDba_DoMaint'
     , @Info = 'Error in Maint.YourSqlDba_DoMaint'
@@ -10365,6 +10338,7 @@ GO
 -- ------------------------------------------------------------------------------
 -- Function that get path only from complete file path
 -- ------------------------------------------------------------------------------
+-- @@MARK: TODO : Check for use of function parse file parts
 Create Or Alter Function yUtl.GetPathFromName
 (
   @pathAndFileName nvarchar(512)
@@ -10394,6 +10368,7 @@ GO
 -- into Maint.LastBackupLocations
 -- There is no need to set a context because, it calls directly Maint.YourSqlDba_DoMaint, which does so
 -- -------------------------------------------------------------------------------------------------------------
+-- @@MARK: Maintenance : Tool for Admin - Backups
 Create Or Alter Proc Maint.SaveDbOnNewFileSet 
   @DbName nvarchar(128)
 , @FullBackupPath nvarchar(512) = null
@@ -10572,6 +10547,7 @@ Begin
 
 End -- Maint.SaveDbCopyOnly
 GO
+-- @@MARK: Maintenance : Tool for Admin - Duplicate Db
 Create Or Alter Proc Maint.duplicateDb 
   @sourceDb nvarchar(512)
 , @TargetDb nvarchar(512)
@@ -10726,6 +10702,7 @@ Begin
 
 End -- Maint.duplicateDb
 GO
+-- @@MARK: Maintenance : Tool for Admin - DuplicateDb using backup history
 Create Or Alter Proc Maint.duplicateDbFromBackupHistory 
   @SourceDb nvarchar(512)
 , @TargetDb nvarchar(512)
@@ -10987,6 +10964,7 @@ Begin
 End -- Maint.duplicateDbFromBackupHistory
 
 GO
+-- @@MARK: Maintenance : Tool to restoreDb with move clause
 Create Or Alter Proc Maint.RestoreDb 
   @TargetDb nvarchar(512)        -- database name to restore
 , @PathAndFilename nvarchar(512) -- complete file and path name must be given 
@@ -11214,6 +11192,7 @@ GO
 -- ------------------------------------------------------------------------------
 -- Procedure to visualize last statement running or ran
 -- ------------------------------------------------------------------------------
+-- @@MARK: TODO : Check for use
 Create Or Alter Function yUtl.TextSplitInRows 
 (
   @sql nvarchar(max)
@@ -11263,6 +11242,7 @@ End -- yUtl.TextSplitInRows
 -- Procedure to show maintenance log history
 -- ---------------------------------------------------------------------------------------
 GO
+-- @@MARK: TODO : To remove soon
 Create Or Alter Proc Maint.ShowHistory 
   @JobNo Int = NULL
 , @FilterErr Int = 0
@@ -11279,6 +11259,7 @@ Begin
   print 'Order By cmdStartTime, Seq, TypSeq, Typ, Line'
 End -- Maint.ShowHistory 
 GO
+-- @@MARK: TODO : Question the need...
 Create Or Alter Proc Install.AddOrReplaceMaintenance 
   @JobNameSuffix nvarchar(512) = ''
 , @FullBackupPath nvarchar(512) 
@@ -11719,6 +11700,7 @@ End
 -- To be done once when YourSqlDba script is run for the first time on a server 
 ---------------------------------------------------------------------------------------------
 GO
+-- @@MARK: Install YourSqlDba
 Create Or Alter Proc Install.InitialSetupOfYourSqlDba 
   @FullBackupPath nvarchar(512) = NULL
 , @LogBackupPath nvarchar(512) = NULL
@@ -12014,6 +11996,7 @@ GO
 -- The parameter string must begin with a '@' character.
 -- The removal begins from the '@' character and ends before the next '@' character 
 -- or at the end of the command string in the jobstep.
+-- @@MARK: TODO : Question for need
 Create Or Alter Proc yInstall.CleanUpParam
   @prm sysname
 , @SelectSearchArg nvarchar(1000) 
@@ -12240,6 +12223,7 @@ GO
 
 -- This function replace the parameters name in the "@command" string
 -- and subtract 1 day from the number of days of retention.
+-- @@MARK: TODO : Check for use - Very old update
 Create Or Alter Function yInstall.ReplaceRetDays 
 (
   @command nvarchar(max)
@@ -12415,7 +12399,6 @@ Begin
     primary key  clustered (DriveLetter)
   )
   '
-  Exec yExecNLog.QryReplace @sql output, '"', ''''
   Exec (@sql)
 
   If Object_Id('tempdb..##NetworkDrivesToSetOnStartup') IS NOT NULL
@@ -12430,7 +12413,7 @@ Begin
     )
 End
 GO
-
+-- -- @@MARK: TODO : Check for use
 -- ------------------------------------------------------------------------------
 -- Stored procedure to define network drive on SQL Server startup
 -- ------------------------------------------------------------------------------
@@ -12497,6 +12480,7 @@ Begin
 
 End -- Maint.CreateNetworkDrives
 GO
+-- @@MARK: TODO : Check for use
 Create Or Alter Proc Maint.DisconnectNetworkDrive 
   @DriveLetterOrUNC nvarchar(255) 
 As 
@@ -12567,6 +12551,7 @@ Begin
   
 End -- Maint.DisconnectNetworkDrive
 GO
+-- @@MARK: TODO : Check for use
 Create Or Alter Proc Maint.ListNetworkDrives 
 As 
 Begin
@@ -12578,9 +12563,7 @@ Begin
 
 End -- Maint.ListNetworkDrives
 GO
-If object_id('yMirroring.InactivateYourSqlDbaJobs') is not null 
-  drop proc yMirroring.InactivateYourSqlDbaJobs
-GO
+-- @@MARK: TODO : Check for use
 Create Or Alter Procedure yMirroring.InactivateYourSqlDbaJobs
 As
 Begin
@@ -12618,6 +12601,7 @@ Begin
 
 End -- yMirroring.InactivateYourSqlDbaJobs
 GO
+-- @@MARK: Mirroring DropServer
 Create Or Alter Procedure Mirroring.DropServer
   @MirrorServer sysname = ''
 , @silent int = 0  
@@ -12682,6 +12666,7 @@ Begin
   
 End -- Mirroring.DropServer
 GO
+-- @@MARK: Mirroring Procedure to process restores
 Create Or Alter Procedure Mirroring.ProcessRestores
 As
 -------------------------------------------------------------------------------------
@@ -12822,6 +12807,7 @@ Go
 -------------------------------------------------------------------------------------
 -- When Adding a server ensure and or create specific SQL Agent Job for restore to MirrorServer
 -------------------------------------------------------------------------------------
+-- @@MARK: Mirroring AddServer
 Create Or Alter Procedure Mirroring.AddServer 
   @MirrorServer nvarchar(512)
 , @remoteLogin nvarchar(512)
@@ -12856,7 +12842,7 @@ Begin
 
   IF (LEN(@MirrorServerDataSrc) > 0)
   BEGIN
-    EXEC master.dbo.sp_addlinkedserver @server = @MirrorServer, @srvproduct='', @provider='SQLNCLI', @datasrc=@MirrorServerDataSrc
+    EXEC master.dbo.sp_addlinkedserver @server = @MirrorServer, @srvproduct='', @provider='MSOLEDBSQL', @datasrc=@MirrorServerDataSrc
   END
   ELSE
   BEGIN
@@ -12944,6 +12930,7 @@ Begin
 
 End -- Mirroring.AddServer
 GO
+-- @@MARK: Mirroring DoRestore
 Create Or Alter Procedure yMirroring.DoRestore 
   @BackupType nchar(1)
 , @Filename nvarchar(255)
@@ -13420,6 +13407,7 @@ GO
 -- set @SetRecoveryModeToSimple to 1.  Doing so will put the database into SIMPLE
 -- recovery mode until the «ReturnDbToNormalUseFromMaintenanceMode» is called.
 -- -------------------------------------------------------------------------
+-- @@MARK: Tooling for database on application update
 Create Or Alter Procedure Maint.PrepDbForMaintenanceMode 
   @DbList nVARCHAR(max) = '' -- @DbList : See comments later for further explanations
 , @DbNameSuffixForMaintenance nvarchar(128)
@@ -13921,6 +13909,7 @@ Begin
 
 End -- Maint.ReturnDbToNormalUseFromMaintenanceMode
 GO
+-- @@MARK: TODO : Check for use
 Create Or Alter Proc S#.CopyAllSqlModules @SrcDb Sysname, @DestDb Sysname
 as
 Begin
@@ -14173,6 +14162,7 @@ go
 -- ---------------------------------------------------------------------------------------
 -- Proc to create database export
 -- ---------------------------------------------------------------------------------------
+-- @@MARK: TODO : Check for use Exporting database
 Create Or Alter Procedure yExport.CreateExportDatabase 
   @dbName sysname 
 , @collation sysname = NULL
@@ -17015,6 +17005,7 @@ Begin
 
 End -- yUpgrade.UpgradeFulltextCatalogsFromSql2005
 GO
+-- @@MARK: Mirroring : Upgrade SQL using failover
 Create Or Alter Procedure Upgrade.MakeDbCompatibleToTarget
   @DbName sysname
 As
@@ -17041,6 +17032,7 @@ End -- Upgrade.MakeDbCompatibleToTarget
 --------------------------------------------------------------------------------------
 ------------------------------------------------------------------------------------------
 GO
+-- @@MARK: Mirroring : failover
 Create Or Alter Procedure [Mirroring].[Failover]
   @IncDb nVARCHAR(max) = '' 
 , @ExcDb nVARCHAR(max) = '' 
@@ -17421,7 +17413,7 @@ Begin
    
 End -- Mirroring.Failover
 GO
-
+-- @@MARK: TODO: Broker left over to cleanup until everybody use a mandatory version
 -- remove broker stuff from version previous to 7.1 version
 IF EXISTS (SELECT * FROM sys.services WHERE name = N'//YourSQLDba/MirrorRestore/TargetService')
      DROP SERVICE [//YourSQLDba/MirrorRestore/TargetService];
@@ -17460,6 +17452,7 @@ IF EXISTS (SELECT * FROM sys.service_message_types
      DROP MESSAGE TYPE
      [//YourSQLDba/MirrorRestore/End];
 GO
+-- @@MARK: TODO : Soo old need to be removed
 -- the sole purpose of these synonyms is to avoid
 -- breaking scripts that could used the previous name with dbo. schema
 -- Ia also ease calling of procedures not prefixed by the schema maint.
@@ -17507,6 +17500,7 @@ GO
 grant execute on dbo.RestoreDb to guest
 GO
 -- check YourSqlDba account access through mirror server, and correct it if necessary. If failure to do it send a e-mail
+-- @@MARK: Mirroring : Verify and clean up mirroring setups
 Exec yMirroring.CleanMirrorServerForMissingServerAndCheckServerAccessAsYourSqlDbaAccount 
 GO
 -- changing parameter name ConsecutiveDaysOfFailedBackupsToPutDbOffline to ConsecutiveFailedbackupsDaysToPutDbOffline
@@ -17530,6 +17524,7 @@ GO
 
 If Schema_id('utl') is NOT NULL drop schema utl
 GO
+-- @@MARK: Version Message 
 Exec Install.PrintVersionInfo
 
 /*====== to follow a runnning job
