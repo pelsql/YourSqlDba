@@ -18,7 +18,7 @@
 Drop Table if Exists #version
 create table #Version (version nvarchar(40), VersionDate datetime)
 set nocount on
-insert into #Version Values ('7.1.0.3', convert(datetime, '2025-12-03', 120))  
+insert into #Version Values ('7.1.0.4', convert(datetime, '2026-01-01', 120))  
 
 --Alter database yoursqldba set single_user with rollback immediate
 --go
@@ -4454,18 +4454,27 @@ Begin
   Insert into S#.ScriptToRun (sql, seq)
   Select sql, seq=ROW_NUMBER() over (Order by name)
   From 
-    (SELECT name, data_source FROM sys.servers Where product = 'SQL Server' And provider like 'SQLNCLI%') as Prm
+    (Select MirrorServerName=MirrorServerName From Mirroring.TargetServer) as M
+    CROSS APPLY 
+    (
+    SELECT name, data_source, provider 
+    FROM Sys.Servers 
+    Where name Collate Database_Default = M.MirrorServerName 
+      And product = 'SQL Server' 
+      And provider like 'SQLNCLI%') as Prm
     CROSS APPLY (Select j=(Select Prm.* for Json Path)) as j
     CROSS APPLY (Select Sql=Code From S#.GetTemplateFromCmtAndReplaceTags ('===UpgradeSQlClient===', NULL, j)) as Sql
   /*===UpgradeSQlClient===
-  -- migrate SQLNCLI% provider (deprecated) to MSOLEDBSQL (fully supported)
-  EXEC master.dbo.sp_dropserver '#Name#', 'dropLogins'
-  Print 'recreer le serveur lié #Name# avec Mirroring.AddServer. See https://onedrive.live.com/personal/12c385255443c4ed/_layouts/15/Doc.aspx?sourcedoc=%7B5443c4ed-8525-20c3-8012-a81b00000000%7D&action=view&redeem=aHR0cHM6Ly8xZHJ2Lm1zL28vYy8xMmMzODUyNTU0NDNjNGVkL0V1M0VRMVFsaGNNZ2dCS29Hd0FBQUFBQlJ2b290QVJmaE5LQjJaenNPU09yZkE_ZT11c0h6Vms&wd=target%28REFERENCE.one%7Cc7b30aeb-6ae2-4bd6-a550-14feb11d776d%2FMirroring.AddServer%7Ca71c4787-8076-4ed3-a6be-d6c5c3c8b6b3%2F%29&wdorigin=703&wdpartid=%7B2da72b12-728f-4f44-ba3b-477df906c323%7D%7B80%7D&wdsectionfileid=%7B12c385255443c4ed%21sfb02454d2d084363a169b209686c280b%7D '
-  Print 'SAMPLE:'
+  --
+  -- Here is the time to your linked server with SQLNCLI% provider (deprecated) to MSOLEDBSQL (fully supported)
+  --
+  EXEC YourSqlDba.Mirroring.DropServer '#Name#', 'dropLogins'
+  Print '--recreer le serveur lié #Name# avec Mirroring.AddServer. See https://onedrive.live.com/personal/12c385255443c4ed/_layouts/15/Doc.aspx?sourcedoc=%7B5443c4ed-8525-20c3-8012-a81b00000000%7D&action=view&redeem=aHR0cHM6Ly8xZHJ2Lm1zL28vYy8xMmMzODUyNTU0NDNjNGVkL0V1M0VRMVFsaGNNZ2dCS29Hd0FBQUFBQlJ2b290QVJmaE5LQjJaenNPU09yZkE_ZT11c0h6Vms&wd=target%28REFERENCE.one%7Cc7b30aeb-6ae2-4bd6-a550-14feb11d776d%2FMirroring.AddServer%7Ca71c4787-8076-4ed3-a6be-d6c5c3c8b6b3%2F%29&wdorigin=703&wdpartid=%7B2da72b12-728f-4f44-ba3b-477df906c323%7D%7B80%7D&wdsectionfileid=%7B12c385255443c4ed%21sfb02454d2d084363a169b209686c280b%7D '
+  Print '--SAMPLE:'
   Print 'Exec YourSQLDba.Mirroring.AddServer'  
-  Print '@MirrorServer = ''#Name#'''
-  Print '@RemoteLogin = ''sa''  ' -- or equivalent login on the mirror server with enough right to create linked server and access to msdb for backup restore history and to the user databases for backup restore and integrity check, and also with right to view server state for monitoring session during restore and checkdb
-  Print '@RemotePassword = ''RemotePassword'' '  
+  Print '  @MirrorServer = ''#Name#'''
+  Print ', @RemoteLogin = ''sa''  ' -- or equivalent login on the mirror server with enough right to create linked server and access to msdb for backup restore history and to the user databases for backup restore and integrity check, and also with right to view server state for monitoring session during restore and checkdb
+  Print ', @RemotePassword = ''choose your Password For Your @RemoteLogin'' '  
   ===UpgradeSQlClient===*/
   Exec S#.RunScript
 END   
@@ -12809,13 +12818,13 @@ Go
 -------------------------------------------------------------------------------------
 -- @@MARK: Mirroring AddServer
 Create Or Alter Procedure Mirroring.AddServer 
-  @MirrorServer nvarchar(512)
-, @remoteLogin nvarchar(512)
-, @remotePassword nvarchar(512)
-, @ExcSysAdminLoginsInSync int = 0
-, @ExcLoginsFilter nvarchar(max) = ''
-, @MirrorServerDataSrc nvarchar(512) = ''
-, @YourSqlDbaAccountForMirroringPwd nvarchar(512) = NULL
+  @MirrorServer nvarchar(512) -- Mirror server (descriptive only if @MirrorServerDataSrc is different)
+, @remoteLogin nvarchar(512) -- sysadmin login
+, @remotePassword nvarchar(512) -- matchin sysadmin login password for @remoteLogin
+, @ExcSysAdminLoginsInSync int = 0 -- by default don't sync sysadmin
+, @ExcLoginsFilter nvarchar(max) = '' -- on here is a filter on which on to sync
+, @MirrorServerDataSrc nvarchar(512) = '' -- If specified this is real server name
+, @YourSqlDbaAccountForMirroringPwd nvarchar(512) = NULL 
 As
 Begin
   Declare @sql nvarchar(max)
@@ -12842,11 +12851,11 @@ Begin
 
   IF (LEN(@MirrorServerDataSrc) > 0)
   BEGIN
-    EXEC master.dbo.sp_addlinkedserver @server = @MirrorServer, @srvproduct='', @provider='MSOLEDBSQL', @datasrc=@MirrorServerDataSrc
+    EXEC master.dbo.sp_addlinkedserver @server = @MirrorServer, @srvproduct=N'', @provider=N'MSOLEDBSQL', @datasrc=@MirrorServerDataSrc
   END
   ELSE
   BEGIN
-    EXEC master.dbo.sp_addlinkedserver @server = @MirrorServer, @srvproduct=N'SQL Server'
+    EXEC master.dbo.sp_addlinkedserver @server = @MirrorServer, @srvproduct=N'', @provider=N'MSOLEDBSQL', @datasrc=@MirrorServer
   END
 
   EXEC master.dbo.sp_addlinkedsrvlogin @rmtsrvname = @MirrorServer, @locallogin = NULL , @useself = N'True'

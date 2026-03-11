@@ -29,21 +29,36 @@ There is also, on the landing page, a **`QuickLinks`** table referencing frequen
 ### Version history
 
 
-**Version 7.1.0.3**
+**Version 7.1.0.4**
 
-**[Get script for version 7.1.0.3](YourSQLDba_InstallOrUpdateScript.sql?raw=true)**
+[View script 7.1.0.4 on GitHub](YourSQLDba_InstallOrUpdateScript.sql)
+ 
+**[Open raw script 7.1.0.4](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)** 
+If you got script 7.1.0.3 re-apply this script, as the provider upgrade of YourSqlDba "Mirror server" may be incorrect.
 
-Fix for the small number of users who use a gMSA (*group Managed Service Account*) to run the Database Engine service.
+**Fix** for the small number of users who use 
+*group Managed Service Account* to run the Database Engine service.
 
-This type of account slightly reduces the rights granted to the relational engine for disk access. As a result, creating an assembly directly from its DLL file can fail.
+This type of account slightly reduces the rights granted to the relational engine 
+for disk access. As a result, creating an assembly directly from its DLL file can fail.
 
-A valid alternative is to import the binary content into SQL Server and create the assembly from that binary content.
+A valid alternative is to import the binary content into SQL Server and create the assembly 
+from that binary content.
 
---- 
+---
 
-Code maintenance was also done to improve clarity. No features were added or changed.
+**Force Upgrade to MSOLEDBSQL provider** When YourSqlDba "Mirroring" servers use the old "SQLNCLI" 
+provider, they are forcefully deleted to be asked to be recreated 
+with Mirroring.AddServer, which will then use the MSOLEDBSQL provider.
 
-Some tooling was added to help with code maintenance.
+[Doc reference on how to do a Mirroring.AddServer](https://onedrive.live.com/personal/12c385255443c4ed/_layouts/15/Doc.aspx?sourcedoc=%7B5443c4ed-8525-20c3-8012-a81b00000000%7D&action=view&redeem=aHR0cHM6Ly8xZHJ2Lm1zL28vYy8xMmMzODUyNTU0NDNjNGVkL0V1M0VRMVFsaGNNZ2dCS29Hd0FBQUFBQlJ2b290QVJmaE5LQjJaenNPU09yZkE_ZT11c0h6Vms&wd=target%28REFERENCE.one%7Cc7b30aeb-6ae2-4bd6-a550-14feb11d776d%2FMirroring.AddServer%7Ca71c4787-8076-4ed3-a6be-d6c5c3c8b6b3%2F%29&wdorigin=703&wdpartid=%7B2da72b12-728f-4f44-ba3b-477df906c323%7D%7B80%7D&wdsectionfileid=%7B12c385255443c4ed%21sfb02454d2d084363a169b209686c280b%7D)
+(ignore the error "cannot add YourSqlDbaRemoteServerCred because it already exists"
+
+---
+
+**Code maintenance was also done to improve clarity**. No features were added or changed.
+
+**Some tooling was added** to help with code maintenance. Useful only for YourSqlDba maintainers.
 A permanent bookmark system is now used, based on special comments in the code of the form. The comment is the name of the bookmark.
 ```sql
 -- @@MARK: Some comment explaining the purpose of this section of code
