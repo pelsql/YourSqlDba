@@ -2937,7 +2937,7 @@ From
   CREATE CERTIFICATE [#CertName#]
       ENCRYPTION BY PASSWORD = "'+@CertPassword+'"
       WITH SUBJECT = "Mean to sign and protect #Db# Assemblies from unauthorized modification",
-      EXPIRY_DATE = "2099-12-31";
+      EXPIRY_DATE = "20991231";
    ADD SIGNATURE
        TO Assembly::[#aName#]
        BY CERTIFICATE [#CertName#]
@@ -7848,7 +7848,7 @@ FROM
     CROSS APPLY
     (
     Select overWrite='Init, Format' Where prmOverwrite = 1 Union All
-    Select overWrite='noInt' Where ISNULL(prmOverwrite,0) <> 1 
+    Select overWrite='noInit' Where ISNULL(prmOverwrite,0) <> 1 
     ) as OverWrite
     CROSS APPLY (Select EncryptionTemplate = ', ENCRYPTION (ALGORITHM = #EncryptionAlgorithm#, SERVER CERTIFICATE = #EncryptionCertificate#)') As EncryptionTemplate 
     CROSS APPLY (Select EncryptionOpt=IIF(EncryptionAlgorithm<>'' and EncryptionCertificate<>'', EncryptionTemplate, '')) as EncryptionOpt

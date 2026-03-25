@@ -28,12 +28,21 @@ There is also, on the landing page, a **`QuickLinks`** table referencing frequen
 
 ### Version history
 
+**Version 7.1.0.5**
+
+[View script 7.1.0.5 on GitHub](YourSQLDba_InstallOrUpdateScript.sql)
+ 
+**[Get script 7.1.0.5](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)** 
+
+The yyyy-mm-dd date format used in the CREATE CREDENTIAL instruction was not universally supported.
+When connections language setting is configured for French, it caused an installation error. The date format YYYYMMDD that is now used is no more dependent on the connection language settings.
+
+In the function that generates backup command, the parameter NoInit was mistyped for NoInt, causing error in log backup commands.
 
 **Version 7.1.0.4**
 
-[View script 7.1.0.4 on GitHub](YourSQLDba_InstallOrUpdateScript.sql)
+[Get script 7.1.0.4 on GitHub](https://raw.githubusercontent.com/pelsql/YourSqlDba/5a0674c0221b007c7bc238a78aa7f42a63164528/YourSQLDba_InstallOrUpdateScript.sql)
  
-**[Open raw script 7.1.0.4](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)** 
 If you got script 7.1.0.3 re-apply this script, as the provider upgrade of YourSqlDba "Mirror server" may be incorrect.
 
 **Fix** for the small number of users who use 
