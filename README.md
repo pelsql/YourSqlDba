@@ -28,11 +28,19 @@ There is also, on the landing page, a **`QuickLinks`** table referencing frequen
 
 ### Version history
 
+**Version 7.1.0.6**
+
+[View script 7.1.0.6 on GitHub](YourSQLDba_InstallOrUpdateScript.sql)
+ 
+**[Get script 7.1.0.6](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)** 
+
+Fix for backup names too large for the name parameter of the backup command
+
 **Version 7.1.0.5**
 
 [View script 7.1.0.5 on GitHub](YourSQLDba_InstallOrUpdateScript.sql)
  
-**[Get script 7.1.0.5](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)** 
+**[Get script 7.1.0.5](https://raw.githubusercontent.com/pelsql/YourSqlDba/45ae7f77d79e84581009f5a64b459a7ea77b3ab5/YourSQLDba_InstallOrUpdateScript.sql)** 
 
 The yyyy-mm-dd date format used in the CREATE CREDENTIAL instruction was not universally supported.
 When connections language setting is configured for French, it caused an installation error. The date format YYYYMMDD that is now used is no more dependent on the connection language settings.

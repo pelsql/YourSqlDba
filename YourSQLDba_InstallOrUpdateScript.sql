@@ -18,7 +18,7 @@
 Drop Table if Exists #version
 create table #Version (version nvarchar(40), VersionDate datetime)
 set nocount on
-insert into #Version Values ('7.1.0.5', convert(datetime, '2026-01-01', 120))  
+insert into #Version Values ('7.1.0.6', convert(datetime, '2026-01-01', 120))  
 
 --Alter database yoursqldba set single_user with rollback immediate
 --go
@@ -606,6 +606,117 @@ From
 ===Samples===*/
 /*===KeyWords===
 Enumeration,constants,parameters
+===KeyWords===*/
+GO
+-- ------------------------------------------------------------------------------
+-- Extended Charindex which can search a string backward from end of another string 
+-- when startPos is made negative
+-- If gives leftPos and rightPos of the searched string found 
+-- ------------------------------------------------------------------------------
+Create Or Alter Function S#.CharindexEx(@srch nvarchar(max), @str nvarchar(max), @startPos Integer) 
+returns Table
+as 
+--------------------------------------------------------------------------
+-- Useful function to allow searching strings in both directions forward or vackward
+-- @@MARK: string handling - search
+--------------------------------------------------------------------------
+Return 
+(
+Select Trc.*
+From 
+  (Select s=@str, srch=@srch, StartPos=ISNULL(@StartPos,1)) as Prm
+  CROSS APPLY
+  (
+  Select *
+  From 
+    (
+    Select 
+      startPos
+    , s
+    , dStr=IIF(StartPos>=0,s,Reverse(s))
+    , srch
+    , dSrch=IIF(StartPos>=0,srch,Reverse(srch))
+    , lgStr=Len(s)
+    , lgSrch=Len(srch)
+    ) as E
+    CROSS APPLY (Select StrPos=Charindex(dSrch, dStr, Abs(startPos))) as dPos
+    -- searches from start
+    OUTER APPLY (Select LeftPosOfStrP  = StrPos Where StrPos>0 And StartPos>0) as LeftOfStr
+    OUTER APPLY (Select RightPosOfStrP = LeftPosOfStrP+LgSrch-1 Where LeftPosOfStrP Is Not NULL) as RightPosOfStrP
+    -- searches from end
+    OUTER APPLY (Select LeftPosOfStrN = (LgStr-StrPos+1-lgSrch+1) Where StrPos>0 And StartPos<0) as LeftPosOfStrN 
+    OUTER APPLY (Select RightPosOfStrN = LgStr-StrPos+1 Where LeftPosOfStrN Is Not NULL) as RightOfStrN
+    -- choose search result (note they are null as soon as they are not of the direction asked (negative=from end), (>0=from start))
+    CROSS APPLY (Select LeftPos=COALESCE(LeftPosOfStrP, LeftPosOfStrN, 0)) as LeftPos
+    CROSS APPLY (Select RightPos=COALESCE(RightPosOfStrP, RightPosOfStrN, 0)) as RightPos
+  ) as Trc
+)
+/*===KeyWords===
+String, Parsing 
+===KeyWords===*/
+GO
+Create Or Alter Function S#.ParseFileParts (@FileExp as Nvarchar(512))
+Returns Table 
+As
+--------------------------------------------------------------------------
+-- Useful function to get file parts
+-- @@MARK: manage files - get file parts
+--------------------------------------------------------------------------
+Return
+Select *
+From
+  (Select FileExp=@FileExp) as FileExp
+  OUTER APPLY (Select Drive=LEFT(fileExp,2) Where FileExp LIKE '[a-z]:%') As Drive
+  OUTER APPLY (Select StartPath=CHARINDEX('\', FileExp) Where FileExp LIKE '%\%') as StartPath
+  CROSS APPLY (Select LgFileExp=LEN(FileExp)) as LgFileExp
+  -- If there is no '\' endPath is at best equal to startPath
+  OUTER APPLY (Select EndPath=LeftPos From S#.CharindexEx('\', FileExp, -1)) As EndPath
+  -- Path start at position of first '\', otherwise PathWithNoDrive becomes null
+  OUTER APPLY (Select DirAlone=SUBSTRING(fileExp, StartPath, EndPath-StartPath+1) Where StartPath is Not NULL) as DirAlone
+  -- The Dot that precedes the extension must be the last one, and must not be followed by '\'
+  OUTER APPLY (Select LastDot=LeftPos From S#.CharindexEx('.', FileExp, -1) Where FileExp LIKE '%.%' And FileExp Not Like '%.%\%') as LastDot
+  -- If a LastDot that obey above conditions, extension follows it till the end of the file name
+  OUTER APPLY (Select Ext=SUBSTRING(FileExp, LastDot+1, LgFileExp)) as Ext
+  -- file name without drive is needed
+  CROSS APPLY (Select DriveRemoved=IIF(Drive IS NULL, FileExp, STUFF(FileExp,1,2,''))) as DriveRemoved
+  -- file name without drive and path si needed
+  CROSS APPLY (Select DriveAndPathRemoved=IIF(DirAlone IS NULL, DriveRemoved, STUFF(DriveRemoved,1,Len(DirAlone),''))) as DriveAndPathRemoved
+  -- if file name without drive and path isn't empty this is a file name
+  OUTER APPLY (Select FileName=DriveAndPathRemoved Where DriveAndPathRemoved<>'') as FileName
+  -- Si l'extension est NULL, l'expression avant suffit, sinon on le reitre de l'expression avant, NULL ne fait pas sauter LEFT
+  OUTER APPLY (Select ExtLessName=IIF(Ext IS NULL, FileName, LEFT(FileName, Len(FileName)-Len(Ext)-1 ))) as NameNoExt
+  -- On obtient le path et le drive en substituant par '' les valeurs manquantes, si au moins une des deux valeurs y sont
+  OUTER APPLY
+  (
+  Select DriveAndPath=ISNULL(Drive,'')+ISNULL(DirAlone,'')
+  Where Drive IS NOT NULL OR DirAlone IS NOT NULL
+  ) as FileExpWithNoFileName
+/*===Purpose===
+Parse multiple file parts
+===Purpose===*/
+/*===Samples===
+  SELECT 
+    TestFile, P.fileExp, P.Drive, P.DirAlone, P.DriveRemoved, P.DriveAndPathRemoved, P.DriveAndPath, P.FileName, P.ExtLessName, P.Ext
+  FROM
+    (
+    Values -- test data
+      ('C:\Windows\System32\Drivers\Etc\Hosts.Sam')
+    , ('C:\Etc\Hosts')
+    , ('C:Hosts')
+    , ('C:Hosts.Sam')
+    , ('C:')
+    , ('C:\')
+    , ('C:\FalseDot.Extension\Hehe') 
+    , ('C:\FalseDot.Extension\') 
+    , ('C:\FalseDot.\') 
+    , ('Hosts')
+    , ('\Windows\System32\Drivers\Etc\Hosts')
+    , (NULL)
+    ) as Test(TestFile)
+    OUTER APPLY S#.ParseFileParts (Test.TestFile) as P
+===Samples===*/
+/*===KeyWords===
+String
 ===KeyWords===*/
 GO
 
@@ -5384,7 +5495,7 @@ Begin
           Select Err Where I.Err <>'?' 
           UNION ALL
           Select Err = 'YourSqlDba error notification '+convert(nvarchar,I.YourSqlDbaNo)+'. Please check ctx, inf, or msgs types' 
-          Where charindex(I.YourSqlDbaNo, '005 006 007 008 009 012 013 015 021')>0 And I.Err IS NULL
+          Where charindex(I.YourSqlDbaNo, '005 006 007 008 009 012 013 015 021 999')>0 And I.Err IS NULL
           -- YourSqlDba tried to build a dynamic query but either concatenated a null in the process or failed to generate SQL
           UNION ALL
           Select Err='Unexpected YourSqlDba error : Dynamically generated SQL IS NULL' Where Sql IS NULL And I.Err IS NULL
@@ -7685,11 +7796,71 @@ Begin
   
 End -- yInstall.InstallationLanguage
 GO
-
 -- ------------------------------------------------------------------------------
 -- Function that builds backup file name
 -- ------------------------------------------------------------------------------
--- @@MARK: Todo : better way?
+Create Or Alter Function yMaint.iTvf_MakeBackupFileName
+(
+  @DbName sysname
+, @bkpTyp Char(1)
+, @FullBackupPath nvarchar(512)
+, @Language nvarchar(512)
+, @Ext nvarchar(7) = NULL
+, @TimeStampNamingForBackups Int = 1
+)
+returns Table
+as
+-- @@MARK: Todo : Make backup file name - itvf
+Return
+Select *
+From
+  (Select DebugMode=0) as DebugMode
+  CROSS APPLY
+  (
+  Select 
+    prmDbName = @Dbname
+  , prmBkpTyp = @BkpTyp
+  , prmFullBackupPath=@FullBackupPath
+  , prmLanguage=@Language
+  , prmExt=IIF(@Ext Not IN ('F', 'D'), 'L', @Ext)
+  , prmTimeStampNamingForBackups= @TimeStampNamingForBackups
+  Where DebugMode=0
+  UNION ALL
+    Select 
+    prmDbName = 'MSDB'
+  , prmBkpTyp = 'F'
+  , prmFullBackupPath='\\SomeServer\SomeShare\'
+  , prmLanguage='Francais'
+  , prmExt='BAK'
+  , prmTimeStampNamingForBackups= 1
+  Where DebugMode=1
+  ) as prm
+  CROSS APPLY (Select BkpTS0 = Convert(nvarchar(30), getdate(), 120) ) as BkpTS0
+  CROSS APPLY (Select BkpTS1 = STUFF (BkpTS0, 11, 1, '_')) as BkpTS1
+  CROSS APPLY (Select BkpTS2 = STUFF (BkpTS1, 14, 1, 'h')) as BkpTS2
+  CROSS APPLY (Select BkpTS3 = STUFF (BkpTS2, 17, 1, 'm')) as BkpTS3
+  -- For Msdb I don't keep details up to the minute
+  -- utiliser format 120 pour MSDB
+  CROSS APPLY (Select BkpTS = IIF(prmDbName<>'MSDB', BkpTS3, Left(Convert(nvarchar(30), getdate(), 121),10))) as BkpTS
+  -- This formula give an DayOfWeekNo that is independant of the language
+  -- starts with 1, for Us_english Dim=1, for french
+  CROSS APPLY (Select DayOfWeekNo=((@@datefirst + DatePart(dw, getdate())) % 7) + 1) as DayOfWeekNo
+  CROSS APPLY
+  (
+  Select DayOfWeek = CHOOSE (DayOfWeekNo, 'Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam') Where prmLanguage like 'Français%'
+  UNION ALL
+  Select DayOfWeek = CHOOSE (DayOfWeekNo, 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat') Where prmLanguage Not like 'Français%'
+  ) as DayStr
+  CROSS APPLY (Select destin=yUtl.NormalizePath(prmFullBackupPath)) as destin
+  LEFT JOIN (Values ('F', 'Database', 'Bak'), ('D', 'Differential', 'Bak'), ('L', 'Logs', 'Trn')) as t(typCode, typ, Ext) On t.typCode=prmBkpTyp
+  OUTER APPLY (Select DteHrJr='['+BkpTs+'_'+DayOfWeek+']_' Where ISNULL(prmTimeStampNamingForBackups, 1)=1) as DteHrJr
+  CROSS APPLY (Select Justfilename=prmDbName+'_'+ISNULL(DteHrJr,'')+typ+'.'+Ext) as JustFilename
+  CROSS APPLY (Select filename=Destin+prmDbName+'_'+ISNULL(DteHrJr,'')+typ+'.'+Ext) as Filename
+Go
+-- ------------------------------------------------------------------------------
+-- Function that builds backup file name
+-- ------------------------------------------------------------------------------
+-- @@MARK: Todo : Make backup file name - scalar
 Create Or Alter Function yMaint.MakeBackupFileName
 (
   @DbName sysname
@@ -7702,94 +7873,11 @@ Create Or Alter Function yMaint.MakeBackupFileName
 returns nvarchar(max)
 as
 Begin
-  -- ===================================================================================== 
-  -- Find weekday name which is part of generated backup name
-  -- ===================================================================================== 
-
-  -- Find weekday from date.  
-
-  Declare @DayOfWeek   nvarchar(8)
-  Declare @DayOfWeekNo    Int
-  Declare @DayOfWeekNoStr Char(1)
-  Declare @filename  nvarchar(512)
-
-  declare @BackupTimeStamp nvarchar(60)
-  
-  If @DbName <> 'msdb'
-  Begin 
-    Set @BackupTimeStamp = Convert(nvarchar(30), getdate(), 120)
-    Set @BackupTimeStamp = STUFF (@BackupTimeStamp, 11, 1, '_')
-    Set @BackupTimeStamp = STUFF (@BackupTimeStamp, 14, 1, 'h')
-    Set @BackupTimeStamp = STUFF (@BackupTimeStamp, 17, 1, 'm')
-  End
-  Else
-  Begin
-    -- for MSDB we don't keep time part in the timestamp just date part because
-    -- MSDB is taken in backup many times a day
-    Set @BackupTimeStamp = Convert(nvarchar(10), getdate(), 121)  
-  end
-      
-  -- use independant Set datefirst setting using @@datefirst 
-  -- to get a predictible @dayOfWeekNo.  Set datefirst value is dependent of language
-  Set @DayOfWeekNo = ((@@datefirst + DatePart(dw, getdate())) % 7) + 1
-
-  -- @DayOfWeekNo = Sat = 0 Sun = 1 Mon = 2....
-  -- translate Sat = 0 by Sat = 6, Sun = 1 par Sun = 7 an so on
-  Set @DayOfWeekNoStr = Substring('6712345', @DayOfWeekNo, 1) 
-  
-  Set @DayOfWeek = 
-  Case 
-    When @Language like 'Français%' Then -- default french language server
-      case @DayOfWeekNoStr
-        when '1' then 'Lun'
-        when '2' then 'Mar'
-        when '3' then 'Mer'
-        when '4' then 'Jeu'
-        when '5' then 'Ven'
-        when '6' then 'Sam'
-        when '7' then 'Dim'
-      end
-    Else -- else default to us-english
-      case @DayOfWeekNoStr
-        when '1' then 'Mon'
-        when '2' then 'Tue'
-        when '3' then 'Wed'
-        when '4' then 'Thu'
-        when '5' then 'Fri'
-        when '6' then 'Sat'
-        when '7' then 'Sun'
-      end
-  End            
-  -- Make file name boiler plate with replaceable parameters identified by label  between "<" et ">"
-  Set @filename = '<destin><DbName>_[<DteHr>_<jour>]_<typ>.<ext>'
-
-  -- replace parameters ....
-  Set @filename = replace(@filename,'<destin>', yUtl.NormalizePath(@FullBackupPath))
-
-  If @bkpTyp = 'F'
-     Set @filename = replace(@filename,'<typ>', 'database')
-  Else If @bkpTyp = 'D'
-     Set @filename = REPLACE(@filename,'<typ>', 'differential')
-  Else   
-     Set @filename = replace(@filename,'<typ>', 'logs')
-
- 
-  -- generate logs by day by default
-  If @TimeStampNamingForBackups IS NULL Or  @TimeStampNamingForBackups = 1 
-  Begin 
-    Set @filename = replace(@filename,'<jour>', @DayOfWeek) 
-    Set @filename = replace(@filename,'<DteHr>', @BackupTimeStamp) 
-  End
-  Else
-    Set @filename = replace(@filename,'[<DteHr>_<jour>]_', '');
-
-  -- set extension and db name as part of the file name
-  Set @filename = replace(@filename,'<ext>',  case when @bkpTyp = 'F' Then ISNULL(@Ext, 'Bak') else ISNULL(@Ext, 'Trn') end) 
-  Set @filename = replace(@filename,'<DbName>', @DbName) -- nom de la Bd
-
-  Return (@filename)
-  
-End -- yMaint.MakeBackupFileName
+  Return
+  (
+  Select fileName From yMaint.iTvf_MakeBackupFileName(@DbName,@BkpTyp,@FullBackupPath,@Language,@Ext,@TimeStampNamingForBackups)
+  )
+End
 GO
 Create Or Alter Function yMaint.iTvf_MakeBackupCmd
 -- ------------------------------------------------------------------------------
@@ -7797,6 +7885,7 @@ Create Or Alter Function yMaint.iTvf_MakeBackupCmd
 -- Can be used in a set based fashion, into a compound query
 -- or directly from a udf wrapper
 -- ------------------------------------------------------------------------------
+-- @@MARK: Maintenance - Make backup Cmd iTvf
 (
   @DbName sysname
 , @bkpTyp Char(1)
@@ -7829,14 +7918,19 @@ FROM
     Where DebugMode = 0
     Union All
     Select 
-      DbName                = N'TestDb'
-    , bkpTyp                = 'F'
-    , fileName              = N'c:\temp\TestDb_full.bak'
-    , overwrite             = 1
-    , name                  = N'TestDb full backup'
+      DbName                
+    , prmBkpTyp             = 'F'
+    , fileName              
+    , prmOverwrite          = 1
+    , prmName               = N'TestDb full backup'
     , EncryptionAlgorithm   = N'AES_256'
     , EncryptionCertificate = N'MyBackupCert'
     , Self                  = 'yMaint.iTvf_MakeBackupCmd' -- select NULL if selected code run from proc
+    From 
+      (Select filler=Replicate('#', 10)) as filler
+      CROSS APPLY (Select DbName=N'TestDbWithAVeryLongDbName') as DbName
+      CROSS APPLY (Select Dir=N'C:\ATestVeryLoooooooooooooooongDirectoryForBackups\') as Dir
+      CROSS APPLY (Select justFileName, fileName From iTvf_MakeBackupFileName(DbName, 'F', Dir, 'FRANCAIS', 'BAK', 1)) as f
     Where DebugMode = 1
     ) AS PrmsFct
     OUTER APPLY
@@ -7855,26 +7949,18 @@ FROM
     -- produce different name, depending of the caller only 2 possibility, the default is YourSqlDba, the other is a utiliy function of YourSqlDba
     CROSS APPLY (Select HeaderName=IIF(prmName Like 'SaveDbOnNewFileSet%', 'SaveDbOnNewFileSet','YourSQLDba')) as HeaderName
     -- include some date information creation in the name
-    CROSS APPLY (Select FullLenName=HeaderName+':'+replace(left(convert(varchar(8), getdate(), 108),5), ':', 'h')+': '+FileName) as FullLenName
-    -- backup name (not file backup name, but name parameter of backup command)
-    -- is limited to 128, must be truncated accordingly before time stamps
-    -- patindex below finds position just before timestamps in the name
-    OUTER APPLY (Select TruncName=1 Where Len(FullLenName)>128) as TruncName
+    CROSS APPLY (Select HrMin = left(convert(varchar(8), getdate(), 108),5)) as HrMin
+    CROSS APPLY (Select HrMinSemiColonToh = Replace (HrMin, ':', 'h')) as HrMinCommaToh 
+    CROSS APPLY (Select FileOnly=p.FileName, PathOnly=p.DriveAndPath From S#.ParseFileParts(FileName) as p) as FP
+    CROSS APPLY (Select FullPrefixBkpName=HeaderName+':'+HrMinSemiColonToh+': '+PathOnly) as FullPrefixBkpName
+    CROSS APPLY (Select LgPrefixBkpName=LEN(FullPrefixBkpName), LgFileOnly=Len(FileOnly)) as Lg
+    CROSS APPLY (Select ExcessLen=LgPrefixBkpName+LgFileOnly-128) as ExcessLen
     CROSS APPLY 
     (
-    Select Name=FullLenName Where TruncName IS NULL UNION ALL
-    -- this part of the union all is canceled of the condition TruncName is not 1
-    Select Name=TruncatedName
-    From 
-      (Select DoIt=1 Where TruncName=1) as DoIt
-      CROSS APPLY
-      (
-      Select posInName=Patindex ('%[_]_________________________[_]database.Bak', FullLenName) Where BkpTyp = 'Database' Union All
-      Select posInName=Patindex ('%[_]_________________________[_]logs.trn', FullLenName) Where BkpTyp = 'Log' 
-      ) as PosInName
-      CROSS APPLY (Select SuffixPart=Substring(FullLenName, posInName, 255)) as SuffixPart
-      CROSS APPLY (Select TruncatedName=Left(FullLenName, 128 - Len(SuffixPart)) + '...' + SuffixPart) as TruncatedName
-    ) as Name
+    Select BkpName = FullPrefixBkpName+FileOnly Where ExcessLen <= 0
+    UNION ALL
+    Select BkpName = Left(FullPrefixBkpName,LgPrefixBkpName-ExcessLen-3)+'...'+FileOnly Where ExcessLen>0
+    ) as BkpName
     CROSS APPLY 
     (
     Select 
@@ -7895,8 +7981,8 @@ FROM
        jPrms = 
        (SELECT 
          SerializeIfLogBkp, EndSerializeIfLogBkp
-       , BkpTyp,DbName, FileName, Name, OverWrite, DiffOption, EncryptionOpt
-       , EncryptionAlgorithm,EncryptionCertificate For JSON PATH)
+       , BkpTyp,DbName, FileName, BkpName, OverWrite, DiffOption, EncryptionOpt
+       , EncryptionAlgorithm,EncryptionCertificate For JSON PATH, INCLUDE_NULL_VALUES)
     ) as J
     CROSS APPLY (Select * From S#.GetTemplateFromCmtAndReplaceTags('===BkpCmdTempl===', Self, jPrms) as C) as Sql
   ) Internals
@@ -7904,8 +7990,18 @@ FROM
 /*===BkpCmdTempl===
 #SerializeIfLogBkp# backup #BkpTyp# [#DbName#] 
    to disk = '#fileName#' 
-   with #OverWrite##DiffOption#, checksum, name = '#Name#', bufferCount = 20, MAXTRANSFERSIZE = 1048576 #EncryptionOpt# #EndSerializeIfLogBkp#
+   with #OverWrite##DiffOption#, checksum, name = '#BkpName#', bufferCount = 20, MAXTRANSFERSIZE = 1048576 #EncryptionOpt# #EndSerializeIfLogBkp#
 ===BkpCmdTempl===*/
+--Select * From yMaint.iTvf_MakeBackupCmd('','','',1,'', '', '')
+go
+--Select Cmd.*
+--From 
+--  Sys.databases 
+--  CROSS APPLY 
+--  yMaint.iTvf_MakeBackupFileName
+--  (name,'F', '\\SomeServer\SQL2k22\Backups', 'Francais', 'Bak', 1) as Fn
+--  CROSS APPLY yMaint.iTvf_MakeBackupCmd(name,'F',Fn.filename, 1, NULL, '', '') as Cmd
+
 GO
 -- ------------------------------------------------------------------------------
 -- Function that builds backup command
@@ -7920,6 +8016,7 @@ Create Or Alter Function yMaint.MakeBackupCmd
 , @EncryptionAlgorithm nvarchar(10)
 , @EncryptionCertificate nvarchar(100)
 )
+-- @@MARK: Maintenance - Make backup Cmd
 returns nvarchar(max)
 as
 Begin
@@ -9010,6 +9107,10 @@ Begin
   Declare @ReplacePathsInDbFilenames nvarchar(max) 
   Declare @EncryptionAlgorithm nvarchar(10) = ''
   Declare @EncryptionCertificate nvarchar(100) = ''
+
+  -- enrich @context or @info paramter 
+  Declare @ContextData nvarchar(max)
+  Declare @InfoData nvarchar(max)
   
   -- replace null by empty string
   Set @ReplaceSrcBkpPathToMatchingMirrorPath = ISNULL(@ReplaceSrcBkpPathToMatchingMirrorPath, '')
@@ -9146,7 +9247,7 @@ Begin
     Begin
       -- this query get the next database (get the first when @dbname='')
       Select top 1 -- the first one next in alpha order (because top 1 + Where + Order by)
-        @DbName = DbName
+        @DbName = DbName, @contextData = 'yMaint.Backups '+ @dbName
       From @DbTable
       Where DbName > @DbName -- next db in alpha order
       Order By DbName -- ... database name alpha order 
@@ -9253,12 +9354,12 @@ Begin
       If @DoFullBkp = 1
       Begin
         Set @fileName = yMaint.MakeBackupFileName (@DbName, 'F', @FullBackupPath, @Language, @FullBkExt, @TimeStampNamingForBackups)  
-        Set @ctx = 'Full backups'
+        Set @ctx = 'Full backups for '+@DbName
       End  
       Else If @DoDiffBkp = 1
       Begin
         Set @fileName = yMaint.MakeBackupFileName (@DbName, 'D', @FullBackupPath, @Language, @FullBkExt, @TimeStampNamingForBackups)
-        Set @ctx = 'Diff backups'
+        Set @ctx = 'Diff backupsfor '+@DbName
       End  
       Else
       Begin
@@ -9276,7 +9377,7 @@ Begin
           Set @fileName = yMaint.MakeBackupFileName (@DbName, 'L', @LogBackupPath, @Language, @LogBkExt, @TimeStampNamingForBackups)  
         End 
 
-        Set @Info = 'Log backups'
+        Set @Info = 'Log backups for '+@DbName
 
         Select -- get most up-to-date value for mirroring parameter
           @ReplaceSrcBkpPathToMatchingMirrorPath = ReplaceSrcBkpPathToMatchingMirrorPath 
@@ -9328,8 +9429,9 @@ Begin
       )
 
       -- Launch backup
+      Set @ContextData = 'yMaint.backups for '+@dbname+ ' to '+ISNULL(@filename, 'Oups destination is NULL')
       Exec yExecNLog.LogAndOrExec 
-         @context = 'yMaint.backups'
+         @context = @ContextData
        , @sql = @sql
        , @errorN = @errorN output
 
@@ -9378,7 +9480,6 @@ Begin
           , @sql = @sql
           , @Info = 'Supplementary log backup to help log shrinking'
           , @errorN = @errorN output
-
       End
 
       -- If a full backup must be done, and if the database is in full recovery mode
@@ -9386,7 +9487,21 @@ Begin
       
       If (@DoFullBkp = 1 or @DoDiffBkp = 1) And DATABASEPROPERTYEX(@DbName, 'Recovery') <> 'Simple'
       Begin
-        Set @fileName = yMaint.MakeBackupFileName(@DbName, 'L', @LogBackupPath, @Language, @LogBkExt, @TimeStampNamingForBackups)  
+         Exec yExecNLog.LogAndOrExec 
+            @context = 'yMaint.backups'
+          , @sql = @sql
+          , @Info = 'Supplementary log backup to help log shrinking'
+          , @errorN = @errorN output
+
+
+        -- tracing of an error 
+        --Declare @trc nvarchar(max) = (select db=@DbName, typ='L', LogBackupPath=@LogBackupPath, pLanguage=@Language, LogBkExt=@LogBkExt, TimeStampNamingForBackups=@TimeStampNamingForBackups for json path, INCLUDE_NULL_VALUES)
+        --Exec yExecNLog.LogAndOrExec @context = 'Trace', @info=@trc, @err = '999'
+
+        Select @fileName = yMaint.MakeBackupFileName(@DbName, 'L', @LogBackupPath, @Language, @LogBkExt, @TimeStampNamingForBackups)  
+        
+        --Set @trc = (select db=@DbName, typ='L', Filename=@Filename, pLanguage=@Language, LogBkExt=@LogBkExt, TimeStampNamingForBackups=@TimeStampNamingForBackups for json path, INCLUDE_NULL_VALUES)
+        --Exec yExecNLog.LogAndOrExec @context = 'Trace', @info=@trc, @err = '999'
         
         Set @sql = yMaint.MakeBackupCmd 
                    (
@@ -9402,10 +9517,11 @@ Begin
         -- Launch first log backup that creates the file that will be used 
         -- to stored log backups usually for the rest of the days unless
         -- end-user launch Maint.SaveDbOnNewFileSet
+        Declare @infoAndDb Nvarchar(4000) = 'Log backups (init) for '+@dbname+ ' to '+ISNULL(@fileName, 'oups the filename is NULL')
         Exec yExecNLog.LogAndOrExec 
           @context = 'yMaint.backups'
         , @sql = @sql
-        , @Info = 'Log backups (init)'
+        , @Info = @InfoAndDb
         , @errorN = @errorN_BkpPartielInit output
 
         -- Restore the backup to the mirror server if enabled
@@ -9793,8 +9909,8 @@ GO
 -------------------------------------------------------------------------------------------
 -- Wait for inactivity on YourSqlDba_DoMaint
 -------------------------------------------------------------------------------------------
--- @@MARK: Maintenance : CommVault - Sync with backups done by external backup tooling
-Create Or Alter Proc Maint.SetSyncWith_YourSqlDba_DoMaint @WaitType Sysname = 'Exclusive'
+-- @@MARK: Maintenance : Sync with backups/restore done by external backup/restore tooling ex: Commvault, ProcessRestores
+Create Or Alter Proc Maint.SetSyncWith_YourSqlDba_DoMaint @WaitType Sysname = 'Exclusive' 
 AS
 Begin
   -- Exclusive mode is intented to be used when synchronizing external backup process with CommVault
@@ -10223,8 +10339,10 @@ Begin
   If @DoInteg=1 And @DoBackup = 'F'
   Begin
     exec yMaint.LogCleanup 
-    Delete Mirroring.RestoreQueue -- remove leftover from previous exec
   End
+
+  -- @@MARK: TODO : Cleanup should be based on job name, and ProcessRestore should take that into account
+  Delete Mirroring.RestoreQueue Where @DoBackup = 'F' -- remove leftover from previous exec 
 
   -- ==============================================================================
   -- perform integrity tests or not
@@ -10261,28 +10379,32 @@ Begin
   -- If backups are to be mirrored than we Launch a login synchronisation on the mirror server
   If isnull(@MirrorServer, '') <> '' And @DoBackup IN ('F', 'L', 'D') 
   Begin
+    Declare @JobRunning Int, @AnErrorFound Int
     While (1=1) -- wait all mirrored backup to be done before lauching login synchro
     Begin
       -- wait while there is still something to for process
-      If Exists (Select * From Mirroring.RestoreQueue Where ErrorN = 0)
-        Waitfor Delay '00:01:00' -- wait a minute for a second test
-      Else
-      Begin
-        -- there is nothing else to process but it remains some restores in error log an error
-        If Exists (Select * From Mirroring.RestoreQueue Where ErrorN <> 0)
-        Begin
+      Select 
+        @JobRunning = MAX(RunningHere) Over (Partition By Null) 
+      , @AnErrorFound = MAX(AnErrorHere) Over (Partition By Null) 
+      From 
+        Mirroring.RestoreQueue 
+        CROSS APPLY (Select RunningHere=IIF(ErrorN = 0,1,0)) as RunningHere
+        CROSS APPLY (Select AnErrorHere=IIF(ErrorN <> 0,1,0)) as AnErrorHere
+      Where CallingJobNo=@JobNo
+
+      If @JobRunning = 0 And @AnErrorFound = 1 -- Ended with error
           Exec yExecNLog.LogAndOrExec 
             @context = 'Maint.YourSqlDba_DoMaint'
           , @Info = 'Error in Maint.YourSqlDba_DoMaint'
           , @err = 'Some restores to MirrorServer failed. See Mirroring.RestoreQueue'
-          Break;
-        End
-        Else
-        Begin -- nothing remains then quit
-          If Not Exists(Select * From Mirroring.RestoreQueue)
-            Break
-        End
-      End 
+        Break;
+
+      If @JobRunning is NULL -- clean end
+        Break
+
+      -- otherwise wait some job are running
+      Waitfor Delay '00:0:10' -- wait a minute for a second test
+
     End -- While
 
     -- do try to sync whatever is possible 
@@ -12724,7 +12846,16 @@ Begin
 
       If @@ROWCOUNT = 0 
       Begin
-        If DATEDIFF(mi, @WaitStart, Getdate()) > 5
+        If (DATEDIFF(mi, @WaitStart, Getdate()) > 5)
+           OR NOT EXISTS -- If YourSqlDba.Do_Maint is no more active, no new backup will be queued, so I can stop
+           (
+           SELECT *
+           FROM sys.dm_tran_locks AS tl
+           WHERE tl.resource_type = 'APPLICATION'
+             AND tl.request_mode = 'S'
+             AND tl.request_status = 'GRANT'
+             AND resource_description Like '%YourSqlDba.Do_Maint%'
+           )
           Break -- Exit proc, it is waiting for 5 minutes and no new backups are queued into the table
         Else 
         Begin
