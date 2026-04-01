@@ -1,6 +1,6 @@
 # YourSqlDba
 
-**Contact info  [Maurice Pelchat](linkedin.com/in/maurice-pelchat-9891495)**
+**Contact info  [Maurice Pelchat](https://www.linkedin.com/in/maurice-pelchat-9891495/)**
 
 **To get the script of the most recent release of YourSqlDba** - **_Go to [Version History](#version-history) to get a specific script version and see details about changes between versions._**
 

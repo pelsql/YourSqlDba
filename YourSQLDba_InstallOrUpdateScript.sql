@@ -1,6 +1,6 @@
 ﻿-- Copyright 2008 Maurice Pelchat  
 -- YourSQLDba : Auto-maintenance tools for SQL Server Databases
--- Author : Maurice Pelchat
+-- Author : Maurice Pelchat : Contact info https://www.linkedin.com/in/maurice-pelchat-9891495/
 --
 -- GitHub Website Readme : https://github.com/pelsql/YourSqlDba#readme
 -- Latest release of YourSqlDba : https://github.com/pelsql/YourSqlDba/blob/master/YourSQLDba_InstallOrUpdateScript.sql?raw=true
