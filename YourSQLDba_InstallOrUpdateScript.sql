@@ -18,7 +18,7 @@
 Drop Table if Exists #version
 create table #Version (version nvarchar(40), VersionDate datetime)
 set nocount on
-insert into #Version Values ('7.1.0.6', convert(datetime, '2026-01-01', 120))  
+insert into #Version Values ('7.1.0.7', convert(datetime, '2026-01-01', 120))  
 
 --Alter database yoursqldba set single_user with rollback immediate
 --go
@@ -8236,9 +8236,12 @@ Begin
     Return( 0 )
 
   -- Test that the Mirror server was defined  
-  Declare @sql       nvarchar(max)
+  Declare @sql  nvarchar(max)
   Declare @Info nvarchar(max)
-  Declare @err nvarchar(max)
+  Declare @err  nvarchar(max)
+  Declare @jSonPrms Nvarchar(4000)
+  Declare @CallingJobNo Int
+
   If Not Exists (Select * From Mirroring.TargetServer Where MirrorServerName = @MirrorServer)
   Begin
     Set @err = 'Mirror server «' + @MirrorServer + '» not defined.  Use stored procedure «Mirroring.AddServer»'
@@ -8255,7 +8258,8 @@ Begin
   -- a SQL Agent Job with a different connection to set the same session context jobNo
   -- It then gives access to many parameters stored for this job into Maint.JobHistory, through the jobNo of this session context
   -- for a more detailed explanation, see Mirroring.ProcessRestores.
-  Insert into Mirroring.RestoreQueue (CallingJobNo, JsonPrms)
+  Insert into Mirroring.RestoreQueue (CallingJobNo, JsonPrms) 
+  Output Inserted.CallingJobNo, Inserted.JsonPrms INTO ##YourSqlDbaIsBackupingDb (CallingJobNo, JsonPrms)
   Select M.JobNo, J.JsonPrms
   From 
     dbo.MainContextInfo(null) as M -- get JobNo from current context that asks for a restore
@@ -8274,8 +8278,10 @@ Begin
        For Json Path, INCLUDE_NULL_VALUES
        )
     ) as j
-  Declare @jSonPrms Nvarchar(2048)
-  Select @JsonPrms=JsonPrms From Mirroring.RestoreQueue Where RestoreSeq=SCOPE_IDENTITY()
+  
+  Select @jsonPrms = JsonPrms
+  From Mirroring.RestoreQueue 
+  Where RestoreSeq = Scope_Identity()
 
   Exec Dbo.LogEvent 
     @MsgTemplate = 'JobNo:#JobNo# - Queing Database backup (#bkpTyp#) #DbName# for restore at server #MirrorServer#'
@@ -9242,6 +9248,14 @@ Begin
       @context = 'yMaint.Backups'
     , @Info = @info
 
+    -- ##YourSqlDbaIsBackupingDb only shows that YourSqlDba is processing backup/restores.
+    -- Procedure ProcessRestoreQueue then knows if some more backup may be added to restore queue
+    -- so it won't stop right away if some more backups are coming
+    -- ##YourSqlDbaIsBackupingDb is removed at the end of this procedure, to let know that no more
+    -- backup are coming.
+    Drop Table if exists ##YourSqlDbaIsBackupingDb
+    Create Table ##YourSqlDbaIsBackupingDb (CallingJobNo int, JsonPrms Nvarchar(4000))
+  
     Set @DbName = ''
     While(1 = 1) -- T-SQL lacks simple Do Loop, work around...
     Begin
@@ -9587,6 +9601,12 @@ Begin
     , @Info = 'Full Msdb backup to save the most up-to-date backup history'
     , @errorN = @errorN output
 
+  -- When backups are done and send to the queue for restore, ##YourSqlDbaIsBackupingD existence 
+  -- let's knows to Mirroring.ProcessRestores that even if it empties the queue that some more 
+  -- backups maybe coming, so it doesn't stops.
+  -- By removing it, when Mirroring.ProcessRestores sees the backup queue empty, it knows it's done 
+  Drop Table if Exists ##YourSqlDbaIsBackupingDb 
+  
 
   End try
   Begin catch
@@ -10403,7 +10423,7 @@ Begin
         Break
 
       -- otherwise wait some job are running
-      Waitfor Delay '00:0:10' -- wait a minute for a second test
+      Waitfor Delay '00:00:10' -- wait few seconds for a second test
 
     End -- While
 
@@ -12844,22 +12864,14 @@ Begin
       Where Q.ErrorN = 0 -- not processed yet.
       Order By RestoreSeq Asc
 
-      If @@ROWCOUNT = 0 
+      If @@ROWCOUNT = 0 -- no more restores to process
       Begin
-        If (DATEDIFF(mi, @WaitStart, Getdate()) > 5)
-           OR NOT EXISTS -- If YourSqlDba.Do_Maint is no more active, no new backup will be queued, so I can stop
-           (
-           SELECT *
-           FROM sys.dm_tran_locks AS tl
-           WHERE tl.resource_type = 'APPLICATION'
-             AND tl.request_mode = 'S'
-             AND tl.request_status = 'GRANT'
-             AND resource_description Like '%YourSqlDba.Do_Maint%'
-           )
+        If (DATEDIFF(mi, @WaitStart, Getdate()) > 5) -- waiting for more than 5 minutes
+           OR Object_Id('Tempdb..##YourSqlDbaIsBackupingDb') IS NULL -- YourSqlDba is not sending backups anymore
           Break -- Exit proc, it is waiting for 5 minutes and no new backups are queued into the table
         Else 
         Begin
-          Waitfor Delay '00:01:00';
+          Waitfor Delay '00:00:10'; -- wait for next backup
           Continue; -- retry a peek on the queue
         End
       End
