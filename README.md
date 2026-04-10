@@ -30,17 +30,29 @@ There is also, on the landing page, a **`QuickLinks`** table referencing frequen
 
 ### Version history
 
+Maint.ShrinkAllLogs
+**Version 7.1.0.7**
+
+[View script 7.1.0.7 on GitHub](YourSQLDba_InstallOrUpdateScript.sql)
+ 
+**[Get script 7.1.0.7](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)** 
+
+Some procedures are removed.  Maint.ShrinkAllLogs. 
+Internally YourSqlDba do not attempt to shrink the log anymore at log backup.
+
+Some fixes for a better sync better backups/restores in mirroring.  Job for restores are changed. There is now a specific restore job for a specific backup job which proves to be more reliable for queuing and sync. 
+
 **Version 7.1.0.6**
 
-[View script 7.1.0.6 on GitHub](YourSQLDba_InstallOrUpdateScript.sql)
+[View script 7.1.0.6 on GitHub](https://raw.githubusercontent.com/pelsql/YourSqlDba/340301644d2dceba1014531fb57396a9f3c61f4f/YourSQLDba_InstallOrUpdateScript.sql)
  
-**[Get script 7.1.0.6](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)** 
+**[Get script 7.1.0.6](https://raw.githubusercontent.com/pelsql/YourSqlDba/340301644d2dceba1014531fb57396a9f3c61f4f/YourSQLDba_InstallOrUpdateScript.sql)** 
 
 Fix for backup names too large for the name parameter of the backup command
 
 **Version 7.1.0.5**
 
-[View script 7.1.0.5 on GitHub](YourSQLDba_InstallOrUpdateScript.sql)
+[View script 7.1.0.5 on GitHub](https://raw.githubusercontent.com/pelsql/YourSqlDba/45ae7f77d79e84581009f5a64b459a7ea77b3ab5/YourSQLDba_InstallOrUpdateScript.sql)
  
 **[Get script 7.1.0.5](https://raw.githubusercontent.com/pelsql/YourSqlDba/45ae7f77d79e84581009f5a64b459a7ea77b3ab5/YourSQLDba_InstallOrUpdateScript.sql)** 
 

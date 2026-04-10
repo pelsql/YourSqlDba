@@ -1,4 +1,5 @@
 ﻿-- Copyright 2008 Maurice Pelchat  
+-- Copyright 2008 Maurice Pelchat  
 -- YourSQLDba : Auto-maintenance tools for SQL Server Databases
 -- Author : Maurice Pelchat : Contact info https://www.linkedin.com/in/maurice-pelchat-9891495/
 --
@@ -927,7 +928,11 @@ Return
     , rowvalue
     , SrcTemplate
     From 
-      (Select JsonDataSource=@JsonDataSource, SrcTemplate=@Template) as Prm
+      (
+      Select 
+        JsonDataSource=ISNULL(@JsonDataSource, (select DummyButValidJson='Null remplacement' for Json path))
+      , SrcTemplate=IIF(@JsonDataSource IS NULL, 'Missing JSON parameter for replaces for template --> ', '')+@Template 
+      ) as Prm
       -- for internal testing use the alternate Prm derived table below and comment the above one
        --(
        --Select 
@@ -4321,6 +4326,13 @@ return
 -- packed in a jSon format (JsonPrms). It shreds them into differents colums into a single row, each column reflecting the
 -- column name. It also get from Maint.JobHistory the main SQL query.  This last value is very valuable for reporting, auditing and debugging
 --
+-- For mirroring restores, this function also exposes JobNameForRestore.
+-- JobNameForRestore is the name of the SQL Agent job that acts as the restore worker channel.
+-- It is derived from the mirror target plus the source maintenance job definition:
+--   'Restores to ' + MirrorServer + ' For ' + ISNULL(SqlAgentJobName, MaintJobName)
+-- Multiple maintenance executions can therefore share the same restore worker over time.
+-- CallingJobNo is then used elsewhere to distinguish one execution from another on that channel.
+--
 -- ---------------------------------------------------------------------------------------------
   Select 
     -- this select returns a bunch of columns tant can relate partially or completely to parameters of either 
@@ -4332,7 +4344,7 @@ return
   , JobStart
   , JobEnd
   , Oper=JSON_VALUE(JsonPrms, '$.oper')
-  , MaintJobName = JSON_VALUE(JsonPrms, '$.MaintJobName')
+  , MaintJobName 
   , IncDb=JSON_VALUE(JsonPrms, '$.IncDb')
   , ExcDb=JSON_VALUE(JsonPrms, '$.ExcDb')
   , DoInteg = JSON_VALUE(JsonPrms, '$.DoInteg')
@@ -4355,7 +4367,7 @@ return
   , SpreadUpdStatRun = Cast(JSON_VALUE(JsonPrms, '$.SpreadUpdStatRun') as int)
   , SpreadCheckDb = Cast(JSON_VALUE(JsonPrms, '$.SpreadCheckDb') as int)
   , ConsecutiveDaysOfFailedBackupsToPutDbOffline = Cast(JSON_VALUE(JsonPrms, '$.ConsecutiveDaysOfFailedBackupsToPutDbOffline') as int)
-  , MirrorServer = JSON_VALUE(JsonPrms, '$.MirrorServer')
+  , MirrorServer 
   , ReplaceSrcBkpPathToMatchingMirrorPath = JSON_VALUE(JsonPrms, '$.ReplaceSrcBkpPathToMatchingMirrorPath')
   , ReplacePathsInDbFilenames = JSON_VALUE(JsonPrms, '$.ReplacePathsInDbFilenames')
   , ExcDbFromPolicy_CheckFullRecoveryModel = JSON_VALUE(JsonPrms, '$.ExcDbFromPolicy_CheckFullRecoveryModel')
@@ -4366,6 +4378,7 @@ return
   , Host
   , Prog
   , SqlAgentJobName
+  , JobNameForRestore
   , JobId
   , StepId
   , JSonPrms
@@ -4375,6 +4388,11 @@ return
     Select JobSelected = ISNULL(@JobNo, Cast(SESSION_CONTEXT (N'JobNoInSessCtx') as Int))
     ) as JobSelected
     CROSS APPLY (Select JobNo, JobStart, JobEnd, JSonPrms, MainSqlCmd, Who, host, prog, SqlAgentJobName, JobId, StepId  From Maint.JobHistory Where jobNo = JobSelected) as AllCtx
+    CROSS APPLY (Select MaintJobName = JSON_VALUE(JsonPrms, '$.MaintJobName')) as MaintJobName
+    CROSS APPLY (Select MirrorServer = JSON_VALUE(JsonPrms, '$.MirrorServer')) As MirrorServer
+    -- This is the logical restore channel name used by QueueRestoreToMirror,
+    -- ActiveRestoreChannelForMirror and ProcessRestores.
+    OUTER APPLY (Select JobNameForRestore = 'Restores to '+MirrorServer+' For '+ISNULL(SqlAgentJobName, MaintJobName) Where MirrorServer IS NOT NULL) as JobNameForRestore
 GO
 -- @@MARK: Install : Reimport data for other table
 -- create the latest version by keep most recent data
@@ -4424,23 +4442,10 @@ Begin
 End
 GO
 
--- Dbcc ShrinkLog state -- no need to upgrade
-If object_id('Maint.DbccShrinkLogState') is null 
-Begin
-  Declare @sql nvarchar(max)
-  Set @sql =
-  '
-  Create table Maint.DbccShrinkLogState
-  (
-    dbName                                          Sysname 
-  , FailedShrinkTime                                Datetime NULL
-  , constraint Pk_DbccShrinkLogState
-    primary key (dbName)
-  )
-  '
-  Exec (@sql)
-End
-GO
+-- Dbcc ShrinkLog state table -- no need to upgrade
+-- No more in use
+Drop table if exists Maint.DbccShrinkLogState -- from version 7.1.0.7
+go
 -- this IF is just useful when testing some parts of the code oterwise it is always true when running the whole script
 If object_id('Maint.JobLastBkpLocations') is null 
 Begin
@@ -4508,28 +4513,6 @@ Begin
     Exec(@Sql)
     --select @sql
   End 
-End
-GO
-
--- this IF is just useful when testing some parts of the code oterwise it is always true when running the whole script
-If object_id('Mirroring.RestoreQueue') is null 
-Begin
-  Declare @sql nvarchar(max)
-  Set @sql =
-  '
-  Create table Mirroring.RestoreQueue
-  (
-    RestoreSeq Int Identity (1,1)
-  , QueuedAt Datetime Default Getdate()
-  , StartedAt Datetime Default NULL
-  , EndedAt Datetime Default NULL
-  , CallingJobNo Int Not Null       -- to be able to have a common context to log restore events under the same job as the calling one
-  , JSonPrms Nvarchar(max)
-  , ErrorN Int Default 0
-  )
-  Create Unique Index iRestoreQueueNextJob On Mirroring.RestoreQueue (RestoreSeq) Where ErrorN=0
-  '
-  Exec (@sql)
 End
 GO
 -- this IF is just useful when testing some parts of the code oterwise it is always true when running the whole script
@@ -5111,6 +5094,45 @@ Begin
   return 
 End -- yUtl.SearchWords
 GO
+CREATE OR ALTER PROCEDURE dbo.LogEvent
+  @MsgTemplate nvarchar(2048)
+, @JsonPrms    Nvarchar(max) 
+, @Severity    varchar(20) = 'informational'  -- 'informational', 'warning', 'error'
+AS
+-- ------------------------------------------------------------------
+-- Deep logging to SQL Server Log 
+-- -- @@MARK: Logging for YourSqlDba to SQL Server Log
+-- For tracing of process checkpoint
+-- ------------------------------------------------------------------
+BEGIN
+  SET NOCOUNT ON;
+
+  -- Validation rapide du niveau
+  IF @Severity NOT IN ('informational', 'warning', 'error')
+  BEGIN
+    SET @Severity = 'Informational';
+  END;
+
+  -- Préfixe facultatif (source)
+  DECLARE @FullMessage nvarchar(2048);
+  Select @FullMessage = FullMsg
+  From 
+    (Select prmJsonPrms=LTRIM(ISNULL(@jsonPrms, '')), MsgTemplate=@MsgTemplate) as prm
+    CROSS APPLY (Select JsonPrms=IIF(prmJsonPrms<>'', prmJsonPrms, '[{"nothing":"No json"}]')) as jsonPrms
+    Cross apply (select posOpeningArrayWrapper=PatIndex('[[]%{%', jsonPrms)) as posOpeningArrayWrapper
+    CROSS APPLY (Select jsonPrmsWAW=IIF(posOpeningArrayWrapper = 0, '['+jsonPrms+']', jsonPrms)) as jsonPrmsWAW
+    CROSS APPLY S#.MultipleReplaces (Prm.MsgTemplate, JSonPrmsWAW) as R
+    CROSS APPLY (Select FullMsg='[YourSqlDba]: '+R.replacedTxt) as FullMsg
+
+  -- Appel silencieux à xp_logevent (écrit dans SQL + Windows)
+  BEGIN TRY
+    EXEC master..xp_logevent 50001, @FullMessage, @Severity;
+  END TRY
+  BEGIN CATCH
+    RETURN;
+  END CATCH;
+END;
+GO
 -- Ensure there is at least a S#.LogTable function
 If Object_id('S#.LogTable') IS NULL Exec ('Create Or Alter Function S#.LogTable() Returns sysname as Begin Return('''') End')
 GO
@@ -5416,7 +5438,7 @@ Begin
       -- otherwise the current error context
       CROSS APPLY (Select ErrMsgCtx=ErrMessage From S#.FormatCurrentMsg (null)) as ErrMsgCtx
       -- if @err is set to '?', it is a signal to take the current message from the err context
-      -- this which avoid to store it at call time into a variable and pass it as a parameter
+      -- which avoid to store it at call time into a variable and pass it as a parameter
       CROSS APPLY (Select Err=IIF(@err='?', errMsgCtx, @err)) as Err 
 
     -- Required to build output to YourSqlDba log
@@ -6496,7 +6518,9 @@ Return
     ) as Prm
     CROSS APPLY (Select ServerInstance=Convert(Nvarchar(128),SERVERPROPERTY('ServerName'))) As ServerInstance
     CROSS APPLY (Select YourSqlDbaVersion=VersionNumber From Install.VersionInfo ()) as YourSqlDbaVersion
-    -- JobSuccess is true when HistoryView reports no error in maintenance time interval, when asked to do so (1 as trd param)
+    -- JobSuccess is true when HistoryView reports no error for the specified JobNo in the maintenance time interval.
+    -- Use the explicit JobNo already passed to this function instead of relying on the
+    -- current session context again, which can lead to false positives when sessions are reused.
     -- Maint.HistoryView expect datetime parameters formatted as datetime with format 121, to avoid language setting effect on datetime parameter interpretation
     CROSS APPLY (Select * From Maint.MaintenanceEnums) as Enum
     CROSS APPLY (Select JobSuccess=IIF(Not Exists(Select * From MAINT.HistoryView(Prm.StartOfMaintTxt, Prm.EndOfMaintTxt, Enum.HV$ShowOnlyErrorOfJobFromSessionContext)),1,0)) as JobSuccess
@@ -6599,18 +6623,21 @@ create or alter proc yMaint.SendExecReports
 , @MaintJobName nvarchar(200)
 , @StartOfMaint datetime
 , @SendOnErrorOnly int
-as
+As
 Begin
   Declare @msgBody         nvarchar(max)
   Declare @Subject         nvarchar(512)
   Declare @jobSuccess      Int
   Declare @mailPriority    nvarchar(6)
+  Declare @JobNo           Int
+  Declare @JsonPrms        nvarchar(4000)
 
   Select 
     @msgBody         = msgBody         
   , @Subject         = ReportElements.Subject
   , @MailPriority    = ReportElements.mailPriority 
   , @jobSuccess      = ReportElements.JobSuccess
+  , @JobNo           = Ctx.JobNo
   From 
     dbo.MainContextInfo(null) as Ctx
     CROSS APPLY 
@@ -6630,6 +6657,10 @@ Begin
     ) as ReportElements
     CROSS APPLY (Select JsonReportElements=(Select ReportElements.* FOR JSON PATH)) as jsonReportElements
     CROSS APPLY (Select MsgBody=g.Code From S#.GetTemplateFromCmtAndReplaceTags ('===MsgBody===', NULL, jsonReportElements) as g) as MsgBody
+
+  -- Debug log for JobSuccess
+  SET @JsonPrms = (SELECT JobNo = @JobNo, JobSuccess = @jobSuccess FOR JSON PATH);
+  EXEC dbo.LogEvent @MsgTemplate = 'SendExecReports: JobNo=#JobNo#, JobSuccess=#JobSuccess#', @JsonPrms = @JsonPrms;
 /*===MsgBody===
 <head>
   <style type="text/css">
@@ -6688,6 +6719,10 @@ Begin
   -- Return without sending a message if the job is success and message must be sent only in case of error
   If @JobSuccess=1 And @SendOnErrorOnly=1
     Return
+
+  -- Debug log for template selection
+  Set  @JsonPrms =  (SELECT JobNo = @JobNo, TemplateType = CASE WHEN @jobSuccess = 1 THEN 'Success' ELSE 'Error' END FOR JSON PATH);
+  EXEC dbo.LogEvent @MsgTemplate = 'SendExecReports: Template selected for JobNo=#JobNo# - #TemplateType#', @JsonPrms = @JsonPrms;
 
   EXEC  Msdb.dbo.sp_send_dbmail
     @profile_name = 'YourSQLDba_EmailProfile'
@@ -6787,184 +6822,8 @@ Begin
     
 End -- yMaint.CheckFullRecoveryModelPolicy
 GO
--- ------------------------------------------------------------------------------
--- Procedure who perform log shrink
--- ------------------------------------------------------------------------------
--- @@MARK: Maintenance : shrink logs
-Create Or Alter Proc yMaint.ShrinkLog
-  @db Sysname
-, @MustLogBackupToShrink int output
-as
-Begin
-  Declare @DatSize Int
-  Declare @LogSize Int 
-  Declare @primaryFileName sysname
-
-  Declare @Sql Nvarchar(max) = 'Select @primaryFileName=name from ['+@Db+'].sys.database_files Where data_space_id=1'
-  Exec Sp_executeSql @Sql, N'@primaryFileName sysname Output', @primaryFileName output
-
-  -- Here we workaround a bad practice that consist to have more than one log file
-  -- So we ensure to have the most pertinent log file, by guessing that the biggest is the best
-  Declare @LogFileName sysname
-  Declare @LogPhysFileName sysname
-  Select Top 1 @LogFileName = FileName, @LogPhysFileName=physical_name
-  From dbo.DbsFileSizes(@db) Where type_desc='LOG' Order by fSizeInMb Desc
-  -- we seek to guess an appropriate log size to data size ratio
-  -- We make the assumption that aside the primary file, some other secondary 
-  -- files contibute less to log growth (history, blob)
-  -- So in computing data size to log size ratio, we sum entire space of the primary file
-  -- and 1/5 the size of other filegroup of type rows
-  Select @DatSize=SUM(fSizeInMb/SizeDivisor)
-  From
-    (
-    Select FileName, fSizeInMb, SizeDivisor
-    From 
-      Dbo.DbsFileSizes (@Db) 
-      CROSS APPLY (Select sizeDivisor=IIF(fileName=@PrimaryFileName, 1, 5)) as sizeDivisor
-    Where type_desc = 'ROWS'
-    ) as S
-  Select Top 1 @LogSize=fSizeInMb
-  From Dbo.DbsFileSizes (@Db) 
-  Where type_desc = 'LOG'
-  Order by fSizeInMb Desc
-
-  Declare @newSize Int
-  Set @MustLogBackupToShrink = 0
-  
-  -- Test if there is nothing that prevent log truncation and shrink 
-  -- The goal is to avoid causing errors to other transactions or replication/mirroring/backup processes.
-  -- because of concurrent DBCC ShrinkFile
-  -- In SQL2012 SP2 it happens frequently that a status LOG_BACKUP is there when there is not current log backup
-  If exists (Select * from sys.databases where name = @Db And log_reuse_wait not in (0,2))
-  Begin
-    -- Wait for 10 sec and try again
-    WAITFOR DELAY '00:00:10';
-
-    If exists (Select * from sys.databases where name = @Db And log_reuse_wait not in (0,2))
-    BEGIN
-      Print 'Log shrinking delayed for '+@Db
-      Return ----    ******* Exit here
-    END
-  End   
-
-  Print 'Database '+@Db
-  print 'Actual data size ' + convert(nvarchar(30), @datSize)+'Mb'
-  print 'Actual log size ' + convert(nvarchar(30), @logSize)+'Mb'
-  
-  -- Condition to no perform a log shrink
-  If (@logSize < @DatSize * 0.20) Or -- log size < 20% data size
-     (@logSize < 10) And -- log size < 10 meg
-     (@DatSize * 0.20 < 10) -- target datasize reduction must be greater than 10 meg
-    Return
-
-  -- new log size is reduced to one fifth of datafile
-  Set @newSize = @DatSize * 0.20 
-      
-  Print 'Log shrink in process for '+@Db
-
-/*===ShrinkTemplate===    
-----------------------------------------------------------------------------------------------
--- Shrink of log file <name> (<Physname>)
-----------------------------------------------------------------------------------------------
-USE [#DbName#]
-Begin Try
-  DBCC SHRINKFILE (N'#name#', #targetSize#) with no_infomsgs          
-  -- if still here, shrink is successful, so erase past shrink failure
-  Delete YourSqlDba.Maint.DbccShrinkLogState Where dbName = Db_name()
-End Try
-Begin Catch
-  Declare @errm nvarchar(4000);
-  Select @errm = ErrMsg From YourSqlDba.S#.FormatCurrentMsg(null)
-  -- first error already logged, do not do it again
-  Insert into YourSqlDba.Maint.DbccShrinkLogState (DbName, FailedShrinkTime) 
-  Select Db_name(), Getdate()
-  Where Not Exists (Select * From YourSqlDba.Maint.DbccShrinkLogState Where dbName = Db_name())
-
-  -- FailedShrinkTime 
-  -- or when there was an error during last shrink
-  If Exists 
-     (
-     -- not succeed shrink happen since 2 hours so error still in log
-     Select * From YourSqlDba.Maint.DbccShrinkLogState 
-     Where dbName = Db_name() And Datediff(hh, FailedShrinkTime, Getdate()) > 2
-     )
-  Begin
-    -- If there is not succeed shrink since 2 hours, notify it as a YourSqlDba error
-    Exec yExecNLog.LogAndOrExec 
-      @context = 'yMaint.ShrinkLog'
-    , @YourSqlDbaNo = '015' 
-    , @Info = 'Shrink Log error'
-    , @err = @errm
-  End   
-End Catch
-===ShrinkTemplate===*/
-  Select @Sql = R.Code
-  From 
-    (Select DbName=@Db, name=@LogFileName, physName=@LogPhysFileName, TargetSize=Str(@newSize,10)) as TagCols
-    CROSS APPLY (Select toReplace=(Select TagCols.* for Json Path, INCLUDE_NULL_VALUES)) as ToReplace
-    CROSS APPLY S#.GetTemplateFromCmtAndReplaceTags ('===ShrinkTemplate===', NULL, ToReplace) as R
-  Exec yExecNLog.LogAndOrExec 
-      @context = 'yMaint.ShrinkLog'
-    , @Info = 'Log Shrink'
-    , @sql = @sql
-
-/*===GetLogSize===
-Select @logSize = (size / 128) From [#DbName#].sys.database_files df 
-===GetLogSize===*/
-  Select @Sql = R.Code
-  From 
-    (Select ToReplace = (Select DbName=@Db for Json Path, INCLUDE_NULL_VALUES)) as ToReplace
-    CROSS APPLY S#.GetTemplateFromCmtAndReplaceTags ('===GetLogSize===', NULL, ToReplace) as R
-
-  print @sql
-  Exec sp_executeSql 
-    @sql
-  , N'@logSize Int Output'
-  , @logSize Output
-
-  -- if log doesn't shrink, shrink needs to be done more than once, with log backups in between
-  -- a return value instruct the caller to do so
-  If (Abs(@newSize - @logSize) / @newSize) > 0.01
-    Set @MustLogBackupToShrink = 1    
-
-End -- yMaint.ShrinkLog
-GO
--- ------------------------------------------------------------------------------
--- Utility proc to shrink all logs 
--- Intended for use with non YourSqlDba backup solution like CommVault 
--- when its does its log backups.
--- Must be call as Commvault post-job, through SQLCMD, to perform log shrinking 
--- See https://tinyurl.com/YourSqlDbaAncCommVault for a more detailed overview.
--- ------------------------------------------------------------------------------
--- @@MARK: Maintenance : shrink all logs
-Create Or Alter Proc Maint.ShrinkAllLogs
-as
-Begin
-  Declare @Sql Nvarchar(max)
-  Declare @ignore int
-
-  Select @sql=S.Sql
-  From 
-    (Select JsonPrm= (Select MaintJobName='Maint.ShrinkAllLogs'  For JSON PATH, WITHOUT_ARRAY_WRAPPER )  ) as JsonPrm
-    CROSS APPLY dbo.ScriptSetGlobalAccessToPrm (JsonPrm) as S
-  Exec (@Sql) -- Execute SQL generated by previous query
-
-  --Drop Table IF Exists #Db  --avoid this in production, cause reentrancy problem
-  Select DbName=name Into #Db
-  From sys.databases 
-  Where user_access_desc IN ('MULTI_USER','SINGLE_USER')
-    And state_desc ='ONLINE' 
-    And recovery_model_desc <>  'SIMPLE'
-  Declare @Db sysname
-  While (1=1)
-  Begin
-    Select Top 1 @Db=DbName From #Db
-    If @@ROWCOUNT=0 Break
-    Delete #Db Where DbName=@Db
-    exec yMaint.ShrinkLog @Db=@Db, @MustLogBackupToShrink = @ignore output -- in that case do not attempt log backup if shrinking attempt do not change something
-  End
-End
-GO
+drop proc if exists Maint.ShrinkAllLogs -- from version 7.1.0.7
+go
 -- ------------------------------------------------------------------------------
 -- Utility proc to bring back all Db offline in normal mode
 -- in case YourSqlDba put them offline because of a disconnected drive
@@ -8007,8 +7866,7 @@ GO
 -- Function that builds backup command
 -- ------------------------------------------------------------------------------
 Create Or Alter Function yMaint.MakeBackupCmd
-(
-  @DbName sysname
+(  @DbName sysname
 , @bkpTyp Char(1)
 , @fileName nvarchar(512)
 , @overwrite Int
@@ -8027,41 +7885,33 @@ Begin
   )
 End -- yMaint.MakeBackupCmd
 GO
+
+Create Or Alter Procedure Mirroring.HandleRestoreJobAsNecessary
+As
 -------------------------------------------------------------------------------------
 -- Sp to ensure and or create specific SQL Agent Job for restore to MirrorServer
 -------------------------------------------------------------------------------------
 -- @@MARK: Mirroring - Set restore Job
-Create Or Alter Procedure Mirroring.HandleRestoreJobAsNecessary @MirrorServer Sysname, @dropJob Int = 0, @ForceRecreateJob Int = 0
-As
 Begin
+
   DECLARE @ReturnCode INT = 0
   DECLARE @jobId BINARY(16)
-  Declare @DeploymentName sysName
   Declare @context sysname
-  Select @DeploymentName = 'YourSQLDba_RestoreJob to '+@MirrorServer
-  Select @jobId = job_id From msdb.dbo.sysjobs where name =@DeploymentName
+  Declare @JobNameForRestore sysname
+  
+  Select @JobNameForRestore=Ctx.JobNameForRestore
+  From dbo.MainContextInfo (NULL) as Ctx
+  
+  Select @jobId = job_id From msdb.dbo.sysjobs where name=@JobNameForRestore
 
   Begin Try
   
-  -- Use case. Mirroring.AddServer call this proc with @ForceRecreateJob=1 to ensure there is a clean job to handle restore
-  -- If there is already one, it drops it. This leads to its recreation.
-  -- Mirroring.DropServer orders the cleanup with @dropJob=1
-  If (@jobId IS NOT NULL) And (@ForceRecreateJob=1 Or @DropJob = 1)
-  Begin
-    Set @context = 'Removing previous job definition for '+@DeploymentName
-    EXEC @ReturnCode =  msdb.dbo.sp_delete_job @job_name=@DeploymentName
-    IF (@ReturnCode <> 0) Raiserror ('Return code %d from msdb.dbo.sp_delete_schedule ',11,1,@returnCode)
-  End
-  -- For a drop server, this ends here
-  If @DropJob=1 -- case of a call by Mirroring.dropServer
-    Return
-
-  -- Use case. Mirroring.QueueRestoreToMirrorCmd call this proc to ensure there is a job to handle restore
+  -- Use case: Mirroring.QueueRestoreToMirrorCmd call this proc to ensure there is a job to handle restore
   -- If there is already one, it exits.
   -- case for a call with Mirroring.addServer Or Mirroring.
   -- When Mirroring.StartRestartRestoreJobForMirrorServer called this proc 
   -- this ensures the job is present by recreating it otherwise it skips this step
-  If Exists(Select * From msdb.dbo.sysjobs where name =@DeploymentName)
+  If Exists(Select * From msdb.dbo.sysjobs where name =@JobNameForRestore)
     Return
 
   BEGIN TRANSACTION;
@@ -8069,7 +7919,7 @@ Begin
   Set @context = 'Add job title'
   Set @jobId = NULL
   EXEC @ReturnCode =  msdb.dbo.sp_add_job 
-    @job_name=@DeploymentName, 
+    @job_name=@JobNameForRestore, 
 		  @enabled=1, 
 		  @notify_level_eventlog=0, 
 		  @notify_level_email=0, 
@@ -8093,7 +7943,7 @@ Begin
 		  @retry_attempts=0, 
 		  @retry_interval=0, 
 		  @os_run_priority=0, @subsystem=N'TSQL', 
- 	  @command= N'EXECUTE [Mirroring].[ProcessRestores]', 
+ 	  @command= N'EXECUTE [Mirroring].[ProcessRestores] -- Find by is SQLAgentJobName its restores to do',
 		  @database_name=N'YourSqlDba', 
 		  @flags=4
   IF (@ReturnCode <> 0) Raiserror ('Return code %d from msdb.dbo.sp_add_job_Step ',11,1,@returnCode)
@@ -8124,116 +7974,137 @@ Begin
 
 End -- Mirroring.HandleRestoreJobAsNecessary
 GO
+Create or Alter Function Maint.JobState (@JobName Sysname)
+Returns Table
+as
+Return
+  -- Show Job state of a given name
+  -- @@MARK: Mirroring - Job State
+  -- Return one row as soon as the job exists in msdb, even if it has not yet
+  -- produced any row in msdb.dbo.sysjobactivity for the current Agent session.
+  -- This situation typically happens right after a job is created and before its
+  -- first successful start, and callers still need a stable JobName/JobId pair.
+  SELECT
+    J.name
+  , Job_Id = J.job_id
+  , A.LastSessionId
+  , IsRunning = IIF(A.start_execution_date IS NOT NULL And A.stop_execution_date IS NULL, 1, 0)
+  FROM
+    (Select job_id, name From msdb.dbo.sysjobs Where name = @JobName) as J
+    OUTER APPLY
+    (
+    Select Top 1
+      LastSessionId = JA.session_id
+    , JA.start_execution_date
+    , JA.stop_execution_date
+    From msdb.dbo.sysjobactivity as JA
+    Where JA.job_id = J.job_id
+    Order By JA.session_id Desc
+    ) as A
+GO
+Create or Alter Proc Mirroring.StartRestartRestoreJobForMirrorServer 
+as 
 -- ----------------------------------------------------------------------------------------------
 -- Start_Restart Restore job for mirrorServer
 -- ----------------------------------------------------------------------------------------------
 -- @@MARK: Mirroring - Start restore job
-Create or Alter Proc Mirroring.StartRestartRestoreJobForMirrorServer @MirrorServer Sysname
-as 
 Begin
+  -- The restore worker is identified by JobNameForRestore from the current maintenance context.
+  -- QueueRestoreToMirror inserts its queue row before starting this worker, so when this proc returns
+  -- the worker can safely pick work from Mirroring.RestoreQueue for that channel.
 
-  Exec Mirroring.HandleRestoreJobAsNecessary @MirrorServer=@MirrorServer
+  Exec Mirroring.HandleRestoreJobAsNecessary 
 
-  Drop Table if Exists #PrmStartRestartRestoreJobForMirrorServer
-  Select MirrorServer, JobName, Job_Id
-  Into #PrmStartRestartRestoreJobForMirrorServer
-  From 
---    (Select MirrorServer='MauriceSql\Maint19') as MirrorServer
-    (Select MirrorServer=@MirrorServer) as MirrorServer
-    Cross Apply (Select JobName='YourSQLDba_RestoreJob to '+MirrorServer) as JobName
-    Outer Apply (Select Job_id=job_id FROM msdb.dbo.sysjobs WHERE name = JobName) as JobId
-
-  If EXISTS -- job already running? then quit
+  If EXISTS -- job already running for this restore channel? then quit
      (
-     SELECT *
+     Select * 
      From 
-       (Select MaxSessionId = MAX(session_id) FROM msdb.dbo.syssessions) as MaxSessionId
-       CROSS JOIN (Select NotRunning=0) as NotRunning
-       CROSS JOIN #PrmStartRestartRestoreJobForMirrorServer
-       OUTER APPLY 
-       (
-       SELECT Running=1
-       FROM msdb.dbo.sysjobactivity AS ja
-       WHERE ja.job_id = #PrmStartRestartRestoreJobForMirrorServer.job_id
-         AND ja.session_id = MaxSessionId
-         AND ja.start_execution_date IS NOT NULL
-         AND ja.stop_execution_date  IS NULL
-       ) as Running
-       CROSS APPLY (Select isRunning=COALESCE(Running, NotRunning)) as isRunning
-     Where isRunning = 1
+       dbo.MainContextInfo(null) as Ctx
+       CROSS APPLY Maint.JobState (Ctx.JobNameForRestore) as JS
+     Where isRunning=1
      )
-    Return
+  Return
 
-  BEGIN TRY
-    Waitfor Delay '00:00:05' -- Wait 5 seconds to start
-    Declare @jobName Sysname = (Select JobName From #PrmStartRestartRestoreJobForMirrorServer)
-    EXEC msdb.dbo.sp_start_job @job_name = @JobName;
-    PRINT 'Job started: ' + @JobName;
-    Waitfor Delay '00:00:30' -- Wait 30 seconds to ensure job state reports correctly in msdb.dbo.sysjobactivity
-  END TRY
-  BEGIN CATCH
-    IF ERROR_NUMBER() = 14262
-      RAISERROR('SQL Server Agent is not running.', 16, 1);
-    ELSE
-      THROW;
+  Declare @JobNameForRestore Sysname
+  Declare @jPrm nvarchar(max)
+
+  Select @JobNameForRestore=JobNameForRestore 
+  From 
+    dbo.MainContextInfo(null) as Ctx
+  
+  Select @jPrm = (Select JobNo, JobNameForRestore From dbo.MainContextInfo(null) For Json Path)
+
+  Declare @rc int, @err int
+  Begin Try
+    Exec Dbo.LogEvent 'Starting SQL Agent job for job #JobNo# on «#JobNameForRestore#» ', @jPrm
+    EXEC @rc=msdb.dbo.sp_start_job @job_name = @JobNameForRestore;
+    Waitfor delay '00:00:05' -- wait a bit for the job to actually start and update its status in sysjobactivity
+  End TRY
+  Begin Catch
+    Set @err = ERROR_NUMBER()
+    If @err = 14262 -- SQL Server Agent is not running
+    Begin
+      Raiserror('SQL Server Agent is not running.', 16, 1);
+      Throw
+    End
+    If @err <> 22022 -- Job is already running
+      Throw
   END CATCH
+
+  Declare @waitStart datetime = Getdate()
+  While (1=1 And @err = 22022)  -- wait for the job to start if it was already 
+  Begin
+    exec Dbo.logEvent 'Waiting for job #JobNo# to start on «#JobNameForRestore#»', @jPrm
+
+    If EXISTS (Select * From Maint.JobState (@JobNameForRestore) Where isRunning=1)
+      Break -- job is already running, wait is over
+    Else
+      If datediff (ss, @waitStart, Getdate()) >  60 -- exhausted 60 seconds wait
+        Raiserror ('Job «%s» is not starting after 60 seconds. Start status=%d', 11, 1, @JobNameForRestore, @rc)
+      Else
+        Waitfor Delay '00:00:01' -- wait one more second for the job to start
+  End
 End -- Mirroring.StartRestartRestoreJobForMirrorServer
 GO
-CREATE OR ALTER PROCEDURE dbo.LogEvent
-  @MsgTemplate nvarchar(2048)
-, @JsonPrms    Nvarchar(max) 
-, @Severity    varchar(20) = 'informational'  -- 'informational', 'warning', 'error'
-AS
-BEGIN
-  SET NOCOUNT ON;
-
-  -- Validation rapide du niveau
-  IF @Severity NOT IN ('informational', 'warning', 'error')
-  BEGIN
-    SET @Severity = 'Informational';
-  END;
-
-  -- Préfixe facultatif (source)
-  DECLARE @FullMessage nvarchar(2048);
-  Select @FullMessage = FullMsg
-  From 
-    S#.MultipleReplaces (@MsgTemplate, @JSonPrms) as R
-    CROSS APPLY (Select FullMsg='[YourSqlDba]: '+R.replacedTxt) as FullMsg
-
-  -- Appel silencieux à xp_logevent (écrit dans SQL + Windows)
-  BEGIN TRY
-    EXEC master..xp_logevent 50001, @FullMessage, @Severity;
-  END TRY
-  BEGIN CATCH
-    RETURN;
-  END CATCH;
-END;
+-- This table is always recreated when the script runs.
+-- Re-running the install/update script can therefore clear stale restore queue rows.
+-- This should remain exceptional because the normal protocol already protects the queue carefully.
+Drop table if Exists Mirroring.RestoreQueue
+Create table Mirroring.RestoreQueue
+(
+  RestoreSeq Int Identity (1,1)
+, JobNameForRestore Sysname Not Null -- SQL Agent restore worker / restore channel name
+, MirrorServer Sysname Not Null
+, QueuedAt Datetime Default Getdate()
+, CallingJobNo Int Not Null       -- originating maintenance execution; used to log restores under the same JobNo
+, JsonPrmsSubsetForASingleDbRestore Nvarchar(max) -- single restore command payload for one backup file
+, ErrorN Int Default 0
+)
+-- RestoreQueue is synchronized by the pair (JobNameForRestore, CallingJobNo):
+-- JobNameForRestore selects the SQL Agent restore worker that consumes rows,
+-- and CallingJobNo identifies which maintenance execution produced them.
+Create Unique Index iRestoreQueueNextJob On Mirroring.RestoreQueue (RestoreSeq) Where ErrorN=0
 GO
--- @@MARK: Mirroring - Queue restore
+--
 Create Or Alter Procedure yMirroring.QueueRestoreToMirror
   @context nvarchar(4000) = ''
 , @DbName sysname
 , @bkpTyp Char(1)
 , @fileName nvarchar(512)
-, @MirrorServer sysname
-, @MigrationTestMode Int -- behaves differently at restore... See yMirroring.DoRestore
-, @ReplaceSrcBkpPathToMatchingMirrorPath nvarchar(max) = ''
-, @ReplacePathsInDbFilenames nvarchar(max) = ''
 as
 -- ---------------------------------------------------------------------------------------------
 -- Stores backup/restore parameters into Mirroring.RestoreQueue
--- Call Exec Mirroring.StartRestartRestoreJobForMirrorServer to ensure
--- that the SQL Agent Job that execute Mirroring.ProcessRestores is
--- there and started
+-- The restore worker channel is JobNameForRestore from MainContextInfo().
+-- CallingJobNo distinguishes one maintenance execution from another on that same channel.
+-- This proc first enqueues work, then starts the SQL Agent restore worker if needed.
+-- @@MARK: Mirroring - Queue restore
 -- ---------------------------------------------------------------------------------------------
 Begin
 
   -- If the mirror server is disabled or this is a system database then return
   -- easier to trace in profiler if written this way
-  If isnull(@MirrorServer, '') = '' 
-    Return(0)
-  If @DbName in ('master', 'model', 'msdb', 'tempdb', 'YourSQLDba')
-    Return( 0 )
+  Declare @mirrorServer Sysname
+  Select @mirrorServer = ISNULL(mirrorServer,'') From dbo.MainContextInfo (null)
 
   -- Test that the Mirror server was defined  
   Declare @sql  nvarchar(max)
@@ -8254,17 +8125,39 @@ Begin
     Return( 0 )
   End
 
-  -- CallingJobNo is required to allow to the procedure that does restores and that run under 
-  -- a SQL Agent Job with a different connection to set the same session context jobNo
-  -- It then gives access to many parameters stored for this job into Maint.JobHistory, through the jobNo of this session context
-  -- for a more detailed explanation, see Mirroring.ProcessRestores.
-  Insert into Mirroring.RestoreQueue (CallingJobNo, JsonPrms) 
-  Output Inserted.CallingJobNo, Inserted.JsonPrms INTO ##YourSqlDbaIsBackupingDb (CallingJobNo, JsonPrms)
-  Select M.JobNo, J.JsonPrms
+  -- Delete leftovers that belong to restore channels whose SQL Agent worker is no longer running.
+  -- This is mostly a recovery path for interrupted runs; in normal execution ProcessRestores removes
+  -- queue rows immediately when it dequeues them.
+
+  Begin Tran -- serialize cleanup + enqueue so that no concurrent caller can interleave them
+
+  Declare @dummy int 
+  Select @Dummy=Count(*) From Mirroring.RestoreQueue With (tablockx)
+
+  Delete RQ
+  From Mirroring.RestoreQueue RQ
+  Where Not Exists
+  (
+    Select *
+    From
+      dbo.MainContextInfo(RQ.CallingJobNo) as Ctx
+      CROSS APPLY Maint.JobState(Ctx.JobNameForRestore) as JS
+    Where JS.IsRunning = 1
+      And JS.name Collate Database_Default = Ctx.JobNameForRestore
+  )
+      
+  -- CallingJobNo lets ProcessRestores switch its session context to the originating maintenance JobNo.
+  -- This keeps restore logging in the same YourSqlDba history as the backup that produced the file.
+  -- See Mirroring.ProcessRestores for the consumer side of this protocol.
+
+  Insert into Mirroring.RestoreQueue (JobNameForRestore, CallingJobNo, JsonPrmsSubsetForASingleDbRestore, MirrorServer) 
+  Select M.JobNameForRestore, M.JobNo, J.JsonPrmsSubsetForASingleDbRestore, M.MirrorServer
   From 
     dbo.MainContextInfo(null) as M -- get JobNo from current context that asks for a restore
+    -- Build only the subset of JSON parameters required to restore one backup file.
+    -- One queue row represents one restore operation in FIFO order.
     CROSS APPLY
-    (Select JsonPrms=
+    (Select JsonPrmsSubsetForASingleDbRestore=
        (
        Select 
          M.JobNo
@@ -8278,23 +8171,31 @@ Begin
        For Json Path, INCLUDE_NULL_VALUES
        )
     ) as j
+
+    Select @jsonPrms = JsonPrmsSubsetForASingleDbRestore
+    From Mirroring.RestoreQueue 
+    Where RestoreSeq = Scope_Identity()
+    Exec Dbo.LogEvent 
+      @MsgTemplate = 'JobNo:#JobNo# - Queing Database backup (#bkpTyp#) #DbName# for restore at server #MirrorServer#'
+    , @JsonPrms=@JsonPrms    
+
+  Commit tran -- release the queue lock before starting the worker
+
+  Begin Try
+    -- Start after the row exists in the queue to avoid a cold-start race on an empty queue.
+    Exec Mirroring.StartRestartRestoreJobForMirrorServer 
+  End Try
+  Begin Catch
+    Throw
+    Return
+  End Catch
   
-  Select @jsonPrms = JsonPrms
-  From Mirroring.RestoreQueue 
-  Where RestoreSeq = Scope_Identity()
-
-  Exec Dbo.LogEvent 
-    @MsgTemplate = 'JobNo:#JobNo# - Queing Database backup (#bkpTyp#) #DbName# for restore at server #MirrorServer#'
-  , @JsonPrms=@JsonPrms    
-
   Set @Info = 'Restore to mirror server sent to Restore Queue:' + @sql
   Exec yExecNLog.LogAndOrExec 
     @yourSqlDbaNo='020'
   , @context='yMirroring.QueueRestoreToMirror'
   , @Info = @info
 
-  Exec Mirroring.StartRestartRestoreJobForMirrorServer @MirrorServer 
-  
 End -- yMirroring.QueueRestoreToMirror
 GO
 -- @@MARK: Mirroring - Replicate logins - cleanup before
@@ -9049,6 +8950,19 @@ go
 --Select @DbName = 'LeDbName', @DoBackup = 'L', @FullBackupPath = 'c:\unedestin\', @overwrite = 1
 --Select yMaint.MakeBackupCmd (@DbName, @DoBackup, @FullBackupPath, @overwrite)
 --GO
+
+--
+-- Tracks restore channels that are still producing backups.
+-- ProcessRestores uses this table together with (JobNameForRestore, CallingJobNo) to know whether
+-- an empty queue means "finished" or only "waiting for the next backup file".
+-- When deploying YourSqlDba, recreate it.
+--
+Drop table if Exists Mirroring.ActiveRestoreChannelForMirror
+Select Ctx.JobNameForRestore, CallingJobNo = Ctx.JobNo
+INTO Mirroring.ActiveRestoreChannelForMirror  
+From 
+  Dbo.MainContextInfo(null) as Ctx
+GO
 -- ------------------------------------------------------------------------------
 -- Proc for doing backup.  MUST BE CALLED from YourSqlDba_DoMaint because
 -- many parameters are passed through a context
@@ -9215,13 +9129,48 @@ Begin
   -- Delete Log backups older than n days
   If (@DoLogBkp = 1 Or @DoFullBkp = 1 Or @DoDiffBkp = 1) And @LogBkpRetDays >= 0 -- no cleanup if < 0 or null
   Begin
-    Exec YourSQLDba.Maint.DeleteOldBackups 
+    Exec Maint.DeleteOldBackups 
       @Path = @LogBackupPath
     , @BkpRetDays = @LogBkpRetDays
     , @extension = @LogBkExt 
   End
 
   Begin Try
+
+    -- If a previous exec of the job ended abnormally...
+    -- Reset this info that signals that backups are running
+    -- for the matching job/mirror restoreWorker to Mirroring.ProcessRestores
+    Delete A
+    From 
+      (
+      Select * From
+        Dbo.MainContextInfo(null) 
+      Where @DoBackup IN ('F', 'L', 'D') 
+        And ISNULL(MirrorServer, '') <> ''
+      )as Ctx
+      JOIN
+      Mirroring.ActiveRestoreChannelForMirror As A
+      ON A.JobNameForRestore = Ctx.JobNameForRestore
+      -- ensure there is no more backup queued to let the job not stop
+      -- because Mirroring.ProcessRestores feeds not only on
+      -- JobNameForRestore but also on CallingJobNo.
+      -- This may happen when a log backup job starts but restore job is
+      -- waiting on end of another consecutive restore job on the same server
+      And Not Exists 
+          (
+          Select * 
+          From Mirroring.RestoreQueue as Rq
+          Where Rq.JobNameForRestore = A.JobNameForRestore
+          )
+
+    -- Signal that this maintenance execution is producing restore work 
+    -- for this job/mirror to the worker to let it knows
+    -- to expect no other backups are coming for it in restore queue is empty
+    Insert Into Mirroring.ActiveRestoreChannelForMirror  
+    Select Ctx.JobNameForRestore, CallingJobNo=JobNo
+    From 
+      Dbo.MainContextInfo(null) as Ctx
+    Where @DoBackup IN ('F', 'L', 'D') And ISNULL(Ctx.MirrorServer, '') <> ''
 
     -- Get the installation language of the SQL Server instance
     Exec yInstall.InstallationLanguage @Language output
@@ -9248,14 +9197,6 @@ Begin
       @context = 'yMaint.Backups'
     , @Info = @info
 
-    -- ##YourSqlDbaIsBackupingDb only shows that YourSqlDba is processing backup/restores.
-    -- Procedure ProcessRestoreQueue then knows if some more backup may be added to restore queue
-    -- so it won't stop right away if some more backups are coming
-    -- ##YourSqlDbaIsBackupingDb is removed at the end of this procedure, to let know that no more
-    -- backup are coming.
-    Drop Table if exists ##YourSqlDbaIsBackupingDb
-    Create Table ##YourSqlDbaIsBackupingDb (CallingJobNo int, JsonPrms Nvarchar(4000))
-  
     Set @DbName = ''
     While(1 = 1) -- T-SQL lacks simple Do Loop, work around...
     Begin
@@ -9427,9 +9368,6 @@ Begin
         , ISNULL(@EncryptionAlgorithm,''), ISNULL(@EncryptionCertificate,'')
         Where Not Exists(Select * from Maint.JobLastBkpLocations Where dbName = @DbName)
 
-      -- raise flag to not let dbcc log shrink go, when any type of backup occurs on this database
-      Declare @resourceName sysname ='YourSqlDbaBkpOf_'+@dbName
-      Exec sp_getapplock @dbprincipal='public', @Resource=@resourceName, @lockMode='Shared', @lockOwner='session'
       Set @sql = 
       yMaint.MakeBackupCmd
       (
@@ -9449,51 +9387,17 @@ Begin
        , @sql = @sql
        , @errorN = @errorN output
 
-      -- drop flag to let dbcc log shrink go, since backup is done
-        Exec sp_releaseapplock @Resource=@resourceName, @lockOwner='Session'
-
-      -- Restore the backup to the mirror server 
-      -- Internally the procedure check if mirrorServer is specified
-      -- otherwise it doesn't
-      Exec yMirroring.QueueRestoreToMirror
-           @context = @ctx
-         , @DbName = @DbName
-         , @bkpTyp = @DoBackup
-         , @fileName = @fileName
-         , @MirrorServer = @MirrorServer
-         , @MigrationTestMode = @MigrationTestMode 
-         , @ReplaceSrcBkpPathToMatchingMirrorPath = @ReplaceSrcBkpPathToMatchingMirrorPath
-         , @ReplacePathsInDbFilenames = @ReplacePathsInDbFilenames
-
-      -- do not shrink log while a full or diff backup is performed on the database
-      If @DoLogBkp = 1 And APPLOCK_TEST ('public', @resourceName, 'exclusive', 'session')=1  
+      -- In the context of Mirror server, restore the backup to the mirror server 
+      If    @DoBackup IN ('F', 'L', 'D') 
+        And ISNULL(@MirrorServer, '') <> ''
+        And @DbName Not in ('master', 'model', 'msdb', 'tempdb', 'YourSQLDba')
       Begin
-        -- shrink the log after backup (the procedure acts depending on the size)
-        -- ShrinkLog may perform no shrink depending on internal database state (sys.databases.log_reuse_wait value)
-
-        Set @sql2 =
-        '        
-        set nocount on 
-        declare @MustLogBackupToShrink int
-        Exec yMaint.ShrinkLog  @Db = "<DbName>", @MustLogBackupToShrink = @MustLogBackupToShrink  output
-        truncate table #MustLogBackupToShrink 
-        insert into #MustLogBackupToShrink Values(@MustLogBackupToShrink)
-        '
-        Set @sql2 = replace(@sql2, '<DbName>', @DbName)
-        Set @sql2 = replace(@sql2, '<JobNo>', convert(nvarchar, @JobNo))
-        Set @sql2 = replace(@sql2, '"', '''')
-        Exec yExecNLog.LogAndOrExec 
-          @context = 'yMaint.backups'
-        , @sql = @sql2
-        , @Info = 'Log shrinking attempt'
-        , @errorN = @errorN output
-        
-        If exists(select * from #MustLogBackupToShrink Where @MustLogBackupToShrink = 1)
-          Exec yExecNLog.LogAndOrExec 
-            @context = 'yMaint.backups'
-          , @sql = @sql
-          , @Info = 'Supplementary log backup to help log shrinking'
-          , @errorN = @errorN output
+        Declare @Jobname Sysname
+        Exec yMirroring.QueueRestoreToMirror
+             @context = @ctx
+           , @DbName = @DbName
+           , @bkpTyp = @DoBackup
+           , @fileName = @fileName
       End
 
       -- If a full backup must be done, and if the database is in full recovery mode
@@ -9544,10 +9448,6 @@ Begin
            , @DbName = @DbName
            , @bkpTyp = N'L'
            , @fileName = @fileName
-           , @MirrorServer = @MirrorServer
-           , @MigrationTestMode = @MigrationTestMode
-           , @ReplaceSrcBkpPathToMatchingMirrorPath = @ReplaceSrcBkpPathToMatchingMirrorPath
-           , @ReplacePathsInDbFilenames = @ReplacePathsInDbFilenames
                               
         If @errorN_BkpPartielInit = 0 -- version 
         Begin
@@ -9601,13 +9501,6 @@ Begin
     , @Info = 'Full Msdb backup to save the most up-to-date backup history'
     , @errorN = @errorN output
 
-  -- When backups are done and send to the queue for restore, ##YourSqlDbaIsBackupingD existence 
-  -- let's knows to Mirroring.ProcessRestores that even if it empties the queue that some more 
-  -- backups maybe coming, so it doesn't stops.
-  -- By removing it, when Mirroring.ProcessRestores sees the backup queue empty, it knows it's done 
-  Drop Table if Exists ##YourSqlDbaIsBackupingDb 
-  
-
   End try
   Begin catch
     Exec yExecNLog.LogAndOrExec 
@@ -9615,6 +9508,15 @@ Begin
     , @Info = 'Error in yMaint.backups'
     , @err = '?'
   End Catch
+
+  -- This maintenance execution is no longer producing restore work for this job/mirror.
+  -- ProcessRestores of this job may then know that if its queue is empty it may terminate 
+  Delete T
+  From 
+    Dbo.MainContextInfo(null) as Ctx
+    JOIN 
+    Mirroring.ActiveRestoreChannelForMirror as T
+    ON T.JobNameForRestore = Ctx.JobNameForRestore
 
 End -- yMaint.Backups
 GO
@@ -9947,9 +9849,6 @@ AS
   -- To cancel lock acquired by Maint.SetSyncWith_YourSqlDba_DoMaint 
   exec sp_releaseapplock @resource='YourSqlDba.Do_Maint', @lockOwner='Session', @DbPrincipal='dbo'
 GO
--------------------------------------------------------------------------------------------
--- Maint Stored proc. that is scheduled for maintenance
--------------------------------------------------------------------------------------------
 Create Or Alter Proc Maint.YourSqlDba_DoMaint
   @oper nvarchar(200) 
 , @MaintJobName nvarchar(200) = 'Ad-Hoc Job'  -- a name is given to override mecanism that gets this information from Sql Agent job when NULL
@@ -9983,8 +9882,19 @@ Create Or Alter Proc Maint.YourSqlDba_DoMaint
 --, @StepId Int = NULL -- stepid of SQL Server Agent Jobstep  that launched the job
 as
 Begin
+-------------------------------------------------------------------------------------------
+-- Maint Stored proc. that is scheduled for maintenance
+-------------------------------------------------------------------------------------------
 -- @@MARK: Maintenance : YourSqlDba_DoMaint Main DoMaint !
   Set nocount On 
+
+  -- A top-level maintenance run must always start with a fresh job context.
+  -- Without this reset, rerunning the proc in the same SSMS session can reuse
+  -- the previous JobNo and mix reporting/parameters across runs.
+  Exec SP_Set_Session_context
+    @key='JobNoInSessCtx'
+  , @value=NULL
+  , @read_only=0
 
   -- YourSqlDba does always a shared lock to prevent external backup process with CommVault
   -- See https://tinyurl.com/YourSqlDbaAndCommVault for a more detailed overview.
@@ -10003,6 +9913,7 @@ Begin
   declare @sql nvarchar(max)       -- SQL query 
   declare @StartOfMaint datetime   -- when maintenance started
   declare @JobNo Int               -- job number
+  declare @Jsonprms nvarchar(4000) -- useful for Dbo.LogEvent
   declare @SendOnErrorOnly Int=0   -- when to send and error message
   declare @lockResult Int
   Declare @SqlBinRoot nvarchar(512)
@@ -10091,6 +10002,12 @@ Begin
   -- Execute SQL generated by previous query which adds a row to 
   -- Maint.JobHistory to record a new job
   Exec (@Sql) 
+
+  -- The restore wait loop later filters Mirroring.RestoreQueue on the
+  -- current maintenance job number, so fetch it back once the job context
+  -- has been initialized by ScriptSetGlobalAccessToPrm.
+  Select @JobNo = Ctx.JobNo, @Jsonprms = ctx.JSonPrms
+  From dbo.MainContextInfo(NULL) as ctx
 
   -- @@MARK: Full logging through emai starts here, because job context must be set.
 
@@ -10286,9 +10203,6 @@ Begin
       End
 
       Set @msgBody  = replace(@msgBody, '<ServerInstance>', convert(sysname, serverproperty('ServerName')))
-
-      Set @msgBody  = replace(@msgBody, '<ServerInstance>', convert(sysname, serverproperty('ServerName')))
-    
       EXEC  Msdb.dbo.sp_send_dbmail
         @profile_name = 'YourSQLDba_EmailProfile'
       , @recipients = @email_Address
@@ -10361,9 +10275,6 @@ Begin
     exec yMaint.LogCleanup 
   End
 
-  -- @@MARK: TODO : Cleanup should be based on job name, and ProcessRestore should take that into account
-  Delete Mirroring.RestoreQueue Where @DoBackup = 'F' -- remove leftover from previous exec 
-
   -- ==============================================================================
   -- perform integrity tests or not
   -- ==============================================================================
@@ -10385,47 +10296,49 @@ Begin
   -- ==============================================================================
   -- backup start
   -- ==============================================================================
-    
+
   -- on complete backups suppress old files just before backup start
   If @DoBackup IN ('F', 'L', 'D')
   Begin
     Exec yMaint.backups -- get its parameters from Job context...
   End -- If @DoBackup  
 
-  -- Wait for emptying the Mirroring.RestoreQueue, including log backup, to have 
-  -- also log restores into the same job.
-  -- typically Mirroring.RestoreQueue has nothing in it when @MirrorServer is not completed
-  -- but someone could re-run the job 
-  -- If backups are to be mirrored than we Launch a login synchronisation on the mirror server
+  -- Wait for the restore worker for this channel to finish before ending this maintenance run.
+  -- This keeps restore activity in the same JobNo history and ensures reporting sees the whole run.
+  
+  Declare @j nvarchar(2000) = (Select jobNo, JobNameForRestore From Dbo.MainContextInfo(NULL) For JSON Path) 
   If isnull(@MirrorServer, '') <> '' And @DoBackup IN ('F', 'L', 'D') 
   Begin
-    Declare @JobRunning Int, @AnErrorFound Int
+    Exec Dbo.LogEvent @MsgTemplate='YourSqlDba_Domaint waits for job #JobNo# on #JobNameForRestore# to end ', @jsonPrms=@j
     While (1=1) -- wait all mirrored backup to be done before lauching login synchro
     Begin
-      -- wait while there is still something to for process
-      Select 
-        @JobRunning = MAX(RunningHere) Over (Partition By Null) 
-      , @AnErrorFound = MAX(AnErrorHere) Over (Partition By Null) 
-      From 
-        Mirroring.RestoreQueue 
-        CROSS APPLY (Select RunningHere=IIF(ErrorN = 0,1,0)) as RunningHere
-        CROSS APPLY (Select AnErrorHere=IIF(ErrorN <> 0,1,0)) as AnErrorHere
-      Where CallingJobNo=@JobNo
-
-      If @JobRunning = 0 And @AnErrorFound = 1 -- Ended with error
-          Exec yExecNLog.LogAndOrExec 
-            @context = 'Maint.YourSqlDba_DoMaint'
-          , @Info = 'Error in Maint.YourSqlDba_DoMaint'
-          , @err = 'Some restores to MirrorServer failed. See Mirroring.RestoreQueue'
-        Break;
-
-      If @JobRunning is NULL -- clean end
+      If Exists
+         (
+         Select * 
+         From 
+           dbo.MainContextInfo(NULL) as Ctx
+           CROSS APPLY Maint.JobState (Ctx.JobNameForRestore) as JS
+         Where IsRunning = 1
+         )
+        Waitfor Delay '00:00:05' -- wait few seconds for a second test
+      Else
         Break
-
-      -- otherwise wait some job are running
-      Waitfor Delay '00:00:10' -- wait few seconds for a second test
-
     End -- While
+
+    Set @j =
+    (
+    Select Ctx.JobNo, Ctx.JobNameForRestore, nbRestores=count(RQ.RestoreSeq) 
+    From 
+      (Select * From Dbo.MainContextInfo(NULL)) as Ctx
+      LEFT JOIN Mirroring.RestoreQueue as RQ -- in case queue is empty
+      ON     RQ.JobNameForRestore = Ctx.JobNameForRestore 
+         And RQ.CallingJobNo = Ctx.JobNo
+    Group By Ctx.JobNo, Ctx.JobNameForRestore, Ctx.JobNo
+    For Json Path
+    )
+    -- aller chercher 
+    Exec Dbo.LogEvent @MsgTemplate='YourSqlDba_Domaint end waiting for job #JobNo# on #JobNameForRestore# temination ', @jsonPrms=@j
+    Exec Dbo.LogEvent @MsgTemplate='There is #NbRestores# remaining for #JobNo# on #JobNameForRestore# ', @jsonPrms=@j
 
     -- do try to sync whatever is possible 
     -- if some database are missing some login with default_db that points
@@ -10452,11 +10365,13 @@ Begin
   -- Close App lock that signal that Maint.YourSqlDba_DoMaint
   Exec Maint.SignalEndOf_YourSqlDba_DoMaint 
 
-  -- From here send execution report and any error message if found
-  -- also update JobEnd
   Exec yExecNLog.LogAndOrExec 
     @context = 'Maint.YourSqlDba_DoMaint'
   , @Info = 'End of maintenance'
+
+  -- From here send execution report and any error message if found
+  -- also update JobEnd
+  Exec Dbo.LogEvent @MsgTemplate = 'The Job #MaintJobName# is endind', @jsonPrms=@jsonprms
 
   -- send report and avoid raising another error if no operator
   Select @SendOnErrorOnly = IIF(@DoBackup='L', 1, 0)
@@ -10475,11 +10390,19 @@ Begin
      Where JobNo=@Jobno And (Typ like 'Err%' Or (Typ like 'Status' And line like 'fail%'))
      )
   Begin
+    --declare @jobNo int = 100
     Declare @FormatMessage Nvarchar(4000) = NULL
-    Set @FormatMessage = 
-    '--->>>>'+nchar(10)+space(300)+
-    'To show error in query windows do : EXEC YourSqlDba.Maint.ShowJobErrors '+convert(nvarchar,@jobNo) 
-    +nchar(10)+space(300)+'<<<---'
+    Select 
+      @JsonPrms = (Select JobNo=@JobNo For Json Path)
+    , @FormatMessage = 'To show error in query windows do : EXEC YourSqlDba.Maint.ShowJobErrors #JobNo#'
+
+    Exec dbo.LogEvent @FormatMessage, @JsonPrms
+
+    -- It is hard to have a clean message in SQLAgent output. So I try to make it 
+    -- separated from the babble that surrounds message to give a chance to the user to spot it
+    Set @FormatMessage='--->>>>'+nchar(10)+space(300)+@FormatMessage++nchar(10)+space(300)+'<<<<---'
+    Set @FormatMessage=Replace(@FormatMessage, '#JobNo#', convert(nvarchar, @jobNo))
+
     Raiserror (@formatMessage,11,1)
 
   End
@@ -12808,9 +12731,6 @@ Begin
   Print 'Remove existing Linked Server' + @mirrorServer
   Exec sp_dropServer @MirrorServer
 
-  
-  Exec Mirroring.HandleRestoreJobAsNecessary @MirrorServer=@MirrorServer, @DropJob=1
-  
   Print '-------------------------------------------------------------------' 
   Print ' Mirror server succesfully uninstalled' 
   Print '-------------------------------------------------------------------' 
@@ -12818,16 +12738,24 @@ Begin
 End -- Mirroring.DropServer
 GO
 -- @@MARK: Mirroring Procedure to process restores
-Create Or Alter Procedure Mirroring.ProcessRestores
+Create Or Alter Procedure Mirroring.ProcessRestores 
 As
 -------------------------------------------------------------------------------------
 -- Sp called by SQL Agent Job in the context of a MirrorServer.
 -- This SQL Agent Job is managed properly by yMirroring.QueueRestoreToMirror
+-- and is identified by the SQL Agent job name under which it runs.
 -------------------------------------------------------------------------------------
 Begin
-  -- Restores are scheduled from a maintenance session that has its own parameters and JobNo.
-  -- Before queuing a restore, this maintenance session records its current JobNo along with 
-  -- the SQL command to execute and the target MirrorServer.
+  -- Restore processing protocol:
+  -- 1. yMaint.Backups produces backup files for a given job JobNameForRestore 
+  -- 2. yMirroring.QueueRestoreToMirror enqueues one row per restore operation with:
+  --      JobNameForRestore = restore worker / channel name
+  --      CallingJobNo      = originating maintenance execution
+  -- 3. yMaint.Backups keeps Mirroring.ActiveRestoreChannelForMirror populated while 
+  --    more backup files may still arrive.
+  -- 4. This worker processes queue rows in FIFO order for its own SQL Agent job name.
+  -- 5. Queue rows are removed as soon as they are dequeued; success or failure is reported through
+  --    YourSqlDba history under the originating CallingJobNo, not by keeping queue rows around.
 
   -- In YourSqlDba, many processes and logging operations rely on information linked to this JobNo.
   -- The JobNo is made globally available to the current session through a session context key 
@@ -12844,60 +12772,124 @@ Begin
   -- the correct originating JobNo and its parameters whenever needed.
 
   Set Nocount on
-  Declare @WaitStart Datetime = Getdate()
   Declare @RestoreSeq Int
   Declare @errorN Int
   Declare @jobNo Int
+  Declare @IsImpersonated bit = 0
+
   Declare @CallerProcess Nvarchar(4000)
-  Select  @CallerProcess = ISNULL(I.SqlAgentJobName, Prog + ' - Executed by :'+Who)  From dbo.WhoCalledWhat as I
-  Declare @JSonPrms Nvarchar(max)
+  Declare @JobNameForRestore Sysname
+  Select  
+    @CallerProcess = ISNULL(I.SqlAgentJobName, Prog + ' - Executed by :'+Who)
+  , @JobNameForRestore = I.SqlAgentJobName
+  From dbo.WhoCalledWhat as I
+
+  Declare @JsonPrmsSubsetForASingleDbRestore Nvarchar(max)
   Declare @MsgToLog Nvarchar (2048)
+  Declare @WaitForRestoreSeq Int
+  Declare @MirrorLockResource Sysname
+  Declare @MirrorLockResult Int
   
+  Select @MirrorLockResource = Left(@JobNameForRestore, Charindex(' For ', @JobNameForRestore) - 1)
+
+  Declare @WaitStart Datetime = Getdate()
   While (1=1)
   Begin
     BEGIN TRY
-      Select Top 1 
+      Select
+        @RestoreSeq = NULL
+      , @jobNo = NULL
+      , @JsonPrmsSubsetForASingleDbRestore = NULL
+      , @WaitForRestoreSeq = NULL
+      , @MirrorLockResult = NULL
+      , @IsImpersonated = 0
+
+      EXEC @MirrorLockResult = sp_getapplock
+        @Resource = @MirrorLockResource,
+        @LockOwner = 'Session',
+        @LockMode = 'Exclusive',
+        @LockTimeout = -1;
+
+      If @MirrorLockResult < 0
+        Raiserror ('Unable to serialize restore worker on resource %s. sp_getapplock rc=%d', 11, 1, @MirrorLockResource, @MirrorLockResult)
+
+      -- An exception to handle:
+      -- For a given database, a Job does full backup immediately followed by a log backup
+      -- Another job does regular log backups 
+      -- We have 2 worker on this queue, one for each job
+      -- so I must skip restoring a log restore of a given database if I see another log restore to do 
+      -- with a lower restore sequence.
+
+      Select Top 1
         @RestoreSeq = RestoreSeq
       , @jobNo = Q.CallingJobNo
-      , @JSonPrms = Q.JSonPrms
-      From Mirroring.RestoreQueue as Q
-      Where Q.ErrorN = 0 -- not processed yet.
+       -- reminder: this is only the JSON subset needed for one restore operation
+      , @JsonPrmsSubsetForASingleDbRestore = Q.JsonPrmsSubsetForASingleDbRestore 
+      , @WaitForRestoreSeq = WaitForRestoreSeq
+      From 
+        Dbo.WhoCalledWhat as W
+        CROSS APPLY 
+        (
+        -- find the lowest RestoreSeq not yet processed for this database
+        Select -- consume FIFO work for the current SQL Agent restore job name, whatever the JobNo
+          *
+        , MinRestoreSeqForAllChannelForThisDatabase = MIN (RestoreSeq) Over (Partition by DbName)
+        From 
+          Mirroring.RestoreQueue as Q
+          CROSS APPLY (select DbName=JSON_VALUE(Q.JsonPrmsSubsetForASingleDbRestore, '$.DbName')) as DbName
+        ) as Q
+        CROSS APPLY
+        (
+        
+        -- restrict work to the restore channel identified by the running SQL Agent job name
+        -- but skip the restore, if I'm beyond one restore not yet done (from the other channel)
+        Select WaitForRestoreSeq = IIF (MinRestoreSeqForAllChannelForThisDatabase < RestoreSeq, 1, 0)
+        Where Q.JobNameForRestore = W.SqlAgentJobName Collate Database_Default
+        ) as G
       Order By RestoreSeq Asc
 
       If @@ROWCOUNT = 0 -- no more restores to process
       Begin
-        If (DATEDIFF(mi, @WaitStart, Getdate()) > 5) -- waiting for more than 5 minutes
-           OR Object_Id('Tempdb..##YourSqlDbaIsBackupingDb') IS NULL -- YourSqlDba is not sending backups anymore
-          Break -- Exit proc, it is waiting for 5 minutes and no new backups are queued into the table
-        Else 
+        If Not Exists -- queue is empty; are more backups still expected for this restore channel?
+           (
+           Select * 
+           From Mirroring.ActiveRestoreChannelForMirror as T
+           Where T.JobNameForRestore = @JobNameForRestore
+           ) -- YourSqlDba is not sending backups for remote restore anymore
         Begin
-          Waitfor Delay '00:00:10'; -- wait for next backup
-          Continue; -- retry a peek on the queue
+          EXEC sp_releaseapplock @Resource = @MirrorLockResource, @LockOwner = 'Session';
+          Break -- actually no backup in queue for this job and no more backup to come for this job
+        End
+        Else
+        Begin
+          EXEC sp_releaseapplock @Resource = @MirrorLockResource, @LockOwner = 'Session';
+          Waitfor Delay '00:00:01'; -- more files may still arrive from the same maintenance run
+          Continue; -- retry while the producer still marks this channel as active
         End
       End
-  
-      -- Set session context value for the jobNo to the same value of the connection that queue the restore
-      -- It will make the restore command to be logged as if it was part of the same job.
-      IF ISNULL(CAST(SESSION_CONTEXT(N'JobNoInSessCtx') AS int), -1) <> @JobNo
-        EXEC sp_set_session_context
-          @key = N'JobNoInSessCtx',
-          @value = @JobNo,
-          @read_only = 0;
 
-      -- Report error flag if any (could be zero)
-      Update Mirroring.RestoreQueue Set StartedAt = Getdate() Where RestoreSeq=@RestoreSeq 
-      
+      If @WaitForRestoreSeq = 1 -- some other restore must be done on this database to continue, wait
+      Begin
+        EXEC sp_releaseapplock @Resource = @MirrorLockResource, @LockOwner = 'Session';
+        Waitfor Delay '00:00:01'
+        Continue;
+      End
+
+      -- A row was found. Remove it immediately so a restarted worker does not process it twice.
+      -- Restore outcome is tracked in YourSqlDba history under CallingJobNo.
+
+      -- Align logging with the context of the caller
+      EXEC sp_set_session_context @key = N'JobNoInSessCtx', @value = @JobNo;
+
       Exec Dbo.LogEvent 
-        @MsgTemplate = 'JobNo:#JobNo# - Restoring Database backup (#bkpTyp#) #DbName# at server #MirrorServer#'
-      , @JsonPrms=@JsonPrms    
+        @MsgTemplate = 'JobNo:#JobNo# - Unqueuing Database backup (#bkpTyp#) #DbName# at server #MirrorServer# for processing' 
+      , @JsonPrms=@JsonPrmsSubsetForASingleDbRestore
 
-      EXECUTE AS LOGIN = 'YourSqlDba'; -- for our remote exec. setup
-
-      Declare @Sql Nvarchar(max)
-      Select @Sql=R.Code
+     Declare @Sql Nvarchar(max)
+     Select @Sql=R.Code
       From --#PrmQueueRestoreToMirrorCmd 
         (Select ThisProc=S#.FullObjName(@@PROCID)) as ThisProc
-        CROSS APPLY S#.GetTemplateFromCmtAndReplaceTags ('===SqlTemplateForRestore===', ThisProc, @JsonPrms) as R
+        CROSS APPLY S#.GetTemplateFromCmtAndReplaceTags ('===SqlTemplateForRestore===', ThisProc, @JsonPrmsSubsetForASingleDbRestore) as R
 
 /*===SqlTemplateForRestore===
 DECLARE 
@@ -12927,6 +12919,12 @@ EXEC
   ) AT [#MirrorServer#];
 ===SqlTemplateForRestore===*/
 
+      -- Since we change user with Execute As and yExecNLog.LogAndOrExec needs session_context
+      -- to use dbo.MainContextInfo, set it here after impersonation.
+      EXECUTE AS LOGIN = 'YourSqlDba'; -- for our remote exec. setup
+      SET @IsImpersonated = 1;
+      EXEC sp_set_session_context @key = N'JobNoInSessCtx', @value = @JobNo;
+
       EXEC yExecNLog.LogAndOrExec
         @context = 'Mirroring.ProcessRestores'
       , @Info    = @CallerProcess
@@ -12934,23 +12932,41 @@ EXEC
       , @errorN  = @errorN OUTPUT
 
       REVERT; -- EXECUTE AS LOGIN = 'YourSqlDba';
+      Set @IsImpersonated = 0;
 
-      Exec Dbo.LogEvent 
-        @MsgTemplate = 'JobNo:#JobNo# - Restore (#bkpTyp#) #DbName# processed at server #MirrorServer#'
-      , @JsonPrms=@JsonPrms    
+      If @errorN = 0
+        Exec Dbo.LogEvent 
+          @MsgTemplate = 'JobNo:#JobNo# - Restore (#bkpTyp#) #DbName# processed at server #MirrorServer#'
+        , @JsonPrms=@JsonPrmsSubsetForASingleDbRestore 
 
-      -- Report error flag if any (could be zero)
-      Update Mirroring.RestoreQueue Set ErrorN = @ErrorN Where RestoreSeq=@RestoreSeq And ErrorN <> @ErrorN
-      Update Mirroring.RestoreQueue Set EndedAt = Getdate() Where RestoreSeq=@RestoreSeq 
+      Set @Sql = 'Delete Mirroring.RestoreQueue Where RestoreSeq='+Convert(nvarchar, @RestoreSeq)
+      EXEC yExecNLog.LogAndOrExec
+        @context = 'Mirroring.ProcessRestores'
+      , @Info    = @CallerProcess
+      , @sql     = @sql
+      , @errorN  = @errorN OUTPUT
 
-      -- If done, delete successful restore
-      Delete From Mirroring.RestoreQueue Where RestoreSeq=@RestoreSeq And ErrorN=0;
-      Set @WaitStart = Getdate()
+      EXEC sp_releaseapplock @Resource = @MirrorLockResource, @LockOwner = 'Session';
+      Waitfor Delay '00:00:01'
 
     END TRY
     BEGIN CATCH
-      IF SUSER_SNAME() = 'YourSqlDba' BEGIN TRY REVERT; END TRY BEGIN CATCH END CATCH;
-      THROW;
+      DECLARE @RevertError nvarchar(4000);
+      IF @IsImpersonated = 1
+      BEGIN
+        BEGIN TRY
+          REVERT;
+        END TRY
+        BEGIN CATCH
+          SET @RevertError = ERROR_MESSAGE();
+          DECLARE @Msg nvarchar(4000) = (SELECT ErrMessage = @RevertError FOR JSON PATH);
+          EXEC dbo.LogEvent @MsgTemplate = 'REVERT failed: #ErrMessage#', @JsonPrms = @Msg;
+        END CATCH
+      END
+      IF @RevertError IS NOT NULL
+        THROW 50000, @RevertError, 1;
+      ELSE
+        THROW;
     END CATCH
 
   End -- While
@@ -13064,15 +13080,13 @@ Begin
     Begin
       Print 'YourSqlDba.Mirror.AddServer : Problem occurred: '+@remoteServerYourSqlDbaVersion
       Print 'Adjust Linked server remote logins mapping. Then test link server connection by browsing linked server databases '
-      Print 'You can also do YourSqlDba.Mirror.DropServer followed by YourSqlDba.Mirror.AddServer with checking for proper remote user and password '
+      Print 'You can also do YourSqlDba.Mirroring.DropServer followed by YourSqlDba.Mirror.AddServer with checking for proper remote user and password '
     End
     Print '*****************************************************'
     Raiserror ('See print text for Mirroring.Addserver failure',11,1)
     Return
   End
   
-  Exec Mirroring.HandleRestoreJobAsNecessary @MirrorServer=@MirrorServer, @ForceRecreateJob=1
-
   -- Synchronise logins on the mirror server
   Exec yMirroring.LaunchLoginSync 
   
