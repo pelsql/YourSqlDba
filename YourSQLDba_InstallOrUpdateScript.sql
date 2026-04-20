@@ -440,8 +440,15 @@ From
   , CHECK_POLICY = OFF
   , DEFAULT_LANGUAGE=US_ENGLISH  
   '
-  Where Not Exists (select * from sys.sql_logins where name='YourSQLDba')
-  UNION ALL
+  ) as Tmp
+  CROSS APPLY (Select Sql=REPLACE(Tmp.Sql, '#UPwd#', Upwd) From #Pwd) as Sql
+Where Not Exists (select * from sys.sql_logins where name='YourSQLDba')
+Print @Sql
+Exec (@Sql)
+
+Select @Sql = Sql.Sql
+From 
+  (
   Select Sql=
   '
   CREATE CREDENTIAL YourSqlDbaRemoteServerCred
@@ -449,12 +456,12 @@ From
      SECRET = ''#UPwd#''; -- Same password as YourSqlDba;
   ALTER LOGIN YourSqlDba WITH CREDENTIAL = YourSqlDbaRemoteServerCred;
   '
-  Where Not Exists (select * from sys.credentials where name='YourSqlDbaRemoteServerCred')
-  ) as ToDo
-  CROSS APPLY (Select Sql=REPLACE(Sql, '#UPwd#', Upwd) From #Pwd) as Sql
-  Print @Sql
-  Exec (@Sql)
-  Drop Table #Pwd
+  ) as Tmp
+  CROSS APPLY (Select Sql=REPLACE(Tmp.Sql, '#UPwd#', Upwd) From #Pwd) as Sql
+Where Not Exists (select * from sys.credentials where name='YourSqlDbaRemoteServerCred')
+Print @Sql
+Exec (@Sql)
+Drop Table #Pwd
 GO
 Exec sp_addsrvrolemember @loginame= 'YourSqlDba' , @rolename = 'sysadmin'
 GO
@@ -487,6 +494,69 @@ Exec('CREATE SCHEMA yUpgrade AUTHORIZATION dbo')
 Exec('Create schema Tools authorization dbo;')
 Exec('Create schema yUtl authorization dbo;')
 Exec('Create schema S# authorization dbo;') -- for copying new code from S# library
+GO
+Create or Alter View Maint.DbInfoForYourSqlDba 
+as
+Select Opt.*, Dbs.*
+From 
+  -- @@MARK: View which is a fix list of database to exclude in YourSqlDba processing with flag
+  -- bitwise set
+  ( -- Get Useful info from DB
+  Select 
+     Db=name, state_Desc, is_read_only, compatibility_level
+   , is_in_standby, recovery_model_desc
+   , FullRecoveryMode=IIF(recovery_model_desc='SIMPLE', 0, 1)
+   , db_owner=SUSER_SNAME(owner_sid)
+   , source_database_id
+   , DbIsCaseInsensitive =cast(COLLATIONPROPERTY(collation_name,'ComparisonStyle') as int) & 1
+   From Sys.Databases
+   Where source_database_id IS NULL -- YourSqlDba do not handle snapshot databases
+  ) as Dbs
+  -- Stop return of Db in its track if not online
+
+  CROSS APPLY (Select NoBackup$=1) as NoBackup$ -- first bit 
+  CROSS APPLY (Select NoOffline$=NoBackup$*2) as NoOffline$ -- next bit 
+  CROSS APPLY (Select NoMirror$=NoOffline$*2) as NoMirror$ -- next bit 
+  -- note that among system databases TempDb is allways excluded from maintenance  
+  -- all of them can be backuped except tempdb
+  -- non of them can be put offline as they are system databases of SQL Server application specific
+  OUTER Apply
+  (
+  Select fDb, fIsSystem, fOfflineAllowed, fMirrorAllowed, fMaintenanceAllowed
+  From 
+    (
+    -- After the outer apply NULL Values are translated by the default for unspecified databasesé
+              Select fDB='Master'             , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL
+    Union All Select fDB='Model'              , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL
+    Union All Select fDB='Msdb'               , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL
+    Union All Select fDB='TempDb'             , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=0
+    Union All Select fDB='DWConfiguration'    , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL 
+    Union All Select fDB='DWDiagnostics'      , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL 
+    Union All Select fDB='DWQueue'            , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL 
+    Union All Select fDB='ReportServerTempDb' , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL
+    -- the fact that fIsSystem=0 for ReportServer make it accessible for the check for the recovery model at full
+    Union All Select fDB='ReportServer'       , fIsSystem=0, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL
+    Union All Select fDB='YourSqlDba'         , fIsSystem=0, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL
+    ) as preOpt
+  Where preOpt.fDb = Dbs.Db
+  ) as preOpt
+  CROSS APPLY
+  (
+  Select *
+  From 
+    (Select isSystem=ISNULL(fIsSystem, 0)) isSystem
+    CROSS APPLY (Select offlineAllowed=ISNULL(preOpt.fOfflineAllowed, 1)) as offlineAllowed
+    CROSS APPLY (Select mirrorAllowed=ISNULL(preOpt.fMirrorAllowed, 1)) as mirrorAllowed
+    CROSS APPLY (Select MaintenanceAllowed=ISNULL(preOpt.fMaintenanceAllowed, 1)) as MaintenanceAllowed
+  ) as Opt
+
+Go
+Create or Alter View Maint.DbOnlineInfoForYourSqlDba
+as
+Select *
+From 
+  Maint.DbInfoForYourSqlDba
+Where State_desc = 'ONLINE' 
 GO
 -- @@MARK: MaintenanceEnums - A way to get enums (or constants) in queries
 Create or Alter View Maint.MaintenanceEnums AS
@@ -4909,70 +4979,43 @@ Begin
   Return;
 End -- yUtl.SplitParamInRows
 GO
--- @@MARK: TODO : improve this function to new functional style
-Create Or Alter Function yUtl.YourSQLDba_ApplyFilterDb 
+Create Or Alter Function yUtl.YourSqlDba_ApplyDbFilter 
 (
   @IncDb VARCHAR(max) = '' -- @IncDb : See following comments for explanation
 , @ExcDb VARCHAR(max) = '' -- @ExcDb : See following comments for explanation
+, @OnlineOnly Int = 1
 )
-returns @Db table
-(
-  DbName               sysname
-, dbOwner              sysname  NULL -- because actual owner may be invalid after a restore
-, FullRecoveryMode     int
-, cmptLevel            tinyint
-)
+returns table
 as
-Begin
-  -- Create table of inclusion and exclusion patterns that apply to database names
-  declare @DbName sysname  
-
-  declare @Pat table
-  (
-  rech sysname,  -- search pattern
-  action char(1) -- 'I' = include if pattern match 'E' = exclude if pattern match 
-  ) 
-
-  Insert into @pat Select line, 'I' from yUtl.SplitParamInRows (@IncDb)
-  Insert into @pat Select line, 'E' from yUtl.SplitParamInRows (@ExcDb)
-
--- ===================================================================================== 
--- Build database list to process
--- ===================================================================================== 
+Return
+  -- ===================================================================================== 
+  -- Build database list to process
+  -- @@Mark: Database selection
+  -- ===================================================================================== 
 
   -- Build Db list into temporary table and retain its recovery mode (for possible log backup processing)
-  Insert into @Db (DbName, dbOwner, FullRecoveryMode, cmptLevel)
   Select 
-    name
-  , SUSER_SNAME(owner_sid)
-  , Case 
-      When DATABASEPROPERTYEX(name, 'Recovery') = 'Simple' 
-      Then 0 -- simple recovery mode, no log backup possible
-      Else 1 -- full recovery mode, log backup possible
-    End as FullRecoveryMode,
-    compatibility_level 
-  from master.sys.databases 
-  Where name <> 'tempdb'
-
-  -- If there is at least one inclusion pattern, remove from database list those that
-  -- doesn't match this pattern. Remove from the rest of the list those that match 
-  -- with the exclusion pattern
-  -- Yes it can be done in one single query ;)
-  
-  Delete D 
-  From 
-    @Db D
+    I.*
+  From Maint.DbInfoForYourSqlDba as I
   Where 
-    (   -- only if there is any inclusion pattern 
-        Exists     (Select * From @Pat Where Action = 'I') 
-        -- delete databases that don't match, otherwise nothing is deleted
-    And Not Exists (Select * From @Pat P Where P.action = 'I' And D.DbName like P.Rech)
-    )
-    -- Suppress any database from the list that match exclusion pattern
-    Or Exists (Select * From @Pat P Where P.action = 'E' And D.DbName like P.Rech)
+        (I.state_desc = 'ONLINE' Or ISNULL(@OnlineOnly,0) = 0)
+    And I.MaintenanceAllowed=1
+    And
+      (
+        Not Exists (Select * From yUtl.SplitParamInRows (@IncDb)) -- accept all if not 'I'
+        Or Exists (Select * From yUtl.SplitParamInRows (@IncDb) as P Where I.Db Collate Database_Default like P.Line) -- restrict to included
+      )
+    And Not Exists (Select * From yUtl.SplitParamInRows (@ExcDb) as P Where I.Db Collate Database_Default like P.Line) -- must not exist in excluded
 
-  return
-End; -- yUtl.YourSQLDba_ApplyFilterDb 
+-- yUtl.YourSqlDba_ApplyDbFilter 
+GO
+-- Test the stack
+/*
+Select yUtl.NormalizeLineEnds('B%|G%')
+Select * From yUtl.SplitParamInRows ('B%|G%')
+Select * From yUtl.YourSqlDba_ApplyDbFilter ('B%|G%', 'GR%', 1) order by db
+Select * From yUtl.YourSqlDba_ApplyDbFilter ('', 'G%', 1) order by db
+*/
 -- ------------------------------------------------------------------------------
 -- Function that normalize path (ensure that a '\' is at the end of the path
 -- ------------------------------------------------------------------------------
@@ -5096,7 +5139,7 @@ End -- yUtl.SearchWords
 GO
 CREATE OR ALTER PROCEDURE dbo.LogEvent
   @MsgTemplate nvarchar(2048)
-, @JsonPrms    Nvarchar(max) 
+, @JsonPrms    Nvarchar(max) = NULL
 , @Severity    varchar(20) = 'informational'  -- 'informational', 'warning', 'error'
 AS
 -- ------------------------------------------------------------------
@@ -5115,14 +5158,16 @@ BEGIN
 
   -- Préfixe facultatif (source)
   DECLARE @FullMessage nvarchar(2048);
-  Select @FullMessage = FullMsg
-  From 
-    (Select prmJsonPrms=LTRIM(ISNULL(@jsonPrms, '')), MsgTemplate=@MsgTemplate) as prm
-    CROSS APPLY (Select JsonPrms=IIF(prmJsonPrms<>'', prmJsonPrms, '[{"nothing":"No json"}]')) as jsonPrms
-    Cross apply (select posOpeningArrayWrapper=PatIndex('[[]%{%', jsonPrms)) as posOpeningArrayWrapper
-    CROSS APPLY (Select jsonPrmsWAW=IIF(posOpeningArrayWrapper = 0, '['+jsonPrms+']', jsonPrms)) as jsonPrmsWAW
-    CROSS APPLY S#.MultipleReplaces (Prm.MsgTemplate, JSonPrmsWAW) as R
-    CROSS APPLY (Select FullMsg='[YourSqlDba]: '+R.replacedTxt) as FullMsg
+  If LTRIM(ISNULL(@JsonPrms, '')) = ''
+    Set @FullMessage = '[YourSqlDba]: '+@MsgTemplate
+  Else
+    Select @FullMessage = FullMsg
+    From 
+      (Select prmJsonPrms=LTRIM(@jsonPrms), MsgTemplate=@MsgTemplate) as prm
+      Cross apply (select posOpeningArrayWrapper=PatIndex('[[]%{%', prmJsonPrms)) as posOpeningArrayWrapper
+      CROSS APPLY (Select jsonPrmsWAW=IIF(posOpeningArrayWrapper = 0, '['+prmJsonPrms+']', prmJsonPrms)) as jsonPrmsWAW
+      CROSS APPLY S#.MultipleReplaces (Prm.MsgTemplate, JSonPrmsWAW) as R
+      CROSS APPLY (Select FullMsg='[YourSqlDba]: '+R.replacedTxt) as FullMsg
 
   -- Appel silencieux à xp_logevent (écrit dans SQL + Windows)
   BEGIN TRY
@@ -5399,12 +5444,22 @@ Begin
     
   Set @errorN = 0 
   
-  --********** DON'T EVER DROP THIS TABLE AT RUN-TIME. It is here just for debugging. 
-  --Dropping the table cause reentrancy problem, by clearing caller's temporary table with same name
-  --Drop table if Exists #PrmLogAndOrExec
-  --I'm put a kind of unique name for temptable, in case a calling sp would also create a #prm table
-  -- in that case this would create an error here
-  Create table #prmLogAndOrExec
+  -- Use table variables for the procedure-local staging rows.
+  -- This avoids local temp-table name interactions when LogAndOrExec is re-entered
+  -- from dynamic SQL or nested logging on the same connection.
+  --
+  -- For debugging purposes only:
+  --   @prmLogAndOrExec can be turned into #prmLogAndOrExec temporarily.
+  --   in that case it allows to run by step by step parts of code of the procedure, because #prmLogAndOrExec 
+  --   lasts. 
+  --
+  --   Beware that when using #prmLogAndOrExec never drop it explicitely with Drop table if Exists #prmLogAndOrExec 
+  --   I experienced some debugging case with reentrancy problem
+  --     example : When yExecNLog.LogAndOrExec execute a command that does itself a yExecNLog.LogAndOrExec,
+  --   In that case that indirectly called yExecNLog.LogAndOrExec is clearing the caller's #prmLogAndOrExec content.
+  --   As stored procedures share the same temporary table, that exists on the same connection.
+  -- 
+  Declare @prmLogAndOrExec table 
   (
     JobNo INT NULL
   , YourSqlDbaNo nvarchar(max) Collate database_default 
@@ -5417,8 +5472,16 @@ Begin
   , forDiagOnly  int NULL
   , Seq Int NULL
   )
-  -- create #prmLogAndOrExec on same model than Maint.JobHistoryLineDetails 
-  Select top 0 * Into #trcLogAndOrExec From Maint.JobHistoryLineDetails 
+  -- @trcLogAndOrExec has the same column shape as Maint.JobHistoryLineDetails.
+  Declare @trcLogAndOrExec table
+  (
+    JobNo  Int Not NULL
+  , Seq    Int Not NULL
+  , TypSeq Int Not NULL
+  , Typ    nvarchar(6) Collate database_default Not NULL
+  , Line   int Not NULL
+  , Txt    Nvarchar(max) Collate database_default NULL
+  )
 
   Begin TRY
     -- special entries are logged for job start that describe the job and it parameters
@@ -5429,8 +5492,8 @@ Begin
     Select JobNo, @forDiagOnly From dbo.MainContextInfo(null)
     Set @Seq=SCOPE_IDENTITY()
 
-    -- memorize parameters into #prmLogAndOrExec, which make queries easier to maintain with intellisence
-    Insert into #prmLogAndOrExec 
+    -- memorize parameters into @prmLogAndOrExec, which make queries easier to maintain with intellisence
+    Insert into @prmLogAndOrExec 
     Select M.JobNo, @YourSqlDbaNo, @Context, @sql, @Info, Err.err, @errorN, @raiseError, @forDiagOnly, @seq
     From 
       dbo.MainContextInfo(null) as M
@@ -5442,7 +5505,7 @@ Begin
       CROSS APPLY (Select Err=IIF(@err='?', errMsgCtx, @err)) as Err 
 
     -- Required to build output to YourSqlDba log
-    insert into #trcLogAndOrExec 
+    insert into @trcLogAndOrExec 
     Select 
       I.JobNo
     , I.Seq
@@ -5452,7 +5515,7 @@ Begin
     , ToLog.Txt 
     From 
       -- only happens once at job start
-      (Select JobNo, YourSqlDbaNo, Context, sql, Info, err, errorN, [raiseError], forDiagOnly, seq From #prmLogAndOrExec as I) as I
+      (Select JobNo, YourSqlDbaNo, Context, sql, Info, err, errorN, [raiseError], forDiagOnly, seq From @prmLogAndOrExec as I) as I
       -- shred into columns JSonPrms of JobHistory for info that goes in messages
       -- parameter NULL could be used again, as before. But jobNo was recorded in yExecNLog.LogAndOrExecPrm table, so we take it there instead 
       CROSS APPLY Dbo.MainContextInfo (I.JobNo) as J 
@@ -5537,21 +5600,21 @@ Begin
       ) as ToLog
       -- if a real @sql command has to be run, try run it otherwise exit the proc
 
-    -- Select * from #trc 
+    -- Select * from @trcLogAndOrExec
     -- memorize into Maint.JobHistoryLineDetails, details of the job
     Insert into Maint.JobHistoryLineDetails (jobNo, Seq, TypSeq, Typ, Line, Txt)
-    Select * from #trcLogAndOrExec
+    Select * from @trcLogAndOrExec
 
     -- always update event for log message only
     Update JH
     Set JobEnd = Getdate()
     From 
-      #trcLogAndOrExec as t 
+      @trcLogAndOrExec as t 
       Join Maint.JobHistory as JH
       ON JH.JobNo = t.JobNo 
 
-    -- the same #trcLogAndOrExec is going to be reused for logging run-time execution error, if there are any
-    Truncate table #trcLogAndOrExec 
+    -- the same @trcLogAndOrExec is going to be reused for logging run-time execution error, if there are any
+    Delete From @trcLogAndOrExec
 
     If isnull(@sql, '') = '' 
       Return  -- nothing left to do
@@ -5564,7 +5627,7 @@ Begin
 
     -- always update in case of DBCC messages with errors which can't be trapped error
     -- always update event for log message only
-    -- Since here #trc is empty switch back to dbo.MainContextInfo(null) method to get jobNo
+    -- Since here @trcLogAndOrExec is empty switch back to dbo.MainContextInfo(null) method to get jobNo
     Update JH
     Set JobEnd = Getdate()
     From 
@@ -5577,7 +5640,7 @@ Begin
     -- Logs messages, being informational (severity <=10) or not.
     -- As examples : prints, or dbcc checkdb output without error are informational messages. 
     -- The last line of the report on a global execution status
-    Insert into #trcLogAndOrExec
+    Insert into @trcLogAndOrExec
     Select 
       I.JobNo
     , I.Seq
@@ -5586,7 +5649,7 @@ Begin
     , Line=ToLog.LineOrd
     , ToLog.Txt
     From 
-      (Select * From #prmLogAndOrExec as I) as I
+      (Select * From @prmLogAndOrExec as I) as I
       CROSS APPLY -- log informational messages from SQL severity <=10
       ( 
       -- @maxSeverity is a value returned by ExecWithProfilerTrace. Smaller than 10, this is a print.
@@ -5624,9 +5687,9 @@ Begin
         ) as Ok
       ) as ToLog
 
-    -- copy #trc if it has run-time execution error logged into it into Maint.JobHistoryLineDetails 
+    -- copy @trcLogAndOrExec if it has run-time execution error logged into it into Maint.JobHistoryLineDetails 
     Insert into Maint.JobHistoryLineDetails (jobNo, Seq, TypSeq, Typ, Line, Txt)
-    Select * from #trcLogAndOrExec
+    Select * from @trcLogAndOrExec
 
 
     -- Update Maint.JobHistoryDetails for query duration
@@ -5636,7 +5699,7 @@ Begin
       secs = Datediff(ss, cmdStartTime, getdate())
     , forDiagOnly = Case When @maxSeverity > 10 Then 0 Else @forDiagOnly End
     From
-      #prmLogAndOrExec as P
+      @prmLogAndOrExec as P
       JOIN Maint.JobHistoryDetails JD
       ON JD.JobNo = P.JobNo And JD.seq = P.Seq
 
@@ -5663,21 +5726,36 @@ Begin
     -- but at least we will have some information about it in the log
     -- which is better than nothing and can help to fix the problem
     declare @msg  nvarchar(4000)
-    Select @Msg=E.Err 
+    Select @msg=E.Err 
     From 
       (Select Err=ErrMsg From S#.FormatCurrentMsg(null)) as E
 
+    If XACT_STATE() = -1
+    Begin
+      Exec dbo.LogEvent
+        @MsgTemplate = @msg
+      , @Severity = 'error'
+      Return
+    End
+
     -- write it into Maint.JobHistoryLineDetails 
-    Insert Into Maint.JobHistoryLineDetails (jobNo, Seq, TypSeq, Typ, Line, Txt)
-    Select I.JobNo, I.Seq, TypSeq=99, typ='ErrLog', lineOrd=1, line=@Msg
-    From #prmLogAndOrExec as I
-    -- always update event for log message only
-    Update JH
-    Set JobEnd = Getdate()
-    From 
-      dbo.MainContextInfo(NULL) as M
-      Join Maint.JobHistory as JH
-      ON JH.JobNo = M.JobNo;
+    Begin Try
+      Insert Into Maint.JobHistoryLineDetails (jobNo, Seq, TypSeq, Typ, Line, Txt)
+      Select I.JobNo, I.Seq, TypSeq=99, typ='ErrLog', lineOrd=1, line=@msg
+      From @prmLogAndOrExec as I
+      -- always update event for log message only
+      Update JH
+      Set JobEnd = Getdate()
+      From 
+        dbo.MainContextInfo(NULL) as M
+        Join Maint.JobHistory as JH
+        ON JH.JobNo = M.JobNo;
+    End Try
+    Begin Catch
+      Exec dbo.LogEvent
+        @MsgTemplate = @msg
+      , @Severity = 'error'
+    End Catch
 
   End CATCH
 
@@ -6034,41 +6112,43 @@ Begin
   Declare @AlterDb nvarchar(512)
   Declare @Info nvarchar(512)
 
-  If DatabasepropertyEx(@DbToLockOut, 'Status') <> 'EMERGENCY'  And 
-     @DbToLockOut Not In ('master', 'model', 'msdb')
-  Begin
-    If DatabasepropertyEx(@DbToLockOut, 'Status') <> N'ONLINE' 
-      Return -- version 1.1 don't attempt to put offline a database that is already not online
-      
-    Set @AlterDb = 
-    '
-    Alter database [<db>] Set offline With ROLLBACK immediate
-    '
-    
-    Set @Info = 'Database [<db>]is put offline because the previous error'
+  -- dynamic view that check status and other conditions 
+  -- the Db must exists, be online, and not being a DB yo want offline (system Db, YourSqlDba)
+  If Not Exists
+     (
+     Select Db
+     From Maint.DbOnlineInfoForYourSqlDba as I
+     Where I.Db = @DbToLockOut Collate Database_Default
+       And I.offlineAllowed = 1
+     )
+    Return
 
-    Set @AlterDb = Replace(@AlterDb, '<db>', @DbToLockOut)
-    Set @Info = Replace(@Info, '<db>', @DbToLockOut)
-    Set @AlterDb = Replace(@AlterDb, '"', '''')
+  Set @AlterDb = 
+  '
+  Alter database [<db>] Set offline With ROLLBACK immediate
+  '
+    
+  Set @Info = 'Database [<db>]is put offline because the previous error'
 
-    Begin try
+  Set @AlterDb = Replace(@AlterDb, '<db>', @DbToLockOut)
+  Set @Info = Replace(@Info, '<db>', @DbToLockOut)
+  Set @AlterDb = Replace(@AlterDb, '"', '''')
+
+  Begin try
     
-    Exec (@alterDb)
+  Exec (@alterDb)
     
+  Exec yExecNLog.LogAndOrExec 
+    @context = @Info
+  , @YourSqlDbaNo = '005'
+    
+  End try
+  begin catch
     Exec yExecNLog.LogAndOrExec 
-      @context = @Info
+      @context = 'yMaint.PutDbOffline error'
+    , @err='?'
     , @YourSqlDbaNo = '005'
-    
-    End try
-    begin catch
-      Exec yExecNLog.LogAndOrExec 
-        @context = 'yMaint.PutDbOffline error'
-      , @err='?'
-      , @YourSqlDbaNo = '005'
-    end catch
-    
-
-  End
+  end catch
 End -- yMaint.PutDbOffline 
 GO
 -- ---------------------------------------------------------------------------------------
@@ -6091,7 +6171,7 @@ GO
 
 --select * 
 --from 
---yUtl.YourSQLDba_ApplyFilterDb (
+--yUtl.YourSqlDba_ApplyDbFilter (
 --'
 --',
 --'
@@ -6789,21 +6869,14 @@ Begin
   Set @ExcDb = @ExcDb + CHAR(10) + @ExcDbFromPolicy_CheckFullRecoveryModel
   
   Set @dblist = ''
+
+  -- YourSqlDba do not exclude exclude itself from the test
   
-  Select @dblist = @dblist + ',' + x.DbName 
+  Select @dblist = @dblist + ',' + F.Db
   From 
-    sys.databases db
-    
-    join
-    yUtl.YourSQLDba_ApplyFilterDb(@IncDb, @ExcDb) x
-    on db.name = x.DbName collate database_default 
-    
-  Where x.FullRecoveryMode <> 1
-    And db.source_database_id is Null
-    AND x.DbName Not In ('master', 'YourSQLDba', 'msdb', 'model')
-    AND x.DbName Not Like 'ReportServer%TempDB'
-    AND x.DbName Not Like 'YourSQLDba%'
-    AND DatabasepropertyEx(DbName, 'Status') = 'Online' -- To Avoid db that can't be processed
+    yUtl.YourSqlDba_ApplyDbFilter(@IncDb, @ExcDb, 1) as F
+  Where F.FullRecoveryMode = 0  -- for those who aren't in full recovery mode and need log backups 
+    And F.isSystem = 0 -- for those who are subject to this verification
   
   Set @dbcount = @@ROWCOUNT 
 
@@ -7286,7 +7359,7 @@ Begin
     If DATABASEPROPERTYEX(@DbName, 'Updateability') = N'READ_ONLY'  
       Continue
 
-    -- If database is in emrgency, skip update stats for this database
+    -- If database is in emergency, skip update stats for this database
     If DatabasepropertyEx(@DbName, 'Status') = 'OFFLINE'
       Continue
       
@@ -7906,7 +7979,7 @@ Begin
 
   Begin Try
   
-  -- Use case: Mirroring.QueueRestoreToMirrorCmd call this proc to ensure there is a job to handle restore
+  -- Use case: yMirroring.QueueRestoreToMirrorCmd call this proc to ensure there is a job to handle restore
   -- If there is already one, it exits.
   -- case for a call with Mirroring.addServer Or Mirroring.
   -- When Mirroring.StartRestartRestoreJobForMirrorServer called this proc 
@@ -7965,11 +8038,16 @@ Begin
   End Try
   Begin catch
     Declare @msg nvarchar(max)
-    Select @msg = @context + nChar(10)+F.ErrMsg
+    Select @msg = ISNULL(@context + nChar(10), '') + F.ErrMsg
     From 
       S#.FormatCurrentMsg(NULL) as F
     Print 'Error When running Mirroring.HandleRestoreJobAsNecessary : '+@msg
-    ROLLBACK
+    If @@TRANCOUNT > 0
+      ROLLBACK
+
+    Exec dbo.LogEvent
+      @MsgTemplate = @msg
+    , @Severity = 'error'
   End catch
 
 End -- Mirroring.HandleRestoreJobAsNecessary
@@ -8106,6 +8184,15 @@ Begin
   Declare @mirrorServer Sysname
   Select @mirrorServer = ISNULL(mirrorServer,'') From dbo.MainContextInfo (null)
 
+  If Not Exists
+     (
+     Select Db
+     From Maint.DbOnlineInfoForYourSqlDba as I
+     Where I.Db = @DbName Collate Database_Default
+       And I.mirrorAllowed = 1
+     )
+    Return( 0 )
+
   -- Test that the Mirror server was defined  
   Declare @sql  nvarchar(max)
   Declare @Info nvarchar(max)
@@ -8128,64 +8215,65 @@ Begin
   -- Delete leftovers that belong to restore channels whose SQL Agent worker is no longer running.
   -- This is mostly a recovery path for interrupted runs; in normal execution ProcessRestores removes
   -- queue rows immediately when it dequeues them.
+  Begin Try
 
-  Begin Tran -- serialize cleanup + enqueue so that no concurrent caller can interleave them
+    Begin Tran -- serialize cleanup + enqueue so that no concurrent caller can interleave them
 
-  Declare @dummy int 
-  Select @Dummy=Count(*) From Mirroring.RestoreQueue With (tablockx)
+    Declare @dummy int 
+    Select @Dummy=Count(*) From Mirroring.RestoreQueue With (tablockx)
 
-  Delete RQ
-  From Mirroring.RestoreQueue RQ
-  Where Not Exists
-  (
-    Select *
-    From
-      dbo.MainContextInfo(RQ.CallingJobNo) as Ctx
-      CROSS APPLY Maint.JobState(Ctx.JobNameForRestore) as JS
-    Where JS.IsRunning = 1
-      And JS.name Collate Database_Default = Ctx.JobNameForRestore
-  )
+    Delete RQ
+    From Mirroring.RestoreQueue RQ
+    Where Not Exists
+    (
+      Select *
+      From
+        dbo.MainContextInfo(RQ.CallingJobNo) as Ctx
+        CROSS APPLY Maint.JobState(Ctx.JobNameForRestore) as JS
+      Where JS.IsRunning = 1
+        And JS.name Collate Database_Default = Ctx.JobNameForRestore
+    )
       
-  -- CallingJobNo lets ProcessRestores switch its session context to the originating maintenance JobNo.
-  -- This keeps restore logging in the same YourSqlDba history as the backup that produced the file.
-  -- See Mirroring.ProcessRestores for the consumer side of this protocol.
+    -- CallingJobNo lets ProcessRestores switch its session context to the originating maintenance JobNo.
+    -- This keeps restore logging in the same YourSqlDba history as the backup that produced the file.
+    -- See Mirroring.ProcessRestores for the consumer side of this protocol.
 
-  Insert into Mirroring.RestoreQueue (JobNameForRestore, CallingJobNo, JsonPrmsSubsetForASingleDbRestore, MirrorServer) 
-  Select M.JobNameForRestore, M.JobNo, J.JsonPrmsSubsetForASingleDbRestore, M.MirrorServer
-  From 
-    dbo.MainContextInfo(null) as M -- get JobNo from current context that asks for a restore
-    -- Build only the subset of JSON parameters required to restore one backup file.
-    -- One queue row represents one restore operation in FIFO order.
-    CROSS APPLY
-    (Select JsonPrmsSubsetForASingleDbRestore=
-       (
-       Select 
-         M.JobNo
-       , DbName = @DbName 
-       , bkpTyp = @bkpTyp 
-       , fileName = @fileName 
-       , M.MirrorServer
-       , M.MigrationTestMode
-       , M.ReplaceSrcBkpPathToMatchingMirrorPath
-       , M.ReplacePathsInDbFilenames
-       For Json Path, INCLUDE_NULL_VALUES
-       )
-    ) as j
+    Insert into Mirroring.RestoreQueue (JobNameForRestore, CallingJobNo, JsonPrmsSubsetForASingleDbRestore, MirrorServer) 
+    Select M.JobNameForRestore, M.JobNo, J.JsonPrmsSubsetForASingleDbRestore, M.MirrorServer
+    From 
+      dbo.MainContextInfo(null) as M -- get JobNo from current context that asks for a restore
+      -- Build only the subset of JSON parameters required to restore one backup file.
+      -- One queue row represents one restore operation in FIFO order.
+      CROSS APPLY
+      (Select JsonPrmsSubsetForASingleDbRestore=
+         (
+         Select 
+           M.JobNo
+         , DbName = @DbName 
+         , bkpTyp = @bkpTyp 
+         , fileName = @fileName 
+         , M.MirrorServer
+         , M.MigrationTestMode
+         , M.ReplaceSrcBkpPathToMatchingMirrorPath
+         , M.ReplacePathsInDbFilenames
+         For Json Path, INCLUDE_NULL_VALUES
+         )
+      ) as j
 
-    Select @jsonPrms = JsonPrmsSubsetForASingleDbRestore
-    From Mirroring.RestoreQueue 
-    Where RestoreSeq = Scope_Identity()
-    Exec Dbo.LogEvent 
-      @MsgTemplate = 'JobNo:#JobNo# - Queing Database backup (#bkpTyp#) #DbName# for restore at server #MirrorServer#'
-    , @JsonPrms=@JsonPrms    
+      Select @jsonPrms = JsonPrmsSubsetForASingleDbRestore
+      From Mirroring.RestoreQueue 
+      Where RestoreSeq = Scope_Identity()
+      Exec Dbo.LogEvent 
+        @MsgTemplate = 'JobNo:#JobNo# - Queing Database backup (#bkpTyp#) #DbName# for restore at server #MirrorServer#'
+      , @JsonPrms=@JsonPrms    
 
   Commit tran -- release the queue lock before starting the worker
 
-  Begin Try
     -- Start after the row exists in the queue to avoid a cold-start race on an empty queue.
     Exec Mirroring.StartRestartRestoreJobForMirrorServer 
   End Try
   Begin Catch
+    If @@TRANCOUNT > 0 Rollback;
     Throw
     Return
   End Catch
@@ -8343,25 +8431,9 @@ Begin
   )
 
   insert into @tDb
-  SELECT * 
-  FROM 
-    YourSQLDba.yUtl.YourSQLDba_ApplyFilterDb (@IncDb, @ExcDb)
-  Where DatabasepropertyEx(DbName, 'Status') = 'Online' -- Avoid db that can't be processed
+  SELECT D.Db, D.db_owner, D.FullRecoveryMode, D.compatibility_level
+  FROM YourSQLDba.yUtl.YourSqlDba_ApplyDbFilter (@IncDb, @ExcDb, 1) as D 
   
-  --select * from @tDb
-
-  -- remove snapshot database from the list
-  Delete Db
-  From @tDb Db
-  Where 
-    Exists
-    (
-    Select * 
-    From sys.databases d 
-    Where d.name COLLATE Database_default = db.DbName 
-      and source_database_Id is not null
-    )
-
   --select * from @tDb
 
   -- create table of directory info lines
@@ -8980,22 +9052,12 @@ Begin
   Declare @filename  nvarchar(512) 
     
   declare @sql nvarchar(max)    -- Sql Command
-  Declare @sql2 nvarchar(max)
-  Declare @FullRecoveryMode Int -- recovery mode of the database
-  Declare @seq Int              -- row seq. in work tables
   Declare @ctx sysname          -- context id 
-
-  Declare @email_Address sysname   
-  declare @d datetime           -- start hour
-  --declare @StartOfDay Datetime   
-  declare @lockResult Int
 
   declare @errorN Int  -- return code for full backups
   declare @errorN_BkpPartielInit Int  -- return code for log backups
   declare @FailedBkpCnt Int -- failed backups count on a given database
   
-  Declare @MustLogBackupToShrink int
-
   Declare @MaintJobName nVarchar(200)
   Declare @DoBackup nvarchar(5)
   Declare @DoFullBkp nvarchar(5)
@@ -9006,18 +9068,15 @@ Begin
   Declare @LogBkpRetDays Int 
   Declare @NotifyMandatoryFullDbBkpBeforeLogBkp int 
   Declare @BkpLogsOnSameFile int 
-  Declare @SpreadUpdStatRun int 
-  Declare @SpreadCheckDb int
   Declare @FullBackupPath nvarchar(512) 
   Declare @LogBackupPath nvarchar(512) 
   Declare @ConsecutiveDaysOfFailedBackupsToPutDbOffline Int 
   Declare @IncDb nVARCHAR(max) 
-  Declare @ExcDb nVARCHAR(max) 
-  Declare @JobId uniqueidentifier 
-  Declare @StepId Int 
   Declare @Language nvarchar(512)
-  Declare @jobStart Datetime
-  Declare @MirrorServer sysname
+  Declare @JobMirrorServer sysname
+  Declare @DbMirrorServer sysname
+  Declare @LastBkpMirrorServer sysname
+  Declare @MirrorAllowed int
   Declare @MigrationTestMode Int
   Declare @FullBkExt nvarchar(7) 
   Declare @LogBkExt nvarchar(7) 
@@ -9030,13 +9089,10 @@ Begin
 
   -- enrich @context or @info paramter 
   Declare @ContextData nvarchar(max)
-  Declare @InfoData nvarchar(max)
   
   -- replace null by empty string
   Set @ReplaceSrcBkpPathToMatchingMirrorPath = ISNULL(@ReplaceSrcBkpPathToMatchingMirrorPath, '')
   Set @ReplacePathsInDbFilenames = ISNULL(@ReplacePathsInDbFilenames , '')
-  
-  create table #MustLogBackupToShrink (i int)
 
   Declare @DbTable table (dbname sysname, FullRecoveryMode int)
   Insert into @Dbtable select dbname, FullRecoveryMode from #Db
@@ -9058,13 +9114,8 @@ Begin
   , @LogBkExt = LogBkExt
   , @ConsecutiveDaysOfFailedBackupsToPutDbOffline = ConsecutiveDaysOfFailedBackupsToPutDbOffline 
   , @IncDb = IncDb 
-  , @ExcDb = ExcDb 
-  , @jobStart = JobStart 
-  , @MirrorServer = MirrorServer
+  , @JobMirrorServer = ISNULL(MirrorServer, '')
   , @MigrationTestMode = MigrationTestMode
-  , @JobId = JobId
-  , @StepId = StepId
-  , @MirrorServer = MirrorServer
   , @ReplaceSrcBkpPathToMatchingMirrorPath = ReplaceSrcBkpPathToMatchingMirrorPath
   , @ReplacePathsInDbFilenames= ReplacePathsInDbFilenames
   , @EncryptionAlgorithm = EncryptionAlgorithm
@@ -9078,13 +9129,13 @@ Begin
   End
 
   -- check if MirrorServer is still valid
-  If ISNULL(@MirrorServer, '') <> ''
+  If ISNULL(@JobMirrorServer, '') <> ''
   Begin
     Declare @remoteVersion nvarchar(100)
-    Exec yMirroring.ReportYourSqlDbaVersionOnTargetServers @MirrorServer = @MirrorServer, @LogToHistory = 1, @remoteVersion = @remoteVersion OUTPUT 
+    Exec yMirroring.ReportYourSqlDbaVersionOnTargetServers @MirrorServer = @JobMirrorServer, @LogToHistory = 1, @remoteVersion = @remoteVersion OUTPUT
     If (select VersionNumber from Install.VersionInfo()) <> @remoteVersion
     Begin
-      Set @MirrorServer = '' -- this disable restore to remote server
+      Set @JobMirrorServer = '' -- this disable restore to remote server
     end  
   End  
     
@@ -9170,7 +9221,7 @@ Begin
     Select Ctx.JobNameForRestore, CallingJobNo=JobNo
     From 
       Dbo.MainContextInfo(null) as Ctx
-    Where @DoBackup IN ('F', 'L', 'D') And ISNULL(Ctx.MirrorServer, '') <> ''
+    Where @DoBackup IN ('F', 'L', 'D') And ISNULL(@JobMirrorServer, '') <> ''
 
     -- Get the installation language of the SQL Server instance
     Exec yInstall.InstallationLanguage @Language output
@@ -9227,6 +9278,16 @@ Begin
 
       If DatabasepropertyEx(@DbName, 'Status') <> 'ONLINE' -- if not online don't try to maintain
         Continue
+
+      Set @MirrorAllowed = 0
+      Set @DbMirrorServer = ''
+      Set @LastBkpMirrorServer = ''
+      Select @MirrorAllowed = I.mirrorAllowed
+      From Maint.DbOnlineInfoForYourSqlDba as I
+      Where I.Db = @DbName Collate Database_Default
+
+      If @DoFullBkp = 1 Or @DoDiffBkp = 1
+        Set @DbMirrorServer = IIF(@MirrorAllowed = 1, @JobMirrorServer, '')
       
       -- Validation block only, is log backup can be done?
       If @DoLogBkp = 1 -- log backups ?
@@ -9246,7 +9307,7 @@ Begin
         Begin
           -- User explicity asked for this database, and it is in simple recovery mode
           -- It must be told to him that log backups can be fulfilled
-          If replace(replace(replace(@IncDb, ' ', ''), char(10), ''), char(13), '') <> ''   
+          If replace(replace(replace(@IncDb, ' ', ''), char(10), ''), char(13), '') NOT IN ('', '%')
           Begin
 
             -- User explicity stated by @incDb that he wants a log backup but that it can't done
@@ -9337,9 +9398,14 @@ Begin
         Select -- get most up-to-date value for mirroring parameter
           @ReplaceSrcBkpPathToMatchingMirrorPath = ReplaceSrcBkpPathToMatchingMirrorPath 
         , @ReplacePathsInDbFilenames = ReplacePathsInDbFilenames
-        , @MirrorServer = MirrorServer 
+        , @LastBkpMirrorServer = ISNULL(MirrorServer, '')
         , @MigrationTestMode = MigrationTestMode 
         From Maint.JobLastBkpLocations Where dbName = @DbName
+
+        -- A log backup can be mirrored only when mirroring is enabled in the current job
+        -- and the database already has a mirrored full/diff backup chain for that same target.
+        Set @DbMirrorServer =
+          IIF(@MirrorAllowed = 1 And @JobMirrorServer <> '' And @JobMirrorServer = @LastBkpMirrorServer, @JobMirrorServer, '')
       End  
 
       -- If there is row record for this database update it
@@ -9347,9 +9413,9 @@ Begin
       Begin
         -- Mirror server change to reflect now from this backup.  Accept a mirror server only at full backup
         -- but if there is no or no more mirrorServer ensure to stop mirroring any time
-        If @DoFullBkp = 1 Or @MirrorServer = '' Or @DoDiffBkp = 1
+        If @DoFullBkp = 1 Or @DbMirrorServer = '' Or @DoDiffBkp = 1
           Update Maint.JobLastBkpLocations 
-          Set   mirrorServer = @MirrorServer
+          Set   mirrorServer = @DbMirrorServer
               , MigrationTestMode = @MigrationTestMode 
               , ReplaceSrcBkpPathToMatchingMirrorPath = @ReplaceSrcBkpPathToMatchingMirrorPath 
               , ReplacePathsInDbFilenames = @ReplacePathsInDbFilenames
@@ -9364,7 +9430,7 @@ Begin
         Insert into Maint.JobLastBkpLocations 
           (dbName, lastLogBkpFile, MirrorServer, lastFullBkpDate, ReplaceSrcBkpPathToMatchingMirrorPath, ReplacePathsInDbFilenames,EncryptionAlgorithm,EncryptionCertificate)
         Select   
-          @DbName, Null, @MirrorServer, getdate(), @ReplaceSrcBkpPathToMatchingMirrorPath, @ReplacePathsInDbFilenames
+          @DbName, Null, @DbMirrorServer, getdate(), @ReplaceSrcBkpPathToMatchingMirrorPath, @ReplacePathsInDbFilenames
         , ISNULL(@EncryptionAlgorithm,''), ISNULL(@EncryptionCertificate,'')
         Where Not Exists(Select * from Maint.JobLastBkpLocations Where dbName = @DbName)
 
@@ -9381,6 +9447,10 @@ Begin
       )
 
       -- Launch backup
+      Declare @j nvarchar(4000)
+      Select @j = (Select j=(select Db=@dbName, Filename=ISNULL(@filename, 'Oups destination is NULL'), JobNo=@JobNo For Json path))
+      Exec Dbo.LogEvent @MsgTemplate='JobNo:#JobNo# Start backup of #db#  to #filename#', @jsonprms=@j
+
       Set @ContextData = 'yMaint.backups for '+@dbname+ ' to '+ISNULL(@filename, 'Oups destination is NULL')
       Exec yExecNLog.LogAndOrExec 
          @context = @ContextData
@@ -9389,10 +9459,8 @@ Begin
 
       -- In the context of Mirror server, restore the backup to the mirror server 
       If    @DoBackup IN ('F', 'L', 'D') 
-        And ISNULL(@MirrorServer, '') <> ''
-        And @DbName Not in ('master', 'model', 'msdb', 'tempdb', 'YourSQLDba')
+        And ISNULL(@DbMirrorServer, '') <> ''
       Begin
-        Declare @Jobname Sysname
         Exec yMirroring.QueueRestoreToMirror
              @context = @ctx
            , @DbName = @DbName
@@ -9405,14 +9473,6 @@ Begin
       
       If (@DoFullBkp = 1 or @DoDiffBkp = 1) And DATABASEPROPERTYEX(@DbName, 'Recovery') <> 'Simple'
       Begin
-         Exec yExecNLog.LogAndOrExec 
-            @context = 'yMaint.backups'
-          , @sql = @sql
-          , @Info = 'Supplementary log backup to help log shrinking'
-          , @errorN = @errorN output
-
-
-        -- tracing of an error 
         --Declare @trc nvarchar(max) = (select db=@DbName, typ='L', LogBackupPath=@LogBackupPath, pLanguage=@Language, LogBkExt=@LogBkExt, TimeStampNamingForBackups=@TimeStampNamingForBackups for json path, INCLUDE_NULL_VALUES)
         --Exec yExecNLog.LogAndOrExec @context = 'Trace', @info=@trc, @err = '999'
 
@@ -9443,12 +9503,15 @@ Begin
         , @errorN = @errorN_BkpPartielInit output
 
         -- Restore the backup to the mirror server if enabled
-        Exec yMirroring.QueueRestoreToMirror
-             @context = 'yMaint.backups (queue restore of log backup init)'
-           , @DbName = @DbName
-           , @bkpTyp = N'L'
-           , @fileName = @fileName
-                              
+        If    ISNULL(@DbMirrorServer, '') <> ''
+        Begin
+          Exec yMirroring.QueueRestoreToMirror
+               @context = 'yMaint.backups (queue restore of log backup init)'
+             , @DbName = @DbName
+             , @bkpTyp = N'L'
+             , @fileName = @fileName
+        End
+
         If @errorN_BkpPartielInit = 0 -- version 
         Begin
           Update Maint.JobLastBkpLocations   
@@ -9477,7 +9540,7 @@ Begin
             And @DoDiffBkp <> 1
 
           If @FailedBkpCnt >= @ConsecutiveDaysOfFailedBackupsToPutDbOffline  -- if to many error put in offline mode
-            Exec yMaint.PutDbOffline @DbName, @JobNo
+            Exec yMaint.PutDbOffline @DbName
         End  
         Else  
           Update Maint.JobLastBkpLocations   
@@ -10223,7 +10286,7 @@ Begin
   If right(@LogBackupPath,1)<> '\' Set @LogBackupPath = @LogBackupPath + '\'
 
   -- Record all databases online, and if they are in full recovery mode or not (log backup allowed or not)
-  -- The function udf_YourSQLDba_ApplyFilterDb apply filter parameters on this list 
+  -- The function yUtl.YourSqlDba_ApplyDbFilter apply filter parameters on this list 
   Create table #Db
   (
     DbName sysname primary key clustered 
@@ -10233,19 +10296,10 @@ Begin
   , DbIsCaseInsensitive tinyInt
   )
   Insert into #Db
-  Select F.*, DbIsCaseInsensitive 
+  Select F.db, F.db_owner, f.FullRecoveryMode, f.compatibility_level ,f.DbIsCaseInsensitive 
   from 
-    yUtl.YourSQLDba_ApplyFilterDb (@IncDb, @ExcDb) as F
-    JOIN Sys.databases as D
-    ON D.Name collate database_default = F.DbName 
-    CROSS APPLY (Select DbIsCaseInsensitive =cast(COLLATIONPROPERTY(D.collation_name,'ComparisonStyle') as int) & 1) as DbIsCaseInsensitive 
-  Where DatabasepropertyEx(DbName, 'Status') = 'Online' -- Avoid db that can't be processed
+    yUtl.YourSqlDba_ApplyDbFilter (@IncDb, @ExcDb, 1) as F  -- 1 = online
   
-  -- remove snapshot database from the list
-  Delete Db
-  From #Db Db
-  Where Exists(Select * From sys.databases d Where d.name = db.DbName and source_database_Id is not null)
-
   -- if any database is defined as Case sensitive issue an error message asking to exclude it from 
   -- yoursqldba process.
   -- create database TestiscaseSensitive collate french_cs_as
@@ -16760,6 +16814,10 @@ Create Or Alter Procedure Mirroring.DoRecovery
 , @ExcDb nVARCHAR(max) = '' 
 As
 Begin
+ -- --------------------------------------------------------------------------
+ -- this procedure only remove the restoring state at the remote server 
+ -- used for yourSqlDba mirroring
+ -- --------------------------------------------------------------------------
  Declare @sql nvarchar(max)
  Declare @dbname sysname
  Declare @err nvarchar(max) 
@@ -16767,29 +16825,21 @@ Begin
  
  Set NOCOUNT ON
  
-  -- The function udf_YourSQLDba_ApplyFilterDb apply filter parameters on this list 
+  -- Apply only name filters here because databases to recover are in RESTORING state
+  -- Databases in this state in mirroring context are databases that goes through the mirror.
+  -- Some system database, YourSqlDba, and SQL Server databases for specific SQL Server functionnalities 
+  -- are not taken into account.
   Create table #Db
   (
     DbName sysname primary key clustered 
   , ErrorMsg nvarchar(max) default 'This is the database state before before putting it ''ONLINE''.'
   )
   Insert into #Db (DbName)
-  Select X.DbName
-  from 
-    yUtl.YourSQLDba_ApplyFilterDb (@IncDb, @ExcDb) X
-    Left Join
-    master.sys.databases D
-    On X.DbName = D.name Collate Latin1_general_ci_ai
-  
-  -- Exclude non-RESTORING databases
-  Delete Db
-  From #Db Db
-  Where Exists(
-                Select * 
-                From sys.databases d 
-                Where d.name = db.DbName 
-                  and DatabasepropertyEx(d.name, 'Status') <> 'RESTORING'
-              )
+  Select X.Db
+  From 
+    yUtl.YourSqlDba_ApplyDbFilter (@IncDb, @ExcDb, 0) as x
+  Where X.state_desc = 'RESTORING'
+    And X.mirrorAllowed = 1
 
   -- For each database to process
   Set @dbname = ''
@@ -17229,7 +17279,8 @@ Begin
 
   Set NOCOUNT ON
 
-   -- The function udf_YourSQLDba_ApplyFilterDb apply filter parameters on this list 
+   -- Name filters are applied independently from maintenance filtering here.
+   -- Mirroring selection comes from mirrorAllowed = 1, on online databases only
   Create table #Db
   (
     DbName sysname primary key clustered 
@@ -17251,8 +17302,8 @@ Begin
   , ReplaceSrcBkpPathToMatchingMirrorPath, ReplacePathsInDbFilenames,EncryptionAlgorithm,EncryptionCertificate
   , MigrationTestMode)
   Select 
-    X.DbName
-  , X.DbOwner
+    X.Db
+  , X.Db_Owner
   , X.FullRecoveryMode 
   , L.lastLogBkpFile
   , L.lastFullBkpFile
@@ -17264,22 +17315,13 @@ Begin
   , L.EncryptionCertificate
   , L.MigrationTestMode
   from 
-    yUtl.YourSQLDba_ApplyFilterDb (@IncDb, @ExcDb) X
+    -- select databases for failOver from supplied @incDb, @ExcDb
+    -- this allows a more selective failover than databases selected by maintenance for YourSqlDba mirroring
+    (Select * From yUtl.YourSqlDba_ApplyDbFilter  (@IncDb, @ExcDb, 1) Where mirrorAllowed = 1) as X
     join
     Maint.JobLastBkpLocations L
-    On L.dbName = X.DbName
-    --And X.DbName Not IN ('master', 'model', 'msdb') -- to avoid messages about them
+    On L.dbName = X.Db COLLATE DATABASE_DEFAULT
   
-  -- Remove Snapshot databases
-  Delete Db
-  From #Db Db
-  Where Exists(Select * 
-               From sys.databases d 
-               Where d.name = db.DbName 
-                 and source_database_Id is not null
-              )
-
-
   If @Simulation = 0
   Begin
     -- Synchroniser Logins on all «MirrorServer»  

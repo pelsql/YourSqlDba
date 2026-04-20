@@ -31,11 +31,21 @@ There is also, on the landing page, a **`QuickLinks`** table referencing frequen
 ### Version history
 
 Maint.ShrinkAllLogs
+**Version 7.1.0.8**
+
+[View script 7.1.0.8 on GitHub](YourSQLDba_InstallOrUpdateScript.sql)
+ 
+**[Get script 7.1.0.8](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)** 
+
+Some bugs fixed for non-users of mirroring
+
+
+Maint.ShrinkAllLogs
 **Version 7.1.0.7**
 
-[View script 7.1.0.7 on GitHub](YourSQLDba_InstallOrUpdateScript.sql)
+[View script 7.1.0.7 on GitHub](https://raw.githubusercontent.com/pelsql/YourSqlDba/534387a4b91e9866137cff7daa5fed7ff0c1f61c/YourSQLDba_InstallOrUpdateScript.sql)
  
-**[Get script 7.1.0.7](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)** 
+**[Get script 7.1.0.7](https://raw.githubusercontent.com/pelsql/YourSqlDba/534387a4b91e9866137cff7daa5fed7ff0c1f61c/YourSQLDba_InstallOrUpdateScript.sql)** 
 
 Some procedures are removed.  Maint.ShrinkAllLogs. 
 Internally YourSqlDba do not attempt to shrink the log anymore at log backup.
