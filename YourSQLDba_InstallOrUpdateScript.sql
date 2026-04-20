@@ -19,7 +19,7 @@
 Drop Table if Exists #version
 create table #Version (version nvarchar(40), VersionDate datetime)
 set nocount on
-insert into #Version Values ('7.1.0.7', convert(datetime, '2026-01-01', 120))  
+insert into #Version Values ('7.1.0.8', convert(datetime, '2026-01-01', 120))  
 
 --Alter database yoursqldba set single_user with rollback immediate
 --go
@@ -494,69 +494,6 @@ Exec('CREATE SCHEMA yUpgrade AUTHORIZATION dbo')
 Exec('Create schema Tools authorization dbo;')
 Exec('Create schema yUtl authorization dbo;')
 Exec('Create schema S# authorization dbo;') -- for copying new code from S# library
-GO
-Create or Alter View Maint.DbInfoForYourSqlDba 
-as
-Select Opt.*, Dbs.*
-From 
-  -- @@MARK: View which is a fix list of database to exclude in YourSqlDba processing with flag
-  -- bitwise set
-  ( -- Get Useful info from DB
-  Select 
-     Db=name, state_Desc, is_read_only, compatibility_level
-   , is_in_standby, recovery_model_desc
-   , FullRecoveryMode=IIF(recovery_model_desc='SIMPLE', 0, 1)
-   , db_owner=SUSER_SNAME(owner_sid)
-   , source_database_id
-   , DbIsCaseInsensitive =cast(COLLATIONPROPERTY(collation_name,'ComparisonStyle') as int) & 1
-   From Sys.Databases
-   Where source_database_id IS NULL -- YourSqlDba do not handle snapshot databases
-  ) as Dbs
-  -- Stop return of Db in its track if not online
-
-  CROSS APPLY (Select NoBackup$=1) as NoBackup$ -- first bit 
-  CROSS APPLY (Select NoOffline$=NoBackup$*2) as NoOffline$ -- next bit 
-  CROSS APPLY (Select NoMirror$=NoOffline$*2) as NoMirror$ -- next bit 
-  -- note that among system databases TempDb is allways excluded from maintenance  
-  -- all of them can be backuped except tempdb
-  -- non of them can be put offline as they are system databases of SQL Server application specific
-  OUTER Apply
-  (
-  Select fDb, fIsSystem, fOfflineAllowed, fMirrorAllowed, fMaintenanceAllowed
-  From 
-    (
-    -- After the outer apply NULL Values are translated by the default for unspecified databasesé
-              Select fDB='Master'             , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL
-    Union All Select fDB='Model'              , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL
-    Union All Select fDB='Msdb'               , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL
-    Union All Select fDB='TempDb'             , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=0
-    Union All Select fDB='DWConfiguration'    , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL 
-    Union All Select fDB='DWDiagnostics'      , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL 
-    Union All Select fDB='DWQueue'            , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL 
-    Union All Select fDB='ReportServerTempDb' , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL
-    -- the fact that fIsSystem=0 for ReportServer make it accessible for the check for the recovery model at full
-    Union All Select fDB='ReportServer'       , fIsSystem=0, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL
-    Union All Select fDB='YourSqlDba'         , fIsSystem=0, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL
-    ) as preOpt
-  Where preOpt.fDb = Dbs.Db
-  ) as preOpt
-  CROSS APPLY
-  (
-  Select *
-  From 
-    (Select isSystem=ISNULL(fIsSystem, 0)) isSystem
-    CROSS APPLY (Select offlineAllowed=ISNULL(preOpt.fOfflineAllowed, 1)) as offlineAllowed
-    CROSS APPLY (Select mirrorAllowed=ISNULL(preOpt.fMirrorAllowed, 1)) as mirrorAllowed
-    CROSS APPLY (Select MaintenanceAllowed=ISNULL(preOpt.fMaintenanceAllowed, 1)) as MaintenanceAllowed
-  ) as Opt
-
-Go
-Create or Alter View Maint.DbOnlineInfoForYourSqlDba
-as
-Select *
-From 
-  Maint.DbInfoForYourSqlDba
-Where State_desc = 'ONLINE' 
 GO
 -- @@MARK: MaintenanceEnums - A way to get enums (or constants) in queries
 Create or Alter View Maint.MaintenanceEnums AS
@@ -4978,6 +4915,67 @@ Begin
 
   Return;
 End -- yUtl.SplitParamInRows
+GO
+Create or Alter View Maint.DbInfoForYourSqlDba 
+as
+Select Opt.*, Dbs.*
+From 
+  -- @@MARK: View which is a fix list of database to exclude in YourSqlDba processing with flag
+  -- bitwise set
+  ( -- Get Useful info from DB
+  Select 
+     Db=name, state_Desc, is_read_only, compatibility_level
+   , is_in_standby, recovery_model_desc
+   , FullRecoveryMode=IIF(recovery_model_desc='SIMPLE', 0, 1)
+   , db_owner=SUSER_SNAME(owner_sid)
+   , DbIsCaseInsensitive =cast(COLLATIONPROPERTY(collation_name,'ComparisonStyle') as int) & 1
+   From Sys.Databases
+   Where source_database_id IS NULL -- YourSqlDba do not handle snapshot databases
+  ) as Dbs
+  -- Stop return of Db in its track if not online
+
+  CROSS APPLY (Select NoBackup$=1) as NoBackup$ -- first bit 
+  CROSS APPLY (Select NoOffline$=NoBackup$*2) as NoOffline$ -- next bit 
+  CROSS APPLY (Select NoMirror$=NoOffline$*2) as NoMirror$ -- next bit 
+  -- note that among system databases TempDb is allways excluded from maintenance  
+  -- all of them can be backuped except tempdb
+  -- non of them can be put offline as they are system databases of SQL Server application specific
+  OUTER Apply
+  (
+  Select fDb, fIsSystem, fOfflineAllowed, fMirrorAllowed, fMaintenanceAllowed
+  From 
+    (
+    -- After the outer apply NULL Values are translated by the default for unspecified databasesé
+              Select fDB='Master'             , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL
+    Union All Select fDB='Model'              , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL
+    Union All Select fDB='Msdb'               , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL
+    Union All Select fDB='TempDb'             , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=0
+    Union All Select fDB='DWConfiguration'    , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL 
+    Union All Select fDB='DWDiagnostics'      , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL 
+    Union All Select fDB='DWQueue'            , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL 
+    Union All Select fDB='ReportServerTempDb' , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL
+    -- the fact that fIsSystem=0 for ReportServer make it accessible for the check for the recovery model at full
+    Union All Select fDB='ReportServer'       , fIsSystem=0, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL
+    Union All Select fDB='YourSqlDba'         , fIsSystem=0, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL
+    ) as preOpt
+  Where preOpt.fDb = Dbs.Db
+  ) as preOpt
+  CROSS APPLY
+  (
+  Select *
+  From 
+    (Select isSystem=ISNULL(fIsSystem, 0)) isSystem
+    CROSS APPLY (Select offlineAllowed=ISNULL(preOpt.fOfflineAllowed, 1)) as offlineAllowed
+    CROSS APPLY (Select mirrorAllowed=ISNULL(preOpt.fMirrorAllowed, 1)) as mirrorAllowed
+    CROSS APPLY (Select MaintenanceAllowed=ISNULL(preOpt.fMaintenanceAllowed, 1)) as MaintenanceAllowed
+  ) as Opt
+Go
+Create or Alter View Maint.DbOnlineInfoForYourSqlDba
+as
+Select *
+From 
+  Maint.DbInfoForYourSqlDba
+Where State_desc = 'ONLINE' 
 GO
 Create Or Alter Function yUtl.YourSqlDba_ApplyDbFilter 
 (
