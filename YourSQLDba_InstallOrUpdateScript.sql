@@ -19,7 +19,7 @@
 Drop Table if Exists #version
 create table #Version (version nvarchar(40), VersionDate datetime)
 set nocount on
-insert into #Version Values ('7.1.0.8', convert(datetime, '2026-01-01', 120))  
+insert into #Version Values ('7.1.0.9', convert(datetime, '2026-01-01', 120))  
 
 --Alter database yoursqldba set single_user with rollback immediate
 --go
@@ -404,7 +404,7 @@ LOG ON
  FILEGROWTH = 5MB 
 )
 COLLATE LATIN1_GENERAL_CI_AI
-ALTER Database YourSQLDba Set RECOVERY SIMPLE
+ALTER Database YourSQLDba Set RECOVERY FULL
 '
 Set @sql = Replace (@sql, '"', '''')
 Set @sql = Replace (@sql, '<pathData>', @pathData)
@@ -10507,7 +10507,6 @@ Create Or Alter Proc Maint.SaveDbOnNewFileSet
 , @DoBackup nvarchar(1) = 'F'
 , @EncryptionAlgorithm nvarchar(10) = ''
 , @EncryptionCertificate nvarchar(100) = ''
-WITH execute as Self
 as 
 Begin
   Declare @nomTache nvarchar(512) 
@@ -10637,7 +10636,6 @@ Create Or Alter Proc Maint.SaveDbCopyOnly
   @DbName nvarchar(512)
 , @PathAndFilename nvarchar(512) -- complete file name and path must be specified
 , @errorN int = 0 output
-With Execute as Self
 As 
 Begin
   Declare @sql nvarchar(max)
@@ -10647,8 +10645,6 @@ Begin
 
   -- Exécuter backup with initial login
   
-  EXECUTE AS LOGIN = ORIGINAL_LOGIN();
-
   Print '----------------------------------------------------------'
   Print 'Saving Of ' + @DbName + ' to  ' + @PathAndFilename
   Print '----------------------------------------------------------'
@@ -10668,9 +10664,6 @@ Begin
   Exec (@sql)
   Set @errorN = @@error
 
-  -- Revenir à l'impersonification de la Stored Procedure
-  REVERT
-
 End -- Maint.SaveDbCopyOnly
 GO
 -- @@MARK: Maintenance : Tool for Admin - Duplicate Db
@@ -10679,7 +10672,6 @@ Create Or Alter Proc Maint.duplicateDb
 , @TargetDb nvarchar(512)
 , @PathAndFilename nvarchar(512) = NULL -- complete name including path otherwise use last backup location + @TargetDb + '.bak'
 , @KeepBackupFile bit = 0 -- by default destroy intermediate backup file, otherwise specify 1 to keep it
-With Execute as Self
 as 
 Begin
   Declare @sql nvarchar(max)
@@ -10800,7 +10792,10 @@ Begin
   Set @AlterLogicalFiles = yExecNLog.Unindent_TSQL(@AlterLogicalFiles)  
 
   -- Execute restore with original login permission
-  EXECUTE AS LOGIN = ORIGINAL_LOGIN();
+  IF IS_SRVROLEMEMBER('sysadmin') = 0
+  BEGIN
+    EXECUTE AS LOGIN = ORIGINAL_LOGIN();
+  END
   Print @sql
   Exec (@sql)
 
@@ -10812,7 +10807,10 @@ Begin
     Exec (@AlterLogicalFiles)
   End
   
-  REVERT
+  IF IS_SRVROLEMEMBER('sysadmin') = 0
+  BEGIN
+    REVERT
+  END
 
   If @KeepBackupFile = 0
   Begin
@@ -10834,7 +10832,6 @@ Create Or Alter Proc Maint.duplicateDbFromBackupHistory
 , @TargetDb nvarchar(512)
 , @DoLogBackup int = 1
 , @RestoreToSimpleRecoveryModel int = 1
-With Execute as Self
 as 
 Begin
   Declare @sql nvarchar(max)
@@ -11047,9 +11044,6 @@ Begin
   Set @AlterLogicalFiles = replace (@AlterLogicalFiles, '"', '''')
   Set @AlterLogicalFiles = yExecNLog.Unindent_TSQL(@AlterLogicalFiles)
     
-  -- Execute restore with original login permission
-  EXECUTE AS LOGIN = ORIGINAL_LOGIN();
-
   Begin Try  
     --Print @sql    
     Exec (@sql)
@@ -11067,8 +11061,6 @@ Begin
     return 
   
   End Catch
-
-  REVERT
 
   Print ''
   
@@ -11281,8 +11273,6 @@ Begin
   Set @AlterLogicalFiles = replace (@AlterLogicalFiles, '"', '''')
   Set @AlterLogicalFiles = yExecNLog.Unindent_TSQL(@AlterLogicalFiles)
   
-  -- Execute a Restore with original login's permissions
-  EXECUTE AS LOGIN = ORIGINAL_LOGIN();
   Print @sql
   Exec (@sql)
 
@@ -11293,8 +11283,6 @@ Begin
     Print @AlterLogicalFiles
     Exec (@AlterLogicalFiles)
   End
-
-  REVERT
 
 End -- Maint.RestoreDb
 GO
@@ -14333,13 +14321,13 @@ go
 -- test
  --Use tempdb
  --RESTORE DATABASE [YourSQLDba_Export] 
- --FROM  DISK = N'\\MAURICESQL\Sql2k19Backups\YourSQLDbaExp.bak' WITH  FILE = 1
+ --FROM  DISK = N'\\LocalHost\Sql2k19Backups\YourSQLDbaExp.bak' WITH  FILE = 1
  --, MOVE N'YourSQLDba' TO N'C:\Program Files\Microsoft SQL Server\SQL2K19\Data\YourSqlDba_Export.Mdf'
  --, MOVE N'YourSQLDba_Log' TO N'C:\Program Files\Microsoft SQL Server\SQL2K19\Logs\YourSqlDba_Export_log.ldf'
  --,  NOUNLOAD,  STATS = 5
    
  --RESTORE DATABASE [YourSQLDba_Export2] 
- --FROM  DISK = N'\\MAURICESQL\Sql2k19Backups\YourSQLDbaExp.bak' WITH  FILE = 1
+ --FROM  DISK = N'\\LocalHost\Sql2k19Backups\YourSQLDbaExp.bak' WITH  FILE = 1
  --, MOVE N'YourSQLDba' TO N'C:\Program Files\Microsoft SQL Server\SQL2K19\Data\YourSqlDba_Export2.Mdf'
  --, MOVE N'YourSQLDba_Log' TO N'C:\Program Files\Microsoft SQL Server\SQL2K19\Logs\YourSqlDba_Export2_log.ldf'
  --,  NOUNLOAD,  STATS = 5

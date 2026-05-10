@@ -30,12 +30,23 @@ There is also, on the landing page, a **`QuickLinks`** table referencing frequen
 
 ### Version history
 
-Maint.ShrinkAllLogs
-**Version 7.1.0.8**
+**Version 7.1.0.9**
+1. YourSqlDba is now set in Full recovery model on creation.
 
-[View script 7.1.0.8 on GitHub](YourSQLDba_InstallOrUpdateScript.sql)
- 
-**[Get script 7.1.0.8](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)** 
+2. Some obsolete security constraints have been removed. They were originally added because mirroring performed restores from a SQL Broker queue through an auto-activated stored procedure.
+
+   Those constraints could cause problems when running `Maint.SaveDbCopyOnly`, `Maint.DuplicateDb`, or `Maint.SaveDbOnNewFileSet` on a standalone Windows Pro machine using a Microsoft account.
+
+[View script 7.1.0.9 on GitHub](YourSQLDba_InstallOrUpdateScript.sql)
+
+
+**[Get script 7.1.0.9](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)** 
+
+
+**Version 7.1.0.8**
+Maint.ShrinkAllLogs is removed from this version
+
+**[Get script 7.1.0.8](https://raw.githubusercontent.com/pelsql/YourSqlDba/e3cd2dfae63f8ffdf8da395cd055c1e069be3013/YourSQLDba_InstallOrUpdateScript.sql)** 
 
 Some bugs fixed for non-users of mirroring
 
@@ -43,8 +54,6 @@ Some bugs fixed for non-users of mirroring
 Maint.ShrinkAllLogs
 **Version 7.1.0.7**
 
-[View script 7.1.0.7 on GitHub](https://raw.githubusercontent.com/pelsql/YourSqlDba/534387a4b91e9866137cff7daa5fed7ff0c1f61c/YourSQLDba_InstallOrUpdateScript.sql)
- 
 **[Get script 7.1.0.7](https://raw.githubusercontent.com/pelsql/YourSqlDba/534387a4b91e9866137cff7daa5fed7ff0c1f61c/YourSQLDba_InstallOrUpdateScript.sql)** 
 
 Some procedures are removed.  Maint.ShrinkAllLogs. 
@@ -54,16 +63,12 @@ Some fixes for a better sync better backups/restores in mirroring.  Job for rest
 
 **Version 7.1.0.6**
 
-[View script 7.1.0.6 on GitHub](https://raw.githubusercontent.com/pelsql/YourSqlDba/340301644d2dceba1014531fb57396a9f3c61f4f/YourSQLDba_InstallOrUpdateScript.sql)
- 
 **[Get script 7.1.0.6](https://raw.githubusercontent.com/pelsql/YourSqlDba/340301644d2dceba1014531fb57396a9f3c61f4f/YourSQLDba_InstallOrUpdateScript.sql)** 
 
 Fix for backup names too large for the name parameter of the backup command
 
 **Version 7.1.0.5**
 
-[View script 7.1.0.5 on GitHub](https://raw.githubusercontent.com/pelsql/YourSqlDba/45ae7f77d79e84581009f5a64b459a7ea77b3ab5/YourSQLDba_InstallOrUpdateScript.sql)
- 
 **[Get script 7.1.0.5](https://raw.githubusercontent.com/pelsql/YourSqlDba/45ae7f77d79e84581009f5a64b459a7ea77b3ab5/YourSQLDba_InstallOrUpdateScript.sql)** 
 
 The yyyy-mm-dd date format used in the CREATE CREDENTIAL instruction was not universally supported.
