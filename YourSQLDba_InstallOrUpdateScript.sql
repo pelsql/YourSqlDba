@@ -19,7 +19,7 @@
 Drop Table if Exists #version
 create table #Version (version nvarchar(40), VersionDate datetime)
 set nocount on
-insert into #Version Values ('7.1.0.9', convert(datetime, '2026-01-01', 120))  
+insert into #Version Values ('7.1.0.10', convert(datetime, '2026-01-01', 120))  
 
 --Alter database yoursqldba set single_user with rollback immediate
 --go
@@ -530,7 +530,7 @@ End
 Constants
 ===KeyWords===*/
 GO
-Create Or Alter View S#.Enums -- alter extra is allowed from SQL2016
+Create Or Alter View S#.Enums -- alter extra is allowed from SQL2017
 as
 Select 
 -- useful, general use constants to generate query or display them
@@ -5913,25 +5913,13 @@ Begin
 	  DifferentialBaseLSN numeric(25,0),
 	  DifferentialBaseGUID uniqueidentifier,
 	  BackupTypeDescription nvarchar(60),
-	  BackupSetGUID uniqueidentifier
+	  BackupSetGUID uniqueidentifier,
+   CompressedBackupSize BigInt,
+   containment tinyint,
+   KeyAlgorithm nvarchar(32),
+   EncryptorThumbprint varbinary(20),
+   EncryptorType nvarchar(32)
   )
-
-  -- adjust table column depending on version
-  -- sql2008 need CompressedBackupSize column
-  If yInstall.SqlVersionNumber () >= 100  -- sql 2008 and above
-    Alter table #Header Add CompressedBackupSize BigInt
- 
-  -- sql2012 need containement column
-  If yInstall.SqlVersionNumber () >= 110  -- sql 2012 and above
-    Alter table #Header Add containment tinyint
-
-  -- sql2014 need theses 
-  If yInstall.SqlVersionNumber () >= 120  -- sql 2014 and above
-  Begin
-    Alter table #Header Add KeyAlgorithm nvarchar(32)
-    Alter table #Header Add EncryptorThumbprint varbinary(20)
-    Alter table #Header Add EncryptorType nvarchar(32)
-  End
 
   -- sql2022 need theses
   If yInstall.SqlVersionNumber () >= 160 -- sql 2022 and above
@@ -6000,15 +5988,10 @@ Begin
   ,DifferentialBaseGUID uniqueidentifier -- For differential backups, the unique identifier of the differential base. 
   ,IsReadOnly bit -- 1 = The file is read-only.
   ,IsPresent bit -- 1 = The file is present in the backup.
+  ,TDEThumbprint varbinary(32)
+  ,SnapshotURL Nvarchar(360)
   )
 
-  -- sql2008 need TDEThumbprint column
-  If yInstall.SqlVersionNumber () >= 100  -- sql 2008 and above
-    Alter table #Files Add TDEThumbprint varbinary(32)
-    
-  If yInstall.SqlVersionNumber () >= 130 -- Sql2016 and above
-    Alter Table #Files Add SnapshotURL Nvarchar(36)
- 
   Set @sql = 'Restore filelistonly from Disk="<nf>"'
   Set @sql = replace(@sql, '<nf>', @bkpFile )
   Set @Sql = 
@@ -9033,6 +9016,36 @@ INTO Mirroring.ActiveRestoreChannelForMirror
 From 
   Dbo.MainContextInfo(null) as Ctx
 GO
+Create or Alter Proc yUtl.CheckShareOfDriveAvail @Destination Nvarchar(4000)
+As
+Begin
+  -- While the SQLAgent job restart, it may happen that SMB didn't yet mounted valid shares
+  -- This piece of code is to solve the problem of unavailability of share, for this reason.
+  -- If give some time to the SMB share to mount. 
+
+  -- For a unavailable network share, if this procedure is ran under the contect of a begin try catch, if 
+  -- with raise the error directly from sys.dm_os_file_exists and bypass all the wait. 
+  -- The error will bubble up in a more crude way, but will mention explicitely there is a problem with the share
+
+  -- In the case of a unmounted drive, the mecanism below will apply completely as it is. sys.dm_os_file_exists
+  -- won't complain, and after 5 seconds I will raise the error.
+  Declare @waitStart datetime = Getdate() -- to test time elapsed since start
+  While (1=1)
+  Begin
+    If Exists (select * from sys.dm_os_file_exists(@Destination) Where file_is_a_directory = 1)
+      Break -- The drive/path exists ot the share exists and SMB finally made the share available in a timely manner (when server restarts)
+    Else
+    Begin
+      If Datediff (ss, @WaitStart, Getdate()) > 5 -- 5 sec elapsed?
+      Begin
+        Raiserror ('Backup Share %s is inexistent or not available yet at time of the backup', 16, 1, @Destination);
+        Break
+      End
+      Waitfor Delay '00:00:01'
+    End
+  End -- while
+End -- yUtl.CheckShareOfDriveAvail
+GO
 -- ------------------------------------------------------------------------------
 -- Proc for doing backup.  MUST BE CALLED from YourSqlDba_DoMaint because
 -- many parameters are passed through a context
@@ -9119,6 +9132,16 @@ Begin
   , @EncryptionAlgorithm = EncryptionAlgorithm
   , @EncryptionCertificate = EncryptionCertificate
   From dbo.MainContextInfo (NULL) -- for now, do this with vars, but this function is enough to get param vals
+
+  Begin Try
+
+    Exec yUtl.CheckShareOfDriveAvail @FullBackupPath
+    Exec yUtl.CheckShareOfDriveAvail @LogBackupPath
+
+  End Try
+  Begin Catch
+    Throw;
+  End Catch
 
   If ISNULL(@EncryptionAlgorithm, '') <> '' AND ISNULL(@EncryptionCertificate, '') <> ''
   Begin

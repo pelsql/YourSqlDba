@@ -30,6 +30,16 @@ There is also, on the landing page, a **`QuickLinks`** table referencing frequen
 
 ### Version history
 
+**Version 7.1.0.10**
+Fixes a rare issue for YourSqlDba testers on Windows Pro using SMB shares for backups.
+When a skipped SQL Agent job restarts with the server, it starts before SMB are available. This version add a delay to check backup destinations availability. If the destination is unavailable for any other reasons, this will stop the job anyway.
+
+[View script 7.1.0.10 on GitHub](YourSQLDba_InstallOrUpdateScript.sql)
+
+
+**[Get script 7.1.0.10](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)** 
+
+
 **Version 7.1.0.9**
 1. YourSqlDba is now set in Full recovery model on creation.
 
@@ -37,10 +47,7 @@ There is also, on the landing page, a **`QuickLinks`** table referencing frequen
 
    Those constraints could cause problems when running `Maint.SaveDbCopyOnly`, `Maint.DuplicateDb`, or `Maint.SaveDbOnNewFileSet` on a standalone Windows Pro machine using a Microsoft account.
 
-[View script 7.1.0.9 on GitHub](YourSQLDba_InstallOrUpdateScript.sql)
-
-
-**[Get script 7.1.0.9](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)** 
+**[Get script 7.1.0.9](https://raw.githubusercontent.com/pelsql/YourSqlDba/2bb789c4bbb5076f15e7c4b98d355ea5574ce5c8/YourSQLDba_InstallOrUpdateScript.sql)** 
 
 
 **Version 7.1.0.8**
