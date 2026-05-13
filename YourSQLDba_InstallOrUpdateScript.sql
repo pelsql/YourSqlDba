@@ -19,7 +19,7 @@
 Drop Table if Exists #version
 create table #Version (version nvarchar(40), VersionDate datetime)
 set nocount on
-insert into #Version Values ('7.1.0.10', convert(datetime, '2026-01-01', 120))  
+insert into #Version Values ('7.1.0.11', convert(datetime, '2026-01-01', 120))  
 
 --Alter database yoursqldba set single_user with rollback immediate
 --go
@@ -4945,7 +4945,7 @@ From
   Select fDb, fIsSystem, fOfflineAllowed, fMirrorAllowed, fMaintenanceAllowed
   From 
     (
-    -- After the outer apply NULL Values are translated by the default for unspecified databasesé
+    -- After the outer apply NULL Values are translated by the default for unspecified databases
               Select fDB='Master'             , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL
     Union All Select fDB='Model'              , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL
     Union All Select fDB='Msdb'               , fIsSystem=1, fOfflineAllowed=0, fMirrorAllowed=0, fMaintenanceAllowed=NULL
@@ -4994,7 +4994,7 @@ Return
   -- Build Db list into temporary table and retain its recovery mode (for possible log backup processing)
   Select 
     I.*
-  From Maint.DbInfoForYourSqlDba as I
+  From Maint.DbInfoForYourSqlDba as I   -- exclude states cases for which the database can't be taken in backup
   Where 
         (I.state_desc = 'ONLINE' Or ISNULL(@OnlineOnly,0) = 0)
     And I.MaintenanceAllowed=1
@@ -9106,7 +9106,8 @@ Begin
   Set @ReplacePathsInDbFilenames = ISNULL(@ReplacePathsInDbFilenames , '')
 
   Declare @DbTable table (dbname sysname, FullRecoveryMode int)
-  Insert into @Dbtable select dbname, FullRecoveryMode from #Db
+  Insert into @Dbtable
+  select dbname, FullRecoveryMode from #Db
 
   Select 
     @JobNo = JobNo
@@ -9289,7 +9290,7 @@ Begin
           Break -- exit, no more db to process
       End
 
-      If @DbName = 'MSDB' -- Skip over, because it is always backuped up at the end 
+      If @DbName IN ('YOURSQLDBA','MSDB') -- Skip over, because it is always backuped up at the end
         Continue
 
       Set @msg = 'Checking if '+@dbname + ' must be processed...'
@@ -9573,6 +9574,40 @@ Begin
       End
 
     End -- Loop While (1 = 1) process each database selected
+
+    -- YourSqlDba backup always occurs with the maintenance backup type
+    -- to keep its history and configuration protected.
+    -- Here alter backup type to full if a full is needed first
+    Declare @YourSqlDbaBackupType char(1) = @DoBackup
+    If @DoBackup IN ('D', 'L')
+       And Not Exists
+           (
+           Select *
+           From msdb.dbo.backupset as B
+                JOIN sys.databases as D
+                ON D.name = B.database_name COLLATE Database_Default
+           Where B.database_name = 'YourSqlDba'
+             And B.type = 'D'
+             And B.backup_finish_date >= D.create_date
+           )
+      Set @YourSqlDbaBackupType = 'F'
+
+    Set @fileName = yMaint.MakeBackupFileName
+                   (
+                     'YourSqlDba'
+                   , @YourSqlDbaBackupType
+                   , IIF(@YourSqlDbaBackupType = 'L', @LogBackupPath, @FullBackupPath)
+                   , @Language
+                   , IIF(@YourSqlDbaBackupType = 'L', @LogBkExt, @FullBkExt)
+                   , @TimeStampNamingForBackups
+                   )
+    Set @sql = yMaint.MakeBackupCmd ('YourSqlDba', @YourSqlDbaBackupType, @fileName, IIF(@YourSqlDbaBackupType = 'F', 1, 0), '', @EncryptionAlgorithm, @EncryptionCertificate)
+
+    Exec yExecNLog.LogAndOrExec
+      @context = 'yMaint.backups'
+    , @sql = @sql
+    , @Info = 'YourSqlDba backup to save the most up-to-date maintenance history'
+    , @errorN = @errorN output
 
     -- a full backup of msdb always occurs even after log backup
     -- to get the most accurate up-to-date log history       

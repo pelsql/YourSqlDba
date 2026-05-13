@@ -30,14 +30,22 @@ There is also, on the landing page, a **`QuickLinks`** table referencing frequen
 
 ### Version history
 
+**Version 7.1.0.11**
+- `YourSqlDba` is now created in the `FULL` recovery model.
+- `YourSqlDba` is always backed up whenever any maintenance backup runs.
+- Its backup follows the current maintenance backup type: full, differential, or log.
+- If a differential or log backup is requested before a valid full backup of `YourSqlDba` exists, a full backup is taken automatically to initialize the backup chain.
+
+[View script 7.1.0.11 on GitHub](YourSQLDba_InstallOrUpdateScript.sql)
+
+
+**[Get script 7.1.0.11](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)** 
+
 **Version 7.1.0.10**
 Fixes a rare issue for YourSqlDba testers on Windows Pro using SMB shares for backups.
-When a skipped SQL Agent job restarts with the server, it starts before SMB are available. This version add a delay to check backup destinations availability. If the destination is unavailable for any other reasons, this will stop the job anyway.
+When a skipped SQL Agent job restarts with the server, it may start before SMB shares are available. This version adds a delay while checking backup destination availability. If the destination remains unavailable for any other reason, the job still stops.
 
-[View script 7.1.0.10 on GitHub](YourSQLDba_InstallOrUpdateScript.sql)
-
-
-**[Get script 7.1.0.10](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)** 
+**[Get script 7.1.0.10](https://raw.githubusercontent.com/pelsql/YourSqlDba/6cc3e280cd4a8ed81e84048d8fc24b0c6b4a9175/YourSQLDba_InstallOrUpdateScript.sql)** 
 
 
 **Version 7.1.0.9**
