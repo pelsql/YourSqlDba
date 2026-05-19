@@ -30,16 +30,24 @@ There is also, on the landing page, a **`QuickLinks`** table referencing frequen
 
 ### Version history
 
+**Version 7.1.0.12**
+Design simplification for transaction log backup files.
+The initial log backup produced immediately after a full or differential maintenance backup now keeps its own file name and is not reused by the regular log backup job.
+After that initial log backup, the next regular log backup job creates a new reusable log backup file and records it in `Maint.JobLastBkpLocations.lastLogBkpFile`.
+If `@BkpLogsOnSameFile = 0`, regular log backups continue to create a new file for each run.
+
+[View script 7.1.0.12 on GitHub](YourSQLDba_InstallOrUpdateScript.sql)
+
+
+**[Get script 7.1.0.12](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)**
+
 **Version 7.1.0.11**
 - `YourSqlDba` is now created in the `FULL` recovery model.
 - `YourSqlDba` is always backed up whenever any maintenance backup runs.
 - Its backup follows the current maintenance backup type: full, differential, or log.
 - If a differential or log backup is requested before a valid full backup of `YourSqlDba` exists, a full backup is taken automatically to initialize the backup chain.
 
-[View script 7.1.0.11 on GitHub](YourSQLDba_InstallOrUpdateScript.sql)
-
-
-**[Get script 7.1.0.11](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)** 
+**[Get script 7.1.0.11](https://raw.githubusercontent.com/pelsql/YourSqlDba/3dd6a23ba772320c3392693dc3ba587da43cd8e1/YourSQLDba_InstallOrUpdateScript.sql)**
 
 **Version 7.1.0.10**
 Fixes a rare issue for YourSqlDba testers on Windows Pro using SMB shares for backups.
