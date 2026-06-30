@@ -1,11 +1,10 @@
-﻿-- Copyright 2008 Maurice Pelchat  
--- Copyright 2008 Maurice Pelchat  
+﻿-- Copyright 2008 Maurice Pelchat
 -- YourSQLDba : Auto-maintenance tools for SQL Server Databases
 -- Author : Maurice Pelchat : Contact info https://www.linkedin.com/in/maurice-pelchat-9891495/
 --
 -- GitHub Website Readme : https://github.com/pelsql/YourSqlDba#readme
 -- Latest release of YourSqlDba : https://github.com/pelsql/YourSqlDba/blob/master/YourSQLDba_InstallOrUpdateScript.sql?raw=true
--- Online Documentation : https://1drv.ms/o/c/12c385255443c4ed/Eu3EQ1QlhcMggBKoGwAAAAABRvootARfhNKB2ZzsOSOrfA?e=usHzVk
+-- Online Documentation : https://pelsql.github.io/YourSqlDba/
 --   Pay attention to the documentation landing page, and the Goals/QuickLinks table of the online documentation for all the subjects below:
 --
 --       For a good overview it is goof to have a look to the complete introduction section
@@ -73,6 +72,29 @@ Begin
   Exec (@Sql)
 End
 Use tempdb
+Go
+Create or Alter Proc #KillDbUsers @db sysname, @showKills Int = 0
+-- temporary sp #KillDbUsers in YourSqlDba for YourSqlDba Install
+as
+Begin
+  Declare @sql nvarchar(max)=''
+  SELECT @sql=@Sql+aKill
+  FROM 
+    (
+    Select distinct aKill='Kill '+cast(request_session_id as nvarchar(6))+';'
+    From 
+      (select db=@db collate database_default, * From sys.dm_tran_locks) AS l
+      CROSS APPLY (Select DbNoBracketLeft = replace (db, '[', '')) as DbNoBracketLeft 
+      CROSS APPLY (Select DbNoBracket = replace (DbNoBracketLeft, ']', '')) as DbNoBracket 
+
+    WHERE l.resource_database_id = DB_ID(DbNoBracket)
+      AND l.request_session_id <> @@SPID
+      AND l.request_session_id > 0
+    ) as L
+  If @showKills=1 And len(@sql)> 0 Print @Sql
+  If len(@sql) > 0 Exec (@sql)
+End -- #KillDbUsers
+GO
 --
 -- Installation procedure
 --
@@ -189,6 +211,9 @@ end
 GO
 If Db_name() <> 'TempDb'  Use TempDb;
 GO
+If DB_ID('YourSqlDbaUpgradeSavedInfos') IS NULL
+  Create Database YourSqlDbaUpgradeSavedInfos
+GO
 -- ****************************************************************************************************
 -- Save actual copy of YourSqlDba, in case a rollback is needed or past yoursqldba logs would be useful
 -- @@MARK: Upgrading process of actual YourSqlDba to this script version
@@ -196,15 +221,6 @@ GO
 
 If databasepropertyEx('YourSQLDba','status') IS NOT NULL -- db is there
 Begin
-  -- save data about some YourSqlDba tables
-  Drop table if Exists ##JobHistory;
-  Drop table if Exists ##JobHistoryDetails;
-  Drop Table if Exists ##JobHistoryLineDetails; -- instead of presenting event info in XML, it is presented in readable form
-  Drop table if Exists ##JobLastBkpLocations;
-  Drop table if Exists ##TargetServer;
-  Drop table if Exists ##JobSeqUpdStat;
-  Drop table if Exists ##NetworkDrivesToSetOnStartup;
-
   -- perform some cleanup for YourSqlDba Maint.JobHistory table
   While (1=1)
   Begin
@@ -237,74 +253,176 @@ Begin
     , @colIdMainSqlCmd Output
 
     If @colIdJsonPrms IS NOT NULL -- table is up to date for column JsonPrms, make the copy of the table
-      Exec('Select * Into ##JobHistory From YourSqlDba.Maint.JobHistory')
+    Begin
+      If Object_id('YourSqlDbaUpgradeSavedInfos.dbo.JobHistory') IS NULL
+        Exec('
+        Begin Try
+          Begin Transaction
+          Select * Into YourSqlDbaUpgradeSavedInfos.dbo.JobHistory From YourSqlDba.Maint.JobHistory
+          Commit Transaction
+        End Try
+        Begin Catch
+          If @@trancount > 0 Rollback Transaction;
+          Throw;
+        End Catch
+        ')
+    End
     Else
       Exec( -- JsonPrms column is missing, brew the new version of the table with just JsonPrm
       '
-      Select 
-        JobNo 
-      , JobStart
-      , JobEnd
-      , Spid
-      , JsonPrms=
-        (
-        Select 
-        , JobName
-        , DoInteg, DoUpdStats, DoReorg, DoFullBkp, DoDiffBkp, DoLogBkp, JobName, JobStart, JobEnd
-        , IncDb, ExcDb, ExcDbFromPolicy_CheckFullRecoveryModel
-        , TimeStampNamingForBackups, FullBkpRetDays, LogBkpRetDays
-        , NotifyMandatoryFullDbBkpBeforeLogBkp
-        , SpreadUpdStatRun, SpreadCheckDb
-        , FullBackupPath, LogBackupPath, 
-        , FullBkExt, LogBkExt, 
-        , ConsecutiveDaysOfFailedBackupsToPutDbOffline
-        , MirrorServer
-        , MigrationTestMode
-        , ReplaceSrcBkpPathToMatchingMirrorPath
-        , ReplacePathsInDbFilenames
-        , JobId, StepId
-        , BkpLogsOnSameFile
-        , EncryptionAlgorithm, EncryptionCertificate
-        From YourSqlDba.Maint.JobHistory
-        For JSON PATH, WITHOUT_ARRAY_WRAPPER 
-        ) 
-      Into ##JobHistory 
-      From YourSqlDba.Maint.JobHistory
+      If Object_id(''YourSqlDbaUpgradeSavedInfos.dbo.JobHistory'') IS NULL
+      Begin
+        Begin Try
+          Begin Transaction
+          Select
+            H.JobNo
+          , H.JobStart
+          , H.JobEnd
+          , H.Spid
+          , JsonPrms=
+            (
+            Select
+              H.JobName
+            , H.JobStart, H.JobEnd
+            , H.DoInteg, H.DoUpdStats, H.DoReorg
+            , H.DoFullBkp, H.DoDiffBkp, H.DoLogBkp
+            , H.IncDb, H.ExcDb, H.ExcDbFromPolicy_CheckFullRecoveryModel
+            , H.FullBackupPath, H.LogBackupPath, H.FullBkExt, H.LogBkExt
+            , H.FullBkpRetDays, H.LogBkpRetDays, H.TimeStampNamingForBackups
+            , H.NotifyMandatoryFullDbBkpBeforeLogBkp, H.BkpLogsOnSameFile
+            , H.SpreadUpdStatRun, H.SpreadCheckDb
+            , H.MirrorServer, H.MigrationTestMode
+            , H.ReplaceSrcBkpPathToMatchingMirrorPath, H.ReplacePathsInDbFilenames
+            , H.JobId, H.StepId
+            , H.EncryptionAlgorithm, H.EncryptionCertificate
+            For JSON PATH, WITHOUT_ARRAY_WRAPPER
+            )
+          Into YourSqlDbaUpgradeSavedInfos.dbo.JobHistory
+          From YourSqlDba.Maint.JobHistory as H
+          Commit Transaction
+        End Try
+        Begin Catch
+          If @@trancount > 0 Rollback Transaction;
+          Throw;
+        End Catch
+      End
       '
       )
     -- if column MainSqlCmd is missing add it also to the copy, assume other columns are missing since they are part of the same update
     If  @colIdMainSqlCmd IS NULL
+    And Object_id('YourSqlDbaUpgradeSavedInfos.dbo.JobHistory') IS NOT NULL
+    And Columnproperty(Object_id('YourSqlDbaUpgradeSavedInfos.dbo.JobHistory'), 'MainSqlCmd', 'ColumnId') IS NULL
     Begin
-      alter table ##JobHistory add MainSqlCmd nvarchar(max) null
-      alter table ##JobHistory add Who Nvarchar(128) null
-      alter table ##JobHistory add Host Nvarchar(128) null
-      alter table ##JobHistory add Prog Nvarchar(128) null
-      alter table ##JobHistory add SqlAgentJobName Nvarchar(128) null
-      alter table ##JobHistory add jobId uniqueIdentifier Null
-      alter table ##JobHistory add StepId Int Null
+      alter table YourSqlDbaUpgradeSavedInfos.dbo.JobHistory add MainSqlCmd nvarchar(max) null
+      alter table YourSqlDbaUpgradeSavedInfos.dbo.JobHistory add Who Nvarchar(128) null
+      alter table YourSqlDbaUpgradeSavedInfos.dbo.JobHistory add Host Nvarchar(128) null
+      alter table YourSqlDbaUpgradeSavedInfos.dbo.JobHistory add Prog Nvarchar(128) null
+      alter table YourSqlDbaUpgradeSavedInfos.dbo.JobHistory add SqlAgentJobName Nvarchar(128) null
+      alter table YourSqlDbaUpgradeSavedInfos.dbo.JobHistory add jobId uniqueIdentifier Null
+      alter table YourSqlDbaUpgradeSavedInfos.dbo.JobHistory add StepId Int Null
     End
   End
 
   -- make copies of other tables
   If Object_id('YourSqlDba.Maint.JobHistoryDetails') IS NOT NULL
-    Select * Into ##JobHistoryDetails From YourSqlDba.Maint.JobHistoryDetails
+  And Object_id('YourSqlDbaUpgradeSavedInfos.dbo.JobHistoryDetails') IS NULL
+  Begin
+    Begin Try
+      Begin Transaction
+      Select * Into YourSqlDbaUpgradeSavedInfos.dbo.JobHistoryDetails From YourSqlDba.Maint.JobHistoryDetails
+      Commit Transaction
+    End Try
+    Begin Catch
+      If @@trancount > 0 Rollback Transaction;
+      Throw;
+    End Catch
+  End
 
   If Object_id('YourSqlDba.Maint.JobHistoryLineDetails') IS NOT NULL
-    Select * Into ##JobHistoryLineDetails From YourSqlDba.Maint.JobHistoryLineDetails
+  And Object_id('YourSqlDbaUpgradeSavedInfos.dbo.JobHistoryLineDetails') IS NULL
+  Begin
+    Begin Try
+      Begin Transaction
+      Select * Into YourSqlDbaUpgradeSavedInfos.dbo.JobHistoryLineDetails From YourSqlDba.Maint.JobHistoryLineDetails
+      Commit Transaction
+    End Try
+    Begin Catch
+      If @@trancount > 0 Rollback Transaction;
+      Throw;
+    End Catch
+  End
 
   If Object_id('YourSqlDba.Maint.JobLastBkpLocations') IS NOT NULL
-    Select * Into ##JobLastBkpLocations From YourSqlDba.Maint.JobLastBkpLocations
+  And Object_id('YourSqlDbaUpgradeSavedInfos.dbo.JobLastBkpLocations') IS NULL
+  Begin
+    Begin Try
+      Begin Transaction
+      Select * Into YourSqlDbaUpgradeSavedInfos.dbo.JobLastBkpLocations From YourSqlDba.Maint.JobLastBkpLocations
+      Commit Transaction
+    End Try
+    Begin Catch
+      If @@trancount > 0 Rollback Transaction;
+      Throw;
+    End Catch
+  End
 
   If Object_id('YourSqlDba.Mirroring.TargetServer') IS NOT NULL
-    Select * Into ##TargetServer From YourSqlDba.Mirroring.TargetServer
+  And Object_id('YourSqlDbaUpgradeSavedInfos.dbo.TargetServer') IS NULL
+  Begin
+    Begin Try
+      Begin Transaction
+      Select * Into YourSqlDbaUpgradeSavedInfos.dbo.TargetServer From YourSqlDba.Mirroring.TargetServer
+      Commit Transaction
+    End Try
+    Begin Catch
+      If @@trancount > 0 Rollback Transaction;
+      Throw;
+    End Catch
+  End
   
   If Object_id('YourSqlDba.Maint.JobSeqUpdStat') IS NOT NULL
-    Select top 1 * Into ##JobSeqUpdStat From YourSqlDba.Maint.JobSeqUpdStat
+  And Object_id('YourSqlDbaUpgradeSavedInfos.dbo.JobSeqUpdStat') IS NULL
+  Begin
+    Begin Try
+      Begin Transaction
+      Select top 1 * Into YourSqlDbaUpgradeSavedInfos.dbo.JobSeqUpdStat From YourSqlDba.Maint.JobSeqUpdStat
+      Commit Transaction
+    End Try
+    Begin Catch
+      If @@trancount > 0 Rollback Transaction;
+      Throw;
+    End Catch
+  End
  
   If Object_id('YourSqlDba.Maint.NetworkDrivesToSetOnStartup') Is NOT NULL
-    Select * Into ##NetworkDrivesToSetOnStartup From YourSqlDba.Maint.NetworkDrivesToSetOnStartup
+  And Object_id('YourSqlDbaUpgradeSavedInfos.dbo.NetworkDrivesToSetOnStartup') IS NULL
+  Begin
+    Begin Try
+      Begin Transaction
+      Select * Into YourSqlDbaUpgradeSavedInfos.dbo.NetworkDrivesToSetOnStartup From YourSqlDba.Maint.NetworkDrivesToSetOnStartup
+      Commit Transaction
+    End Try
+    Begin Catch
+      If @@trancount > 0 Rollback Transaction;
+      Throw;
+    End Catch
+  End
 
-  -- if database is not upgraded yet, do a save, but avoid if it is to the same version
+  If Object_id('YourSqlDba.Maint.DelegatedDbManagement') Is NOT NULL
+  And Object_id('YourSqlDbaUpgradeSavedInfos.dbo.DelegatedDbManagement') IS NULL
+  Begin
+    Begin Try
+      Begin Transaction
+      Select * Into YourSqlDbaUpgradeSavedInfos.dbo.DelegatedDbManagement From YourSqlDba.Maint.DelegatedDbManagement
+      Commit Transaction
+    End Try
+    Begin Catch
+      If @@trancount > 0 Rollback Transaction;
+      Throw;
+    End Catch
+  End
+
+    -- if database is not upgraded yet, do a save, but avoid if it is to the same version
   If Not Exists(Select * from YourSqlDba.Install.VersionInfo () Actual join #Version NextVersion On Actual.VersionNumber = NextVersion.Version Collate database_default)
   Begin
     Declare @pathBkp Nvarchar(512);
@@ -336,8 +454,7 @@ Begin
     Backup Database YourSqlDba To Disk = @bkpFile With Init, name = @bkpname
   End
 
-  Exec ('Alter database YourSqlDba Set single_user with rollback immediate')
-  Exec ('WaitFor Delay ''00:00:05''; ')
+  Exec #KillDbUsers @db=[YourSqlDba], @showKills=1 -- ensure exclusive access to YourSqlDba
   Exec ('Drop database YourSqlDba')
 
 End
@@ -466,7 +583,10 @@ GO
 Exec sp_addsrvrolemember @loginame= 'YourSqlDba' , @rolename = 'sysadmin'
 GO
 ALTER AUTHORIZATION ON Database::[YourSQLDba] To [YourSqlDba]
-ALTER Database YourSqlDba Set TRUSTWORTHY OFF
+-- YourSqlDba is an administrative database owned by the sysadmin YourSqlDba login.
+-- Privileged procedures run WITH EXECUTE AS OWNER, and yInstall.AssertDboOnlyCanAdministerYourSqlDbaCode
+-- prevents that model from being used if non-dbo principals can administer code in this database.
+ALTER Database YourSqlDba Set TRUSTWORTHY ON
 GO
 If DB_NAME()<> 'YourSqlDba' Use YourSQLDba
 --use tempdb
@@ -495,6 +615,17 @@ Exec('Create schema Tools authorization dbo;')
 Exec('Create schema yUtl authorization dbo;')
 Exec('Create schema S# authorization dbo;') -- for copying new code from S# library
 GO
+-- duplicate temporary sp #KillDbUsers in YourSqlDba as S#.KillDbUsers
+Declare @sql nvarchar(max)=''
+Exec sp_executeSql 
+  N'Use tempdb; SELECT @Sql=OBJECT_DEFINITION(OBJECT_ID(N''tempdb..#KillDbUsers''))', 
+  N'@Sql nvarchar(max) output',
+  @sql = @sql Output
+Set @Sql = Replace (@Sql, '#KillDbUsers', 'S#.KillDbUsers')
+Print @sql
+drop proc if exists S#.KillDbUsers 
+Exec (@Sql)
+GO
 -- @@MARK: MaintenanceEnums - A way to get enums (or constants) in queries
 Create or Alter View Maint.MaintenanceEnums AS
 Select 
@@ -509,6 +640,10 @@ Select
 , HV$Since12Hours
 , HV$Since10Min
 , HV$Since1Hour
+-- ------ MaintenanceModeSuffix = 'MaintenanceMode'
+-- for Proc PrepDbForMaintenanceMode, RestoreDbAtStartOfMaintenanceMode,ReturnDbToNormalUseFromMaintenanceMode
+-- and function yMaint.ValidateDelegatedDbManagement
+, MaintenanceModeSuffix = 'MaintenanceMode' 
 From
   (Select HV$Now=Getdate()) as Now
   CROSS APPLY (Select HV$FromMidnight=DateAdd(Day, DateDiff(Day, 0, HV$Now), 0)) as FromMidnight
@@ -517,6 +652,41 @@ From
   CROSS APPLY (Select HV$Since10min=DateAdd(Mi, DateDiff(Mi, 0, HV$Now)-10, 0)) as Since10Min
   CROSS APPLY (Select HV$Since1Hour=DateAdd(hh, DateDiff(hh, 0, HV$Now)-1, 0)) as Since1Hour
 GO
+-- @@MARK: Maintenance : Delegated database copy/restore management
+If object_id('Maint.DelegatedDbManagement') is null
+Begin
+  Create Table Maint.DelegatedDbManagement
+  (
+    LoginName                   sysname       Not Null
+  , SourceDatabaseList          nvarchar(max) Not Null
+  , MaintenanceModeDatabaseList nvarchar(max) NULL
+  , CreatedAt                   datetime2     Not Null Default sysdatetime()
+  , CreatedBy                   sysname       Not Null Default ORIGINAL_LOGIN()
+  , Constraint PK_DelegatedDbManagement Primary Key Clustered (LoginName)
+  )
+End
+GO
+If object_id('YourSqlDbaUpgradeSavedInfos.dbo.DelegatedDbManagement') is not null
+Begin
+  Insert Into Maint.DelegatedDbManagement (LoginName, SourceDatabaseList, MaintenanceModeDatabaseList, CreatedAt, CreatedBy)
+  Select LoginName, SourceDatabaseList, MaintenanceModeDatabaseList, CreatedAt, CreatedBy
+  From YourSqlDbaUpgradeSavedInfos.dbo.DelegatedDbManagement S
+  Where Not Exists
+        (
+        Select *
+        From Maint.DelegatedDbManagement T
+        Where T.LoginName = S.LoginName Collate Database_Default
+        )
+  Drop Table YourSqlDbaUpgradeSavedInfos.dbo.DelegatedDbManagement
+End
+GO
+Create Or Alter Function S#.Servername()
+Returns sysname
+as
+Begin
+  Return (Cast (Serverproperty('ServerName') as Sysname))
+End
+go
 -- --------------------------------------------------------------------------------------------
 -- Shorthand to generate cr/lf
 -- --------------------------------------------------------------------------------------------
@@ -770,7 +940,7 @@ From
   Select SrcTxt=event_info Collate Database_default From sys.dm_exec_input_buffer(@@spid, null) 
   Where Typ Is NOT NULL And ModuleName = ''  And event_type = 'Language Event'
   UNION ALL
-  -- the current batch, or the current bacth of a running stored proc, when moduleRef is NULL
+  -- the current batch, or the current batch of a running stored proc, when moduleRef is NULL
   -- when typ is NULL, this is because there is NULL for moduleRef param.
   Select SrcTxt=qt.text Collate Database_default 
   From 
@@ -1030,6 +1200,31 @@ End
 Scripting,Object Management
 ===KeyWords===*/
 -- Select S#.FullObjName (object_id) From sys.Objects
+GO
+-- ------------------------------------------------------------------------------
+-- Generete rows with a increasing sequential number from 1 to @n
+-- Useful to generate loops between data as in creating all dates
+-- between two date
+-- ------------------------------------------------------------------------------
+Create Or Alter Function S#.LoopGenByNums(@n as BigInt) 
+returns TABLE               
+as 
+Return 
+(
+With 
+  TwoPower2Rows  as (select * From (Values(1),(1),(1),(1)) as T(c) ) --4
+, TwoPower4Rows  as (select 1 as C From TwoPower2Rows  as A Cross JOIN TwoPower2Rows ) -- 4x4=16
+, TwoPower8Rows  as (select 1 as C From TwoPower4Rows  as A Cross JOIN TwoPower4Rows ) -- 16x16=256
+, TwoPower16Rows as (select 1 as C From TwoPower8Rows  as A Cross JOIN TwoPower8Rows ) -- 256x256=65536
+, TwoPower32Rows as (select 1 as C From TwoPower16Rows as A Cross JOIN TwoPower16Rows) -- 65536x65536=4294967296
+Select top(case when @n < 0 Then 0 else @n End) loopIndex 
+From  -- Order by C is meaningless sice SQL "knows" it is all one, so it optimize to the number of generated rows
+  (Select loopIndex = ROW_NUMBER() OVER (Order by c) from TwoPower32Rows) as Nums 
+Where @n > 0
+)
+/*===KeyWords===
+Loop,Algorithm
+===KeyWords===*/
 GO
 -- Ensure there is at least a S#.LogTable function
 If Object_id('S#.LogTable') IS NULL Exec ('Create Or Alter Function S#.LogTable() Returns sysname as Begin Return('''') End')
@@ -3565,6 +3760,7 @@ GO
 -- The broker is no more needed in YourSqlDba
 If DATABASEPROPERTYEX('YourSqlDba', 'IsBrokerEnabled')=1
 Begin
+  Exec #killDbUsers @db=YourSqlDba
   ALTER DATABASE YourSqlDba SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
   ALTER DATABASE YourSqlDba SET ERROR_BROKER_CONVERSATIONS;
   ALTER DATABASE YourSqlDba SET DISABLE_BROKER;
@@ -4261,7 +4457,7 @@ Create table Maint.JobHistory
 '
 Exec (@sql)
 
-If object_id('tempdb..##JobHistory') is not null -- successfully created
+If object_id('YourSqlDbaUpgradeSavedInfos.dbo.JobHistory') is not null -- successfully created
 Begin
   Select 
     @Sql = Sql
@@ -4276,11 +4472,11 @@ Begin
         Select convert(nvarchar(max), ','+name) as [text()] -- concat matching cols
         From YourSqlDba.Sys.Columns Y
         Where object_id=Object_id('YourSqlDba.Maint.JobHistory') 
-          And Exists -- a matching col of original table in TempDb..##JobHistory
+          And Exists -- a matching col of original table in YourSqlDbaUpgradeSavedInfos.dbo.JobHistory
               (
               Select * 
-              FROM tempdb.Sys.Columns Tmp 
-              Where object_id=Object_id('TempDb..##JobHistory') And Y.Name = Tmp.Name Collate Database_default
+              FROM YourSqlDbaUpgradeSavedInfos.Sys.Columns Tmp
+              Where object_id=Object_id('YourSqlDbaUpgradeSavedInfos.dbo.JobHistory') And Y.Name = Tmp.Name Collate Database_default
               )
         Order by column_id 
         For xml path('')
@@ -4297,9 +4493,9 @@ Begin
       Set Identity_insert YourSqlDba.Maint.JobHistory ON
       Delete YourSqlDba.Maint.JobHistory
       Insert into YourSqlDba.Maint.JobHistory («Cols») 
-      Select «Cols» From ##JobHistory
-      Drop Table If Exists ##JobHistory
+      Select «Cols» From YourSqlDbaUpgradeSavedInfos.dbo.JobHistory
       Set Identity_insert YourSqlDba.Maint.JobHistory OFF
+      Drop Table YourSqlDbaUpgradeSavedInfos.dbo.JobHistory
       '
     ) as Template
     CROSS APPLY (Select Sql=REPLACE(template, '«Cols»', MatchingCols)) as Sql
@@ -4404,7 +4600,7 @@ GO
 -- @@MARK: Install : Reimport data for other table
 -- create the latest version by keep most recent data
 -- this IF is just useful when testing some parts of the code oterwise it is always true when running the whole script
-If object_id('Maint.JobSeqCheckDb') is null 
+If object_id('Maint.JobSeqUpdStat') is null 
 Begin
   Declare @sql nvarchar(max)
   Set @sql =
@@ -4417,16 +4613,16 @@ Begin
   '
   Exec (@sql)
 
-  If Object_Id('tempdb..##JobSeqUpdStat') IS NOT NULL -- try keep previous value
+  If Object_Id('YourSqlDbaUpgradeSavedInfos.dbo.JobSeqUpdStat') IS NOT NULL -- try keep previous value
     Exec
     (
     '
     If Exists(Select * from Maint.JobSeqUpdStat) Truncate Table Maint.JobSeqUpdStat
     Insert Into Maint.JobSeqUpdStat (seq) 
     Select Seq
-    From ##JobSeqUpdStat
+    From YourSqlDbaUpgradeSavedInfos.dbo.JobSeqUpdStat
     If @@rowcount = 0 Insert into Maint.JobSeqUpdStat values(0)
-    Drop Table If Exists ##JobSeqUpdStat
+    Drop Table YourSqlDbaUpgradeSavedInfos.dbo.JobSeqUpdStat
     '
     )
 End
@@ -4480,7 +4676,7 @@ Begin
   '
   Exec (@sql)
 
-  If Object_Id('tempdb..##JobLastBkpLocations') IS NOT NULL
+  If Object_Id('YourSqlDbaUpgradeSavedInfos.dbo.JobLastBkpLocations') IS NOT NULL
   Begin
   ;With 
       MatchingColsBeforeAndAfter as
@@ -4493,8 +4689,8 @@ Begin
           And Exists
               (
               Select * 
-              FROM tempdb.Sys.Columns Tmp 
-              Where object_id=Object_id('TempDb..##JobLastBkpLocations') And Y.Name = Tmp.Name Collate Database_default
+              FROM YourSqlDbaUpgradeSavedInfos.Sys.Columns Tmp
+              Where object_id=Object_id('YourSqlDbaUpgradeSavedInfos.dbo.JobLastBkpLocations') And Y.Name = Tmp.Name Collate Database_default
               )
         Order by column_id 
         For xml path('')
@@ -4505,8 +4701,8 @@ Begin
       Select 
         '
         Insert into YourSqlDba.Maint.JobLastBkpLocations («Cols») 
-        Select «Cols» From ##JobLastBkpLocations
-        Drop Table If Exists ##JobLastBkpLocations
+        Select «Cols» From YourSqlDbaUpgradeSavedInfos.dbo.JobLastBkpLocations
+        Drop Table YourSqlDbaUpgradeSavedInfos.dbo.JobLastBkpLocations
         ' as Sql
       , Stuff(Cols, 1, 1, '') as Cols -- remove first comma in the cols list 
       From MatchingColsBeforeAndAfter 
@@ -4537,15 +4733,15 @@ Begin
   Set @Sql = Replace(@Sql, '"', '''')
   Exec (@sql)
 
-  If Object_Id('tempdb..##TargetServer') IS NOT NULL
+  If Object_Id('YourSqlDbaUpgradeSavedInfos.dbo.TargetServer') IS NOT NULL
   Begin
     Set @sql =
     '
     Insert Into Mirroring.TargetServer (MirrorServerName)
     Select ISNULL(T.MirrorServerName, "")
-    From ##TargetServer T
+    From YourSqlDbaUpgradeSavedInfos.dbo.TargetServer T
     Where Exists(Select * From Sys.Servers as S Where S.name = T.MirrorServerName Collate Database_Default And S.is_linked = 1) -- cleanup missing mirrorServer if no matching linked server exists
-    Drop Table If Exists ##TargetServer
+    Drop Table YourSqlDbaUpgradeSavedInfos.dbo.TargetServer
     '
     Set @Sql = Replace(@Sql, '"', '''')
     Exec (@sql)
@@ -4686,17 +4882,17 @@ End -- yExecNLog.SqlCodeLinesInResultSet
 GO
 --
 --
-If object_id('tempdb..##JobHistoryLineDetails') IS NULL -- mock up an empty table for conversion so the query below will work
+If object_id('YourSqlDbaUpgradeSavedInfos.dbo.JobHistoryLineDetails') IS NULL -- mock up an empty table for conversion so the query below will work
 Begin
   Exec(
   '
   Select top 0 JobNo=1, seq=1, TypSeq=1, typ=convert(nvarchar(6),null), Line=1, Action=convert(nvarchar(max),null)
-  Into ##JobHistoryLineDetails
+  Into YourSqlDbaUpgradeSavedInfos.dbo.JobHistoryLineDetails
   ')
 End
 
 -- this IF is just useful when testing some parts of the code oterwise it is always true when running the whole script
-If object_id('tempdb..##JobHistoryDetails') IS NOT NULL
+If object_id('YourSqlDbaUpgradeSavedInfos.dbo.JobHistoryDetails') IS NOT NULL
 Begin
   Set Identity_insert YourSqlDba.Maint.JobHistoryDetails ON
   Exec
@@ -4706,17 +4902,19 @@ Begin
   -- JobHistoryDetails only keeps track of entry sequence in the job
 
   Insert into YourSqlDba.Maint.JobHistoryDetails (JobNo, Seq, cmdStartTime, Secs, ForDiagOnly)
-  Select JobNo, Seq, cmdStartTime, Secs, ForDiagOnly From ##JobHistoryDetails
+  Select JobNo, Seq, cmdStartTime, Secs, ForDiagOnly From YourSqlDbaUpgradeSavedInfos.dbo.JobHistoryDetails
+  Drop Table YourSqlDbaUpgradeSavedInfos.dbo.JobHistoryDetails
   ')
   Set Identity_insert YourSqlDba.Maint.JobHistoryDetails OFF
 End
 GO
-If object_id('tempdb..##JobHistoryLineDetails') IS NOT NULL
+If object_id('YourSqlDbaUpgradeSavedInfos.dbo.JobHistoryLineDetails') IS NOT NULL
 Begin
   Exec
   ('
   Insert into YourSqlDba.Maint.JobHistoryLineDetails (JobNo, Seq, TypSeq, Typ, line, Txt)
-  Select * From ##JobHistoryLineDetails
+  Select * From YourSqlDbaUpgradeSavedInfos.dbo.JobHistoryLineDetails
+  Drop Table YourSqlDbaUpgradeSavedInfos.dbo.JobHistoryLineDetails
   ')
 End
 GO
@@ -4883,38 +5081,183 @@ GO
 -- Function to select database from @incDb and @excDb parameters
 -- or replace pairs from @replace... parameters
 -- ------------------------------------------------------------------------------
--- @@MARK: TODO : check if this function is still needed 
+Drop function if exists  yUtl.SplitParamInRows
+GO
 Create Or Alter Function yUtl.SplitParamInRows
 (
-  @prm VARCHAR(max) = '' 
+  @prm NVARCHAR(max) = '' 
 )
-returns @rows table
-(
-  No int identity 
-, line nvarchar(max)
-)
+Returns Table
 as
-Begin
-  Declare @line nvarchar(max)
-  
-  -- remove tabs from selection patterns and
-  -- add separator at the end of the parameter list, 
-  -- so no exception is required in the processing of the list
-  
-  Set @prm = yUtl.NormalizeLineEnds(rtrim(@prm))
-  
-  -- Extract rows and add it to @rows table
-  While charindex('|', @Prm) > 0 -- While there is a separator
-  Begin
-    Set @line = ltrim(rtrim(Left (@Prm, charindex('|', @Prm)-1)))
-    -- If it reveals some contents add it
-    If @line <> ''  Insert into @rows (line) values (@line)
-    -- remove all up to and including '|'
-    Set @Prm = Stuff(@Prm, 1, charindex('|', @Prm), '') 
-  End
+Return
+  Select
+    No=Convert(Int, ROW_NUMBER() Over(Order By Beg.StartPos))
+  , line=Item.Line
+  From
+    (Select prm=ISNULL(@prm, N''), sp=N' ', tab=NCHAR(9), lf=NCHAR(10), cr=NCHAR(13), comma=N',', semiColon=N';', pipe=N'|') as prm
+    CROSS APPLY (Select a=Replace(prm, tab, pipe)) as a
+    CROSS APPLY (Select b=Replace(a, lf, pipe)) as b
+    CROSS APPLY (Select c=Replace(b, cr, pipe)) as c
+    CROSS APPLY (Select d=Replace(c, sp, pipe)) as d
+    CROSS APPLY (Select e=Replace(d, comma, pipe)) as e
+    CROSS APPLY (Select f=Replace(e, semiColon, pipe)) as f
+    CROSS APPLY S#.DedupSeqOfChar(pipe, f + pipe) as Dedup
+    CROSS APPLY S#.LoopGenByNums(Len(Dedup.NoMoreRepeatingChar)) as Pos
+    CROSS APPLY
+    (
+      Select StartPos=Pos.loopIndex
+      Where Substring(Dedup.NoMoreRepeatingChar, Pos.loopIndex, 1) <> pipe
+        And (Pos.loopIndex = 1 Or Substring(Dedup.NoMoreRepeatingChar, Pos.loopIndex - 1, 1) = pipe)
+    ) as Beg
+    CROSS APPLY (Select EndPos=CharIndex(pipe, Dedup.NoMoreRepeatingChar, Beg.StartPos)) as Fin
+    CROSS APPLY (Select Line=LTrim(RTrim(Substring(Dedup.NoMoreRepeatingChar, Beg.StartPos, Fin.EndPos - Beg.StartPos)))) as Item
 
-  Return;
-End -- yUtl.SplitParamInRows
+    --test code
+    --Select T.TestName, S.*
+    --From
+    --  (
+    --    Values
+    --      ('Pipe simple', N'B%|G%')
+    --    , ('Comma simple', N'B%,G%')
+    --    , ('Semi colon', N'B%;G%;R%')
+    --    , ('Spaces', N'B% G% R%')
+    --    , ('Mixed separators', N'B%|G%,R%;T%')
+    --    , ('Repeated separators', N'||B%|||G%,,,R%;;;')
+    --    , ('Line breaks', N'B%' + NCHAR(13) + NCHAR(10) + N'G%' + NCHAR(10) + N'R%')
+    --    , ('Tabs', N'B%' + NCHAR(9) + N'G%' + NCHAR(9) + N'R%')
+    --    , ('Leading trailing spaces', N'  B%  |  G%  ')
+    --    , ('Empty string', N'')
+    --    , ('Null value', Cast(Null as nvarchar(max)))
+    --  ) as T(TestName, Prm)
+    --  Cross Apply yUtl.SplitParamInRows(T.Prm) as S
+    --Order By T.TestName, S.No;
+
+
+-- yUtl.SplitParamInRows
+GO
+Create Or Alter Function Maint.IsSysAdminSpecial(@loginName sysname)
+-- Because IS_SrvRoleMember fails to identify a Windows account with no domain as sysadmin
+-- typical case, a microsoft account on a personal computer outside a domainé
+-- And the next function yMaint.ValidateDelegatedDbManagement must succeed in all cases
+Returns Table 
+as
+Return 
+SELECT
+  r.name AS RoleName,
+  p.name AS MemberName,
+  p.type_desc,
+  p.sid
+FROM sys.server_role_members AS rm
+JOIN sys.server_principals AS r
+  ON r.principal_id = rm.role_principal_id
+JOIN sys.server_principals AS p
+  ON p.principal_id = rm.member_principal_id
+WHERE r.name = N'sysadmin'  
+  And p.name = @loginName
+GO
+Create Or Alter Function yMaint.ValidateDelegatedDbManagement
+(
+  @prmSourceDb sysname
+, @prmTargetDb sysname = NULL
+, @prmFilePath nvarchar(512)
+)
+returns table
+as
+return
+Select Top 1 OriginalLogin, SourceDb, TargetDb, FilePath, ErrorMessage -- only the first row and then only the first message, if many
+From
+  (
+  Select
+    OriginalLogin = ORIGINAL_LOGIN() Collate Database_Default
+  , SourceDbRaw = Replace(Replace(ISNULL(@prmSourceDb,''), '[', ''), ']', '') Collate Database_Default
+  , PrmTargetDbRaw = Replace(Replace(ISNULL(@prmTargetDb,''), '[', ''), ']', '') Collate Database_Default
+  , FilePath = Replace(ISNULL(@prmFilePath, ''), '''', '') -- Sanitize path from SQL injection
+  , E.MaintenanceModeSuffix
+  From (select MaintenanceModeSuffix From Maint.MaintenanceEnums) as E
+  ) as Prm
+  OUTER APPLY (Select SysAdminMember=MemberName From Maint.IsSysAdminSpecial (ORIGINAL_LOGIN())) as isSysAdmin 
+  CROSS APPLY (Select ExpectedTargetPattern = SourceDbRaw + '[_]_%') As ExpectedTargetPattern
+  CROSS APPLY (Select ExpectedMaintenanceModeTarget = SourceDbRaw + '_' + MaintenanceModeSuffix) as ExpectedMaintenanceModeTarget
+  CROSS APPLY 
+  (
+  -- ValidateDelegatedDbManagement('DbA', 'DbA_MaintenanceMode', NULL) 
+  -- delegation of PrepDbForMaintenanceMode, RestoreDbAtStartOfMaintenanceMode, ReturnDbToNormalUseFromMaintenanceMode
+ --- in that case PrmTargetDbRaw is used and fits ExpectedMaintenanceModeTarget database name
+  Select TargetDbRaw = PrmTargetDbRaw, MaintenanceModeReplacementExists = 1
+  Where PrmTargetDbRaw = ExpectedMaintenanceModeTarget
+    And Db_Id(ExpectedMaintenanceModeTarget) Is Not Null
+  Union ALL
+  -- ValidateDelegatedDbManagement('DbA', 'DbA_Copy01', NULL) -- Delegation of duplicateDb.... Restore
+  Select TargetDbRaw = PrmTargetDbRaw, MaintenanceModeReplacementExists = 0
+  Where PrmTargetDbRaw <> ''
+    And Not
+        (
+            PrmTargetDbRaw = ExpectedMaintenanceModeTarget
+        And Db_Id(ExpectedMaintenanceModeTarget) Is Not Null
+        )
+  Union ALL
+  -- ValidateDelegatedDbManagement('DbA', NULL, NULL) -- for operations like SaveDbOnNewFileSet, SaveDbCopyOnly
+  Select TargetDbRaw = ExpectedMaintenanceModeTarget, MaintenanceModeReplacementExists = 1
+  Where PrmTargetDbRaw = ''
+    And Db_Id(ExpectedMaintenanceModeTarget) Is Not Null
+  Union ALL
+  -- Validation of incomplete param
+  Select TargetDbRaw = '', MaintenanceModeReplacementExists = 0
+  Where PrmTargetDbRaw = ''
+    And Db_Id(ExpectedMaintenanceModeTarget) Is Null
+  ) as TargetDbRaw
+  -- Sanitize SourceDb and TargetDb from SQL injection
+  CROSS APPLY (Select SourceDb=IIF(SourceDbRaw = '', '', QuoteName(SourceDbRaw))) as QuotedSourceDb
+  CROSS APPLY (Select TargetDb=IIF(TargetDbRaw = '', '', QuoteName(TargetDbRaw))) as QuotedTargetDb
+  OUTER APPLY
+  (
+  Select Top 1 Err
+  From
+    (
+    Select ErrSeq = 10, Err = 'Source database #SourceDb# name is missing.'
+    Where SourceDbRaw = ''
+    UNION ALL
+    Select ErrSeq = 20, Err = 'Source database #SourceDb# doesn''t exists.'
+    Where 
+          SysAdminMember IS NULL
+      And SourceDbRaw <> ''
+      And Not Exists (Select * From Sys.Databases Where Name = SourceDbRaw)
+      And MaintenanceModeReplacementExists = 0
+    UNION ALL
+    Select ErrSeq = 30, Err = 'Target database #TargetDb# cannot be the same as original source database #SourceDb#.'
+    Where TargetDbRaw <> '' And TargetDbRaw = SourceDbRaw And SysAdminMember IS NULL
+    UNION ALL
+    Select ErrSeq = 40, Err = 'Target database name #TargetDb# must start with "#SourceDb#_"'
+    Where TargetDbRaw <> '' And TargetDbRaw Not Like ExpectedTargetPattern And SysAdminMember IS NULL
+    UNION ALL
+    Select ErrSeq = 50, Err = 'Ask your SQL administrator to add your login #OriginalLogin# and source database #SourceDb# in SourceDatabaseList or MaintenanceModeDatabaseList in YourSqlDba.Maint.DelegatedDbManagement.'
+    Where
+      Not Exists
+      (
+      Select Allowed=1 Where SysAdminMember IS NOT NULL
+      UNION ALL
+      Select Allowed = 1
+      From Maint.DelegatedDbManagement D
+        Cross Apply yUtl.SplitParamInRows(D.SourceDatabaseList) S
+      Where D.LoginName = OriginalLogin
+        And S.Line = SourceDbRaw
+      UNION ALL
+      Select Allowed = 1
+      From Maint.DelegatedDbManagement D
+        Cross Apply yUtl.SplitParamInRows(D.MaintenanceModeDatabaseList) S
+      Where D.LoginName = OriginalLogin
+        And TargetDbRaw = ExpectedMaintenanceModeTarget
+        And S.Line = SourceDbRaw
+      )
+    ) as Errs
+  Order By ErrSeq
+  ) as Err
+  OUTER APPLY
+  (
+  Select ErrorMessage = MR.replacedTxt
+  From S#.MultipleReplaces('Delegated database management refused. '+Err.Err, (Select SourceDbRaw as SourceDb, TargetDbRaw as TargetDb, OriginalLogin For Json Path)) as MR
+  Where Err.Err IS NOT NULL
+  ) As ErrorMessage
 GO
 Create or Alter View Maint.DbInfoForYourSqlDba 
 as
@@ -5564,32 +5907,45 @@ Begin
           (Select SqlU=yExecNLog.Unindent_TSQL(I.sql) Where I.Sql <> '') as SqlU
           CROSS APPLY yExecNLog.SqlCodeLinesInResultSet( yExecNLog.Unindent_TSQL(sqlu)) as x
 
-        -- derived table S must return non null err value or null SQL to signal an error
-        -- here this means the YourSqlDbaNo is Set to one of the specific values in the query while err is null
-        -- or generated SQL by the caller was NULL, which is abnormal
-        -- or the caller caught an error, and call yExecNLog only for reporting
+        -- Derived table under union all below, returns nothing if err value is NULL And SQL is not NULL
+        -- However, multiple ways are used by YourSqlDba to signal an error throught this proc.
+        -- see comments for each query of the union all
         Union all
         Select TypSeq=6, typ='errY', lineOrd=X.i, line=X.txt 
         From 
-          -- Only one SELECT of conditions below must return a result otherwise it will make a duplicate error into JobHistoryLineDetails
+          -- NOTE: Only one SELECT of conditions below must return a result otherwise it will make a duplicate error into JobHistoryLineDetails
+          -- They are crafted in this way, and must continue to be.
           (
-          -- an error text where specified by caller 
-         
+          -- error is plainly specified in @err a message by the caller, so take it as it is
           Select Err Where I.Err <>'?' 
           UNION ALL
+          
+          -- error wasn't specified in @err by the caller.  An explicit errNo specific to YourSqlDba internals was specified.
+          -- The error is carried by other means than @err message parameter, in Ctx, Inf, or Msgs 
           Select Err = 'YourSqlDba error notification '+convert(nvarchar,I.YourSqlDbaNo)+'. Please check ctx, inf, or msgs types' 
-          Where charindex(I.YourSqlDbaNo, '005 006 007 008 009 012 013 015 021 999')>0 And I.Err IS NULL
-          -- YourSqlDba tried to build a dynamic query but either concatenated a null in the process or failed to generate SQL
+          Where I.Err IS NULL And charindex(I.YourSqlDbaNo, '005 006 007 008 009 012 013 015 021 999')>0
           UNION ALL
-          Select Err='Unexpected YourSqlDba error : Dynamically generated SQL IS NULL' Where Sql IS NULL And I.Err IS NULL
+
+          -- YourSqlDba tried to build a dynamic query but either concatenated a null in the process or failed 
+          -- to generate SQL, so Err is also null as a dynamic exec over null string raises no error.
+          Select Err='Unexpected YourSqlDba error : Dynamically generated SQL IS NULL' 
+          Where I.Err IS NULL And Sql IS NULL 
           UNION ALL
-          -- When caller catch an unexpected error it can let the task to ExecAndLog 
-          -- to get current error state and format it. This request is expressed by Err parameter being '?'
+
+          -- When caller catch an unexpected error (not here but in a catch in the calling proc,
+          -- it may leave to this proc, the task to get current error state and format it. 
+          -- This request is expressed by Err parameter being '?'
           Select Err=ErrMsg From S#.FormatCurrentMsg (null) Where I.Err = '?'
+
           ) as S
           -- Split over many rows, lines of the error message if is multi-line
           Cross Apply yExecNLog.SqlCodeLinesInResultSet(s.err) as x 
-        Where s.err IS NOT NULL OR SQL IS NULL
+        
+        -- Next this very important condition!  
+        -- This blocks outputs from this derived table only if none of the followinf conditions are true
+        -- s.err IS NOT NULL (so there is an explicit error) --OR-- SQL IS NULL. If SQL is NULL and Err is NULL see above the reason.
+        Where s.err IS NOT NULL -- something specific to the error code to report
+           OR SQL IS NULL       -- SQL being NULL, means some err is specified, exception made for err NULL.
         
         -- a return code was specified for a message given by YourSqlDba, it can be an error but is handled somewhere else, at end of job
         union all
@@ -5943,10 +6299,11 @@ Begin
   Exec yExecNLog.ExecWithProfilerTrace @sql, @MaxSeverity output, @Msgs output
 
   Delete From Maint.TemporaryBackupHeaderInfo Where spid = @@spid
+  Declare @serverName sysname = S#.Servername()
 
   If @maxSeverity > 10 
   Begin
-    Raiserror (N'CollectBackupHeaderInfoFromBackupFile error %s: %s %s', 11, 1, @@SERVERNAME, @Sql, @Msgs)    
+    Raiserror (N'CollectBackupHeaderInfoFromBackupFile error %s: %s %s', 11, 1, @serverName, @Sql, @Msgs)    
     Return (1)
   End
 
@@ -6008,9 +6365,10 @@ Begin
 
   Delete From Maint.TemporaryBackupFileListInfo Where spid = @@spid
 
+  Declare @serverName sysname = S#.Servername()
   If @maxSeverity > 10 
   Begin
-    Raiserror (N'CollectBackupFileListFromBackupFile error %s: %s %s', 11, 1, @@SERVERNAME, @Sql, @Msgs)    
+    Raiserror (N'CollectBackupFileListFromBackupFile error %s: %s %s', 11, 1, @serverName, @Sql, @Msgs)    
     Return (1)
   End
 
@@ -6819,7 +7177,7 @@ Begin
     Select cmdStartTime, JobNo, seq, Typ, line, Txt, typSeq, MaintJobName, MainSqlCmd, Who, Prog, Host, SqlAgentJobName, JobId, JobStart, JobEnd 
     From YourSQLDba.Maint.HistoryView(JobStart, jobEnd, 1) 
     ) as H
-Order By H.cmdStartTime, H.Seq, H.TypSeq, H.Typ, H.Line  
+  Order By H.cmdStartTime, H.Seq, H.TypSeq, H.Typ, H.Line
 End
 Go
 -- ------------------------------------------------------------------------------
@@ -7709,6 +8067,97 @@ Begin
   
 End -- yInstall.InstallationLanguage
 GO
+Create Or Alter Function yInstall.DangerousCodeAdministrationRights()
+Returns Table
+As
+Return
+(
+  Select
+    CheckType = Convert(varchar(30), 'Permission') Collate Database_Default
+  , PrincipalName = Pr.name Collate Database_Default
+  , PrincipalType = Pr.type_desc Collate Database_Default
+  , Rights = (Pe.state_desc + ' ' + Pe.permission_name) Collate Database_Default
+  , Scope = Pe.class_desc Collate Database_Default
+  , TargetName =
+      (Case Pe.class
+        When 0 Then DB_NAME()
+        When 1 Then ISNULL(OBJECT_SCHEMA_NAME(Pe.major_id) + '.', '') + ISNULL(OBJECT_NAME(Pe.major_id), Convert(nvarchar(20), Pe.major_id))
+        When 3 Then SCHEMA_NAME(Pe.major_id)
+        Else Convert(nvarchar(20), Pe.major_id)
+      End) Collate Database_Default
+  From sys.database_permissions as Pe
+    Join sys.database_principals as Pr
+      On Pr.principal_id = Pe.grantee_principal_id
+  Where Pr.name <> 'dbo'
+    And Pr.name NOT IN ('INFORMATION_SCHEMA', 'sys')
+    And Pe.state_desc IN ('GRANT', 'GRANT_WITH_GRANT_OPTION')
+    And
+      (
+        Pe.permission_name IN
+        (
+          'ALTER', 'CONTROL', 'IMPERSONATE', 'TAKE OWNERSHIP'
+        , 'CREATE AGGREGATE', 'CREATE ASSEMBLY', 'CREATE DEFAULT'
+        , 'CREATE FUNCTION', 'CREATE PROCEDURE', 'CREATE RULE'
+        , 'CREATE SCHEMA', 'CREATE SYNONYM', 'CREATE TABLE'
+        , 'CREATE TYPE', 'CREATE VIEW', 'CREATE XML SCHEMA COLLECTION'
+        )
+        Or Pe.permission_name Like 'ALTER ANY%'
+      )
+
+  Union All
+
+  Select
+    CheckType = Convert(varchar(30), 'Fixed database role') Collate Database_Default
+  , PrincipalName = MemberPr.name Collate Database_Default
+  , PrincipalType = MemberPr.type_desc Collate Database_Default
+  , Rights = ('MEMBER OF ' + RolePr.name) Collate Database_Default
+  , Scope = Convert(nvarchar(60), 'DATABASE_ROLE') Collate Database_Default
+  , TargetName = RolePr.name Collate Database_Default
+  From sys.database_role_members as Rm
+    Join sys.database_principals as RolePr
+      On RolePr.principal_id = Rm.role_principal_id
+    Join sys.database_principals as MemberPr
+      On MemberPr.principal_id = Rm.member_principal_id
+  Where MemberPr.name <> 'dbo'
+    And RolePr.name IN ('db_owner', 'db_ddladmin', 'db_securityadmin', 'db_accessadmin')
+
+  Union All
+
+  Select
+    CheckType = Convert(varchar(30), 'Schema owner') Collate Database_Default
+  , PrincipalName = OwnerPr.name Collate Database_Default
+  , PrincipalType = OwnerPr.type_desc Collate Database_Default
+  , Rights = Convert(nvarchar(60), 'OWNS SCHEMA') Collate Database_Default
+  , Scope = Convert(nvarchar(60), 'SCHEMA') Collate Database_Default
+  , TargetName = S.name Collate Database_Default
+  From sys.schemas as S
+    Join sys.database_principals as OwnerPr
+      On OwnerPr.principal_id = S.principal_id
+  Where OwnerPr.name <> 'dbo'
+    And S.name NOT IN
+        (
+          'INFORMATION_SCHEMA', 'sys', 'guest'
+        , 'db_owner', 'db_accessadmin', 'db_securityadmin', 'db_ddladmin'
+        , 'db_backupoperator', 'db_datareader', 'db_datawriter'
+        , 'db_denydatareader', 'db_denydatawriter'
+        )
+)
+GO
+Create Or Alter Procedure yInstall.AssertDboOnlyCanAdministerYourSqlDbaCode
+As
+Begin
+  Set nocount on
+
+  If Exists(Select * From yInstall.DangerousCodeAdministrationRights())
+  Begin
+    Select *
+    From yInstall.DangerousCodeAdministrationRights()
+    Order By CheckType, PrincipalName, Rights, Scope, TargetName;
+
+    Throw 51000, 'Unsafe YourSqlDba permissions: only dbo may create, alter, own, impersonate, or administer code/security in the YourSqlDba database.', 1;
+  End
+End -- yInstall.AssertDboOnlyCanAdministerYourSqlDbaCode
+GO
 -- ------------------------------------------------------------------------------
 -- Function that builds backup file name
 -- ------------------------------------------------------------------------------
@@ -8327,8 +8776,8 @@ go
 --        AgeInMinutes > (@BkpRetDaysForUnSelectedDb * 1440)  -- AgeInMinutes is the age of the file in minutes
 --      )
 --
--- In all cases, the msdb database file backup is always deleted by  
--- the Maint.DeleteOldBackups procedure when  @extension = .bak
+-- For sysadmins, the msdb database file backup is always deleted by
+-- the Maint.DeleteOldBackups procedure when @extension = .bak.
 -- ------------------------------------------------------------------------------
 -- @@MARK: Maintenance - Old backup cleanup
 Create Or Alter Procedure Maint.DeleteOldBackups
@@ -8352,13 +8801,20 @@ Create Or Alter Procedure Maint.DeleteOldBackups
 , @ExcDb nVARCHAR(max) = '' 
 , @SendOnErrorOnly int = 1  -- 1 = send an email only when there is an error
 , @DeleteOnlyLogDiffBackups int = 0 -- 1 = delete only logBackups and differential backups
+With Execute As Owner
 as
 Begin
   Set NoCount On
+
+  Exec yInstall.AssertDboOnlyCanAdministerYourSqlDbaCode
   
   Declare @Info nvarchar(max)
   Declare @FullFilePath nvarchar(max) 
   declare @err nvarchar(max)
+  Declare @IsSysAdmin bit = 0
+
+  If Exists (Select * From Maint.IsSysAdminSpecial(ORIGINAL_LOGIN()))
+    Set @IsSysAdmin = 1
   
   If Right(@path, 1) <> '\'
     Set @path = @path + '\'
@@ -8414,6 +8870,28 @@ Begin
   insert into @tDb
   SELECT D.Db, D.db_owner, D.FullRecoveryMode, D.compatibility_level
   FROM YourSQLDba.yUtl.YourSqlDba_ApplyDbFilter (@IncDb, @ExcDb, 1) as D 
+
+  -- A delegated login may only clean backups of a user-named variant of a
+  -- database in its SourceDatabaseList (for example DbA_UserVariant).
+  If @IsSysAdmin = 0
+  Begin
+    Delete DbToClean
+    From @tDb as DbToClean
+    Where Not Exists
+    (
+      Select *
+      From Maint.DelegatedDbManagement as Delegation
+        Cross Apply yUtl.SplitParamInRows(Delegation.SourceDatabaseList) as SourceDb
+        Cross Apply yMaint.ValidateDelegatedDbManagement(SourceDb.Line, DbToClean.DbName, NULL) as Validation
+      Where Delegation.LoginName = ORIGINAL_LOGIN() Collate Database_Default
+        And Len(DbToClean.DbName) > Len(SourceDb.Line) + 1
+        And Left(DbToClean.DbName, Len(SourceDb.Line) + 1) = SourceDb.Line + N'_'
+        And Validation.ErrorMessage Is Null
+    )
+
+    -- Never let a delegated cleanup reach files outside the authorized list.
+    Set @BkpRetDaysForUnSelectedDb = NULL
+  End
   
   --select * from @tDb
 
@@ -8504,7 +8982,7 @@ Begin
 	   and ((@DeleteOnlyLogDiffBackups = 1 and F.FileName like '%_logs%') or (@DeleteOnlyLogDiffBackups = 1 and F.FileName like '%_differential%') or @DeleteOnlyLogDiffBackups = 0)
        )                 
     Or
-       (Substring(f.FileName, 1, 6) = 'MSDB_[')       -- Always delete old backups from MSDB
+       (@IsSysAdmin = 1 And Substring(f.FileName, 1, 6) = 'MSDB_[') -- Only sysadmins always delete old MSDB backups
     Or 
        (   (@BkpRetDaysForUnSelectedDb is not NULL)   -- Delete files not seleted by @tDb
        and (db.DbName Is Null)                        -- The file was not selected by @tDb
@@ -8879,6 +9357,8 @@ Begin
   Declare @sql nvarchar(max)
   Declare @err nvarchar(max)
   Declare @Info nvarchar(max)
+
+  Select @MirrorServer = ISNULL(@MirrorServer,'')
   
   -- Ensure that target servers are still in sys.servers, otherwise remove them
   If not exists
@@ -8958,7 +9438,7 @@ Begin
   Exec sp_executeSql @sql, N'@LogToHistory int = 1, @remoteVersionInfo nvarchar(100) Output', @LogToHistory = @LogToHistory, @remoteVersionInfo = @remoteVersion Output
   If @RemoteVersion = 'Version before Install.VersionInfo'
   Begin
-    Set @err = 'Versions of YourSQLDba on [' + @@servername + '] And ['+@MirrorServer+'] need to be the same for mirroring purpose. Re-run YourSQLDba_InstallOrUpdateScript.sql on both servers.'
+    Set @err = 'Versions of YourSQLDba on [' + S#.Servername() + '] And ['+@MirrorServer+'] need to be the same for mirroring purpose. Re-run YourSQLDba_InstallOrUpdateScript.sql on both servers.'
     If @silent = 0 Print @Info
     If @LogToHistory = 1 And @silent = 0
     Begin
@@ -8986,7 +9466,7 @@ Begin
 
   If (Select versionNumber From YourSQLDba.Install.VersionInfo()) <> @RemoteVersion
   Begin
-    Set @err = 'Versions of YourSQLDba on [' + @@servername + '] And ['+@MirrorServer+'] need to be the same for mirroring purpose. Re-run YourSQLDba_InstallOrUpdateScript.sql on both servers.'
+    Set @err = 'Versions of YourSQLDba on [' + S#.Servername() + '] And ['+@MirrorServer+'] need to be the same for mirroring purpose. Re-run YourSQLDba_InstallOrUpdateScript.sql on both servers.'
     If @silent = 0 Print @Info
     If @LogToHistory = 1 And @silent = 0
     Begin
@@ -9016,42 +9496,13 @@ INTO Mirroring.ActiveRestoreChannelForMirror
 From 
   Dbo.MainContextInfo(null) as Ctx
 GO
-Create or Alter Proc yUtl.CheckShareOfDriveAvail @Destination Nvarchar(4000)
-As
-Begin
-  -- While the SQLAgent job restart, it may happen that SMB didn't yet mounted valid shares
-  -- This piece of code is to solve the problem of unavailability of share, for this reason.
-  -- If give some time to the SMB share to mount. 
-
-  -- For a unavailable network share, if this procedure is ran under the contect of a begin try catch, if 
-  -- with raise the error directly from sys.dm_os_file_exists and bypass all the wait. 
-  -- The error will bubble up in a more crude way, but will mention explicitely there is a problem with the share
-
-  -- In the case of a unmounted drive, the mecanism below will apply completely as it is. sys.dm_os_file_exists
-  -- won't complain, and after 5 seconds I will raise the error.
-  Declare @waitStart datetime = Getdate() -- to test time elapsed since start
-  While (1=1)
-  Begin
-    If Exists (select * from sys.dm_os_file_exists(@Destination) Where file_is_a_directory = 1)
-      Break -- The drive/path exists ot the share exists and SMB finally made the share available in a timely manner (when server restarts)
-    Else
-    Begin
-      If Datediff (ss, @WaitStart, Getdate()) > 5 -- 5 sec elapsed?
-      Begin
-        Raiserror ('Backup Share %s is inexistent or not available yet at time of the backup', 16, 1, @Destination);
-        Break
-      End
-      Waitfor Delay '00:00:01'
-    End
-  End -- while
-End -- yUtl.CheckShareOfDriveAvail
-GO
 -- ------------------------------------------------------------------------------
 -- Proc for doing backup.  MUST BE CALLED from YourSqlDba_DoMaint because
 -- many parameters are passed through a context
 -- ------------------------------------------------------------------------------
 -- @@MARK: Maintenance - Process backups
 Create Or Alter Proc yMaint.Backups
+With Execute As Owner
 as
 Begin
   
@@ -9133,16 +9584,6 @@ Begin
   , @EncryptionAlgorithm = EncryptionAlgorithm
   , @EncryptionCertificate = EncryptionCertificate
   From dbo.MainContextInfo (NULL) -- for now, do this with vars, but this function is enough to get param vals
-
-  Begin Try
-
-    Exec yUtl.CheckShareOfDriveAvail @FullBackupPath
-    Exec yUtl.CheckShareOfDriveAvail @LogBackupPath
-
-  End Try
-  Begin Catch
-    Throw;
-  End Catch
 
   If ISNULL(@EncryptionAlgorithm, '') <> '' AND ISNULL(@EncryptionCertificate, '') <> ''
   Begin
@@ -9373,13 +9814,12 @@ Begin
             End  
             Else
             Begin
-              Set @err = 'Log backup forbidden before doing a first full backup of ' + '['+@DbName+']'
+              -- no error, just drop a not an go to the next database
+              Set @info = 'Log backup forbidden before doing a first full backup of ' + '['+@DbName+']'
 
               Exec yExecNLog.LogAndOrExec 
                 @context = 'yMaint.Backups'
-              , @YourSqlDbaNo = '013' 
-              , @Info = 'Log backups'
-              , @err = @err
+              , @Info = @info
             End
 
             Continue -- jump to next one
@@ -9450,9 +9890,12 @@ Begin
       Else
         -- Insert new row records for this database, if it doesn't exists
         Insert into Maint.JobLastBkpLocations 
-          (dbName, lastLogBkpFile, MirrorServer, lastFullBkpDate, ReplaceSrcBkpPathToMatchingMirrorPath, ReplacePathsInDbFilenames,EncryptionAlgorithm,EncryptionCertificate)
+          (dbName, lastLogBkpFile, lastFullBkpFile, lastDiffBkpFile, MirrorServer, lastFullBkpDate, ReplaceSrcBkpPathToMatchingMirrorPath, ReplacePathsInDbFilenames,EncryptionAlgorithm,EncryptionCertificate)
         Select   
-          @DbName, Null, @DbMirrorServer, getdate(), @ReplaceSrcBkpPathToMatchingMirrorPath, @ReplacePathsInDbFilenames
+          @DbName, Null
+        , Case When @DoFullBkp = 1 Then @FileName Else Null End
+        , Case When @DoDiffBkp = 1 Then @FileName Else Null End
+        , @DbMirrorServer, getdate(), @ReplaceSrcBkpPathToMatchingMirrorPath, @ReplacePathsInDbFilenames
         , ISNULL(@EncryptionAlgorithm,''), ISNULL(@EncryptionCertificate,'')
         Where Not Exists(Select * from Maint.JobLastBkpLocations Where dbName = @DbName)
 
@@ -9667,6 +10110,9 @@ Create Or Alter Procedure Mirroring.SetYourSqlDbaAccountForMirroring
 as
 Begin
   Set nocount on
+
+  Exec yInstall.AssertDboOnlyCanAdministerYourSqlDbaCode
+
   Declare @MirrorServerName sysname
   Declare @Sql nvarchar(max)
   declare @loginExists int
@@ -9963,22 +10409,24 @@ GO
 -- Wait for inactivity on YourSqlDba_DoMaint
 -------------------------------------------------------------------------------------------
 -- @@MARK: Maintenance : Sync with backups/restore done by external backup/restore tooling ex: Commvault, ProcessRestores
-Create Or Alter Proc Maint.SetSyncWith_YourSqlDba_DoMaint @WaitType Sysname = 'Exclusive' 
+Create Or Alter Proc Maint.SetSyncWith_YourSqlDba_DoMaint @WaitType Sysname = 'Exclusive'
+With Execute As Owner
 AS
 Begin
   -- Exclusive mode is intented to be used when synchronizing external backup process with CommVault
   -- See https://tinyurl.com/YourSqlDbaAndCommVault for a more detailed overview.
   If @WaitType In ('Exclusive', 'Shared')
-    exec sp_getapplock @resource='YourSqlDba.Do_Maint', @lockMode=@WaitType, @lockOwner='Session', @DbPrincipal='dbo'
+    exec sp_getapplock @resource='YourSqlDba.Do_Maint', @lockMode=@WaitType, @lockOwner='Session', @DbPrincipal='public'
   Else 
     Raiserror ('@WaitType parameter must either be Exclusive or Shared',11,1) with nowait;
 End
 GO
 -- @@MARK: Maintenance : CommVault - Sync with backups done by external backup tooling
 Create Or Alter Proc Maint.SignalEndOf_YourSqlDba_DoMaint 
+With Execute As Owner
 AS
   -- To cancel lock acquired by Maint.SetSyncWith_YourSqlDba_DoMaint 
-  exec sp_releaseapplock @resource='YourSqlDba.Do_Maint', @lockOwner='Session', @DbPrincipal='dbo'
+  exec sp_releaseapplock @resource='YourSqlDba.Do_Maint', @lockOwner='Session', @DbPrincipal='public'
 GO
 Create Or Alter Proc Maint.YourSqlDba_DoMaint
   @oper nvarchar(200) 
@@ -10011,6 +10459,7 @@ Create Or Alter Proc Maint.YourSqlDba_DoMaint
 , @EncryptionCertificate nvarchar(100) = ''
 --, @JobId UniqueIdentifier = NULL -- job id of SQL Server Agent Job that launched the job
 --, @StepId Int = NULL -- stepid of SQL Server Agent Jobstep  that launched the job
+With Execute As Owner
 as
 Begin
 -------------------------------------------------------------------------------------------
@@ -10018,6 +10467,8 @@ Begin
 -------------------------------------------------------------------------------------------
 -- @@MARK: Maintenance : YourSqlDba_DoMaint Main DoMaint !
   Set nocount On 
+
+  Exec yInstall.AssertDboOnlyCanAdministerYourSqlDbaCode
 
   -- A top-level maintenance run must always start with a fresh job context.
   -- Without this reset, rerunning the proc in the same SSMS session can reuse
@@ -10577,64 +11028,26 @@ Create Or Alter Proc Maint.SaveDbOnNewFileSet
 , @DoBackup nvarchar(1) = 'F'
 , @EncryptionAlgorithm nvarchar(10) = ''
 , @EncryptionCertificate nvarchar(100) = ''
+With Execute As Owner
 as 
 Begin
   Declare @nomTache nvarchar(512) 
-  Declare @allowed int
   Declare @sql nvarchar(max)
+  Declare @ValidationMessage nvarchar(4000)
+
+  Exec yInstall.AssertDboOnlyCanAdministerYourSqlDbaCode
 
   set @nomTache = 'SaveDbOnNewFileSet  of ' + @DbName
 
   Set @FullBackupPath = yUtl.NormalizePath(@FullBackupPath)
   Set @LogBackupPath = yUtl.NormalizePath(@LogBackupPath)
 
-  -- Check backup permissions with original login
-  EXECUTE AS LOGIN = ORIGINAL_LOGIN();
-
-  Set @sql = 
-  N'
-  Use [<DbName>]
-  Set @allowed = 0
-  Declare @username sysname;   Set @username = USER_NAME()
-  Declare @loginName sysname;  Set @loginName = SUSER_NAME()
-  Declare @DbName sysname;     Set @DbName = db_name()
-
-  If @username <> @loginName Set @username = @loginName + ":" + @username
-
-  If   IS_MEMBER ("db_owner") = 1
-    OR IS_MEMBER ("db_backupoperator") = 1 
-    Or (
-       select count(*)
-       from [<DbName>].sys.database_permissions 
-       where class_desc = "DATABASE" 
-         and grantee_principal_id = USER_ID()
-         And permission_name IN ("BACKUP DATABASE", "BACKUP LOG")
-       ) = 2
-    Print "User "+ @username +" autorized to do backup"
-  Else
+  Select @ValidationMessage = ErrorMessage
+  From yMaint.ValidateDelegatedDbManagement(@DbName, NULL, NULL)
+  If @ValidationMessage IS NOT NULL
   Begin
-    Raiserror ("User [%s] is not granted required rigths to full backups [%s]!", 11, 1, @username, @DbName)
-    Return
-  End  
-  Set @allowed = 1
-  '
-  Set @sql = replace (@sql, '"', '''')
-  Set @sql = replace (@sql, '<DbName>', @DbName)
-  --print @sql
-  Exec sp_ExecuteSql @sql, N'@allowed int output', @allowed output
-
-  If @allowed = 0
-  Begin
-    Return
-  End
-
-  -- Reset sp impersonation to proceed with backup
-  REVERT
-
-  If not exists(Select * from master.sys.databases where name = @DbName)
-  Begin
-    Raiserror ('Database [%s] doesn''t exists !', 11, 1, @DbName)
-    Return 
+    raiserror(@ValidationMessage ,11,1)
+    return
   End
 
   If @FullBackupPath is NULL 
@@ -10706,14 +11119,28 @@ Create Or Alter Proc Maint.SaveDbCopyOnly
   @DbName nvarchar(512)
 , @PathAndFilename nvarchar(512) -- complete file name and path must be specified
 , @errorN int = 0 output
+With Execute As Owner
 As 
 Begin
   Declare @sql nvarchar(max)
   Declare @cmd nvarchar(1000)
+  Declare @ValidationMessage nvarchar(4000)
+  Declare @QuotedDbName nvarchar(258)
 
   Set nocount on
 
-  -- Exécuter backup with initial login
+  Exec yInstall.AssertDboOnlyCanAdministerYourSqlDbaCode
+
+  Select
+    @ValidationMessage = ErrorMessage
+  , @QuotedDbName = SourceDb
+  , @PathAndFilename = FilePath
+  From yMaint.ValidateDelegatedDbManagement(@DbName, NULL, @PathAndFilename)
+  If @ValidationMessage IS NOT NULL
+  Begin
+    raiserror(@ValidationMessage ,11,1)
+    return
+  End
   
   Print '----------------------------------------------------------'
   Print 'Saving Of ' + @DbName + ' to  ' + @PathAndFilename
@@ -10722,10 +11149,10 @@ Begin
 
   Set @sql = 
     '
-    BACKUP DATABASE [<DbName>] TO DISK ="<nomSauvegarde>" WITH stats=1, INIT, format, COPY_ONLY, NAME = "SaveDbCopyOnly: <nomSauvegarde>"
+    BACKUP DATABASE <DbName> TO DISK ="<nomSauvegarde>" WITH stats=1, INIT, format, COPY_ONLY, NAME = "SaveDbCopyOnly: <nomSauvegarde>"
     '
   
-  Set @sql = Replace( @sql, '<DbName>', @DbName )
+  Set @sql = Replace( @sql, '<DbName>', @QuotedDbName )
   Set @sql = Replace( @sql, '<nomSauvegarde>', @PathAndFilename )
   Set @sql = Replace( @sql, '"', '''' )
   Set @sql = yExecNLog.Unindent_TSQL(@sql)
@@ -10742,6 +11169,7 @@ Create Or Alter Proc Maint.duplicateDb
 , @TargetDb nvarchar(512)
 , @PathAndFilename nvarchar(512) = NULL -- complete name including path otherwise use last backup location + @TargetDb + '.bak'
 , @KeepBackupFile bit = 0 -- by default destroy intermediate backup file, otherwise specify 1 to keep it
+With Execute As Owner
 as 
 Begin
   Declare @sql nvarchar(max)
@@ -10754,8 +11182,12 @@ Begin
   Declare @physical_name nvarchar(260)
   Declare @ClauseMove nvarchar(max)
   Declare @BackupErr int
-
+  Declare @ValidationMessage nvarchar(4000)
+  Declare @QuotedSourceDb nvarchar(258)
+  Declare @QuotedTargetDb nvarchar(258)
   Set nocount on
+
+  Exec yInstall.AssertDboOnlyCanAdministerYourSqlDbaCode
   
   If @PathAndFilename is NULL 
   Begin
@@ -10769,6 +11201,18 @@ Begin
       return 
     End 
     Set @PathAndFilename = @FullBackupPath + @TargetDb + '.Bak'
+  End
+
+  Select
+    @ValidationMessage = ErrorMessage
+  , @QuotedSourceDb = SourceDb
+  , @QuotedTargetDb = TargetDb
+  , @PathAndFilename = FilePath
+  From yMaint.ValidateDelegatedDbManagement(@sourceDb, @TargetDb, @PathAndFilename)
+  If @ValidationMessage IS NOT NULL
+  Begin
+    raiserror(@ValidationMessage ,11,1)
+    return
   End
   
   Exec Maint.SaveDbCopyOnly @DbName=@sourceDb, @PathAndFilename=@PathAndFilename, @errorN = @BackupErr output
@@ -10790,17 +11234,17 @@ Begin
     name
   , physical_name
   , Charindex("\", Reverse(physical_name))
-  FROM [<DbName>].sys.database_files
+  FROM <DbName>.sys.database_files
   '
 
   Set @sql = replace(@sql, '"', '''')
-  Set @sql = replace(@sql, '<DbName>', @sourceDb)
+  Set @sql = replace(@sql, '<DbName>', @QuotedSourceDb)
   Set @sql = yExecNLog.Unindent_TSQL(@sql)
 
   Exec (@sql)
 
   Print '----------------------------------------------------------------------------------------------------'
-  Print 'Database ' + @TargetDb + ' is created from ' + @PathAndFilename
+  Print 'Database [' + @TargetDb + '] is created from ' + @PathAndFilename
   Print '----------------------------------------------------------------------------------------------------'
   Print ''
 
@@ -10808,7 +11252,7 @@ Begin
   
   -- Generate restore command
   Set @sql = 
-  'RESTORE DATABASE [<DbNameDest>]
+  'RESTORE DATABASE <DbNameDest>
    FROM DISK="<nomSauvegarde>" 
    WITH 
      stats=1,REPLACE
@@ -10838,13 +11282,13 @@ Begin
     If Replace(@name, @sourceDb, @TargetDb) <> @name
     Begin
       Set @AlterLogicalFiles = @AlterLogicalFiles 
-                             + ' ALTER DATABASE [<DbNameDest>] MODIFY FILE (NAME="<logicalname>", NEWNAME="<new_logicalname>")' 
+                             + ' ALTER DATABASE <DbNameDest> MODIFY FILE (NAME="<logicalname>", NEWNAME="<new_logicalname>")'
                              + nchar(13) 
                              + nchar(10)
-	  Set @AlterLogicalFiles = replace (@AlterLogicalFiles, '<DbNameDest>', @TargetDb)
-	  Set @AlterLogicalFiles = replace (@AlterLogicalFiles, '<logicalname>', @name)
-	  Set @AlterLogicalFiles = replace (@AlterLogicalFiles, '<new_logicalname>', Replace(@name, @sourceDb, @TargetDb) )
-	End
+	     Set @AlterLogicalFiles = replace (@AlterLogicalFiles, '<DbNameDest>', @QuotedTargetDb)
+	     Set @AlterLogicalFiles = replace (@AlterLogicalFiles, '<logicalname>', @name)
+	     Set @AlterLogicalFiles = replace (@AlterLogicalFiles, '<new_logicalname>', Replace(@name, @sourceDb, @TargetDb) )
+	   End
 
     Set @NoSeq = @NoSeq + 1
 
@@ -10854,18 +11298,29 @@ Begin
 
   Set @sql = Replace(@sql, '<ClauseMove>', '')
   Set @sql = replace (@sql, '"', '''')
-  Set @sql = replace (@sql, '<DbNameDest>', @TargetDb)
+  Set @sql = replace (@sql, '<DbNameDest>', @QuotedTargetDb)
   Set @sql = replace (@sql, '<nomSauvegarde>', @PathAndFilename)
   Set @sql = yExecNLog.Unindent_TSQL(@sql)
   
   Set @AlterLogicalFiles = replace (@AlterLogicalFiles, '"', '''')
   Set @AlterLogicalFiles = yExecNLog.Unindent_TSQL(@AlterLogicalFiles)  
 
-  -- Execute restore with original login permission
-  IF IS_SRVROLEMEMBER('sysadmin') = 0
-  BEGIN
-    EXECUTE AS LOGIN = ORIGINAL_LOGIN();
-  END
+  -- Delegated non-sysadmin users can only restore to target databases allowed by
+  -- yMaint.ValidateDelegatedDbManagement. Those targets must follow the delegated
+  -- naming rule and are therefore considered part of their delegated workspace.
+  --
+  -- Since those users cannot normally terminate active sessions themselves,
+  -- YourSqlDba clears existing connections to the target database before restore.
+  --
+  -- Sysadmin users are not restricted to delegated targets. For them, killing
+  -- sessions automatically could affect an unrelated or production database after
+  -- a parameter mistake, so they must handle active sessions explicitly.
+  If Not Exists(Select * From Maint.IsSysAdminSpecial (ORIGINAL_LOGIN()))
+     And DB_ID(@TargetDb) Is Not Null
+  Begin
+    Exec S#.KillDbUsers @db=@QuotedTargetDb
+  End
+
   Print @sql
   Exec (@sql)
 
@@ -10876,11 +11331,6 @@ Begin
     Print @AlterLogicalFiles
     Exec (@AlterLogicalFiles)
   End
-  
-  IF IS_SRVROLEMEMBER('sysadmin') = 0
-  BEGIN
-    REVERT
-  END
 
   If @KeepBackupFile = 0
   Begin
@@ -10902,6 +11352,7 @@ Create Or Alter Proc Maint.duplicateDbFromBackupHistory
 , @TargetDb nvarchar(512)
 , @DoLogBackup int = 1
 , @RestoreToSimpleRecoveryModel int = 1
+With Execute As Owner
 as 
 Begin
   Declare @sql nvarchar(max)
@@ -10921,8 +11372,12 @@ Begin
   Declare @MediaSetId int
   Declare @EncryptionAlgorithm nvarchar(10)
   Declare @EncryptionCertificate nvarchar(100)
-
+  Declare @ValidationMessage nvarchar(4000)
+  Declare @QuotedSourceDb nvarchar(258)
+  Declare @QuotedTargetDb nvarchar(258)
   Set nocount on
+
+  Exec yInstall.AssertDboOnlyCanAdministerYourSqlDbaCode
   
   Select 
     @lastFullBkpFile = lastFullBkpFile
@@ -10932,28 +11387,41 @@ Begin
   From Maint.JobLastBkpLocations
   Where dbName = @SourceDb
 
-  If @SourceDb = @TargetDb
+  Select
+    @ValidationMessage = ErrorMessage
+  , @QuotedSourceDb = SourceDb
+  , @QuotedTargetDb = TargetDb
+  , @lastFullBkpFile = FilePath
+  From yMaint.ValidateDelegatedDbManagement(@SourceDb, @TargetDb, @lastFullBkpFile)
+  If @ValidationMessage IS NOT NULL
   Begin
-    raiserror('@SourceDb and @TargetDb can''t be the same',11,1)
+    raiserror(@ValidationMessage ,11,1)
     return 
   End
 
-  If IsNull(@lastLogBkpFile, '') = ''
+  If IsNull(@lastFullBkpFile, '') = ''
   Begin
-    raiserror('No log backups has been done yet on this database.  Use «DuplicateDb» stored procedure to Duplicate this database',11,1)
+    raiserror('No full backups has been done yet on this database.  Use «DuplicateDb» stored procedure to Duplicate this database',11,1)
     return 
   End
   
   -- If sprecified do a last log backup for the database
-  If @DoLogBackup = 1
+  If @DoLogBackup = 1 And IsNull(@lastLogBkpFile, '') <> ''
   Begin
     Print '----------------------------------------------------------------------------------------------------'
-    Print 'Doing a log backup on source database « ' + @SourceDb + '» to have the most up to date data'
+    Print 'Doing a log backup on source database [' + @SourceDb + '] to have the most up to date data'
     Print '----------------------------------------------------------------------------------------------------'
     Print ''
   
     Set @sql = yMaint.MakeBackupCmd( @SourceDb, 'L', @lastLogBkpFile, 0, Null, @EncryptionAlgorithm, @EncryptionCertificate)
     Exec(@sql)        
+  End
+  Else If @DoLogBackup = 1
+  Begin
+    Print '----------------------------------------------------------------------------------------------------'
+    Print 'No log backup file is known for source database [' + @SourceDb + ']. Restoring from the full backup only.'
+    Print '----------------------------------------------------------------------------------------------------'
+    Print ''
   End
     
   Create Table #dbfiles( noseq int, name sysname, physical_name nvarchar(260), separateur int)
@@ -10968,17 +11436,17 @@ Begin
     name
   , physical_name
   , Charindex("\", Reverse(physical_name))
-  FROM [<DbName>].sys.database_files
+  FROM <DbName>.sys.database_files
   '
 
   Set @sql = replace(@sql, '"', '''')
-  Set @sql = replace(@sql, '<DbName>', @sourceDb)
+  Set @sql = replace(@sql, '<DbName>', @QuotedSourceDb)
   Set @sql = yExecNLog.Unindent_TSQL(@sql)
 
   Exec (@sql)
 
   Print '----------------------------------------------------------------------------------------------------'
-  Print 'Database ' + @TargetDb + ' is created from ' + @SourceDb + ' backup chain'
+  Print 'Database [' + @TargetDb + '] is created from [' + @SourceDb + '] backup chain'
   Print '----------------------------------------------------------------------------------------------------'
   Print ''
 
@@ -10986,13 +11454,13 @@ Begin
   
   -- Generate restore command
   Set @sql = 
-  'RESTORE DATABASE [<DbNameDest>]
+  'RESTORE DATABASE <DbNameDest>
    FROM DISK="<nomSauvegarde>" 
    WITH 
      stats=1,REPLACE,NORECOVERY
    <ClauseMove>
   <LogRestore>
-  Restore Log [<DbNameDest>] With Recovery   
+  Restore Database <DbNameDest> With Recovery
   '
 
   Set @NoSeq = 1
@@ -11019,10 +11487,10 @@ Begin
     If Replace(@name, @sourceDb, @TargetDb) <> @name
     Begin
       Set @AlterLogicalFiles = @AlterLogicalFiles 
-                             + ' ALTER DATABASE [<DbNameDest>] MODIFY FILE (NAME="<logicalname>", NEWNAME="<new_logicalname>")' 
+                             + ' ALTER DATABASE <DbNameDest> MODIFY FILE (NAME="<logicalname>", NEWNAME="<new_logicalname>")'
                              + nchar(13) 
                              + nchar(10)
-	     Set @AlterLogicalFiles = replace (@AlterLogicalFiles, '<DbNameDest>', @TargetDb)
+	     Set @AlterLogicalFiles = replace (@AlterLogicalFiles, '<DbNameDest>', @QuotedTargetDb)
 	     Set @AlterLogicalFiles = replace (@AlterLogicalFiles, '<logicalname>', @name)
 	     Set @AlterLogicalFiles = replace ( @AlterLogicalFiles, '<new_logicalname>'
 	                                      , Replace(@name, @sourceDb, @TargetDb) )
@@ -11090,9 +11558,9 @@ Begin
       If @@rowcount= 0
         break
         
-      Set @RestoreLog = 'Restore Log [<DbNameDest>] From Disk="<LogBackupFile>" With FILE=<Position>, NoRecovery'  
+      Set @RestoreLog = 'Restore Log <DbNameDest> From Disk="<LogBackupFile>" With FILE=<Position>, NoRecovery'
       
-      Set @RestoreLog = Replace(@RestoreLog, '<DbNameDest>', @TargetDb)
+      Set @RestoreLog = Replace(@RestoreLog, '<DbNameDest>', @QuotedTargetDb)
       Set @RestoreLog = Replace(@RestoreLog, '<LogBackupFile>', @LogBkpFile)
       Set @RestoreLog = Replace(@RestoreLog, '<Position>', Convert(nvarchar(255), @position))
       
@@ -11107,12 +11575,28 @@ Begin
   Set @sql = replace(@sql, '<LogRestore>', '')
   Set @sql = Replace(@sql, '<ClauseMove>', '')
   Set @sql = replace (@sql, '"', '''')
-  Set @sql = replace (@sql, '<DbNameDest>', @TargetDb)
+  Set @sql = replace (@sql, '<DbNameDest>', @QuotedTargetDb)
   Set @sql = replace (@sql, '<nomSauvegarde>', @lastFullBkpFile)
   Set @sql = yExecNLog.Unindent_TSQL(@sql)
     
   Set @AlterLogicalFiles = replace (@AlterLogicalFiles, '"', '''')
   Set @AlterLogicalFiles = yExecNLog.Unindent_TSQL(@AlterLogicalFiles)
+
+  -- Delegated non-sysadmin users can only restore to target databases allowed by
+  -- yMaint.ValidateDelegatedDbManagement. Those targets must follow the delegated
+  -- naming rule and are therefore considered part of their delegated workspace.
+  --
+  -- Since those users cannot normally terminate active sessions themselves,
+  -- YourSqlDba clears existing connections to the target database before restore.
+  --
+  -- Sysadmin users are not restricted to delegated targets. For them, killing
+  -- sessions automatically could affect an unrelated or production database after
+  -- a parameter mistake, so they must handle active sessions explicitly.
+  If Not Exists(Select * From Maint.IsSysAdminSpecial (ORIGINAL_LOGIN()))
+     And DB_ID(@TargetDb) Is Not Null
+  Begin
+    Exec S#.KillDbUsers @db=@QuotedTargetDb
+  End
     
   Begin Try  
     --Print @sql    
@@ -11143,8 +11627,8 @@ Begin
   -- Ensure database is in SIMPLE recovery model if parameter @RestoreToSimpleRecoveryModel is set to 1
   If @RestoreToSimpleRecoveryModel = 1
   Begin
-    Set @sql = 'ALTER DATABASE [<DbNameDest>] SET RECOVERY SIMPLE'
-    Set @sql = REPLACE(@sql, '<DbNameDest>', @TargetDb)
+    Set @sql = 'ALTER DATABASE <DbNameDest> SET RECOVERY SIMPLE'
+    Set @sql = REPLACE(@sql, '<DbNameDest>', @QuotedTargetDb)
     
     Exec (@sql)
   End
@@ -11157,9 +11641,11 @@ Create Or Alter Proc Maint.RestoreDb
   @TargetDb nvarchar(512)        -- database name to restore
 , @PathAndFilename nvarchar(512) -- complete file and path name must be given 
 , @ReplaceExistingDb int = 0  -- set to 1 to overwrite existing database «REPLACE option»
-With Execute as Self
+With Execute As Owner
 as 
 Begin
+
+  Exec yInstall.AssertDboOnlyCanAdministerYourSqlDbaCode
 
   If exists (select * from master.sys.databases where name = @TargetDb)
   and @ReplaceExistingDb = 0 
@@ -11184,6 +11670,9 @@ Begin
   Declare @ClauseMove nvarchar(max)
   Declare @AlterLogicalFiles nvarchar(max)
   declare @rc int
+  Declare @ValidationMessage nvarchar(4000)
+  Declare @QuotedDbName nvarchar(258)
+  Declare @QuotedTargetDb nvarchar(258)
   
   Set nocount on
 
@@ -11210,6 +11699,17 @@ Begin
     FROM master.sys.database_files 
     Where type = 1
 
+  If Not Exists
+     (
+     Select *
+     From S#.clr_FileExists(@PathAndFilename)
+     Where ExistsFlag = 1
+     )
+  Begin
+    Raiserror('Backup file does not exist: %s', 11, 1, @PathAndFilename)
+    Return
+  End
+
   -- recover database name from datase backup file
   -- if there is any errors thay are displayed from CollectBackupHeaderInfoFromBackupFile with a raiserrpr
   Exec @rc=yMaint.CollectBackupHeaderInfoFromBackupFile @PathAndFilename
@@ -11220,12 +11720,24 @@ Begin
   From Maint.TemporaryBackupHeaderInfo 
   Where spid = @@spid
 
+  Select
+    @ValidationMessage = ErrorMessage
+  , @QuotedDbName = SourceDb
+  , @QuotedTargetDb = TargetDb
+  , @PathAndFilename = FilePath
+  From yMaint.ValidateDelegatedDbManagement(@DbName, @TargetDb, @PathAndFilename)
+  If @ValidationMessage IS NOT NULL
+  Begin
+    raiserror(@ValidationMessage ,11,1)
+    return
+  End
+
   Exec @rc=yMaint.CollectBackupFileListFromBackupFile @PathAndFilename
   If @rc <> 0
     Return
 
   Print '----------------------------------------------------------------------------------------------------'
-  Print 'Database ' + @TargetDb + ' is created from ' + @PathAndFilename
+  Print 'Database [' + @TargetDb + '] is created from ' + @PathAndFilename
   Print '----------------------------------------------------------------------------------------------------'
   Print ''
 
@@ -11233,7 +11745,7 @@ Begin
 
   -- Generate restore command
   Set @sql = 
-  'RESTORE DATABASE [<DbNameDest>]
+  'RESTORE DATABASE <DbNameDest>
    FROM DISK="<nomSauvegarde>" 
    WITH 
    <ClauseMove><Replace>
@@ -11262,10 +11774,10 @@ Begin
     If Replace(@LogicalName, @DbName, @TargetDb) <> @LogicalName
     Begin
       Set @AlterLogicalFiles = @AlterLogicalFiles 
-                             + ' ALTER DATABASE [<DbNameDest>] MODIFY FILE (NAME="<logicalname>", NEWNAME="<new_logicalname>")' 
+                             + ' ALTER DATABASE <DbNameDest> MODIFY FILE (NAME="<logicalname>", NEWNAME="<new_logicalname>")'
                              + nchar(13) 
                              + nchar(10)
-      Set @AlterLogicalFiles = replace (@AlterLogicalFiles, '<DbNameDest>', @TargetDb)
+      Set @AlterLogicalFiles = replace (@AlterLogicalFiles, '<DbNameDest>', @QuotedTargetDb)
       Set @AlterLogicalFiles = replace (@AlterLogicalFiles, '<logicalname>', @LogicalName)
       Set @AlterLogicalFiles = replace ( @AlterLogicalFiles
                                        , '<new_logicalname>'
@@ -11333,7 +11845,7 @@ Begin
 
   Set @sql = Replace(@sql, ',<ClauseMove>', '')
   Set @sql = replace (@sql, '"', '''')
-  Set @sql = replace (@sql, '<DbNameDest>', @TargetDb)
+  Set @sql = replace (@sql, '<DbNameDest>', @QuotedTargetDb)
   Set @sql = replace (@sql, '<nomSauvegarde>', @PathAndFilename)
   Set @sql = replace ( @sql
                      , '<Replace>'
@@ -11342,6 +11854,22 @@ Begin
 
   Set @AlterLogicalFiles = replace (@AlterLogicalFiles, '"', '''')
   Set @AlterLogicalFiles = yExecNLog.Unindent_TSQL(@AlterLogicalFiles)
+
+  -- Delegated non-sysadmin users can only restore to target databases allowed by
+  -- yMaint.ValidateDelegatedDbManagement. Those targets must follow the delegated
+  -- naming rule and are therefore considered part of their delegated workspace.
+  --
+  -- Since those users cannot normally terminate active sessions themselves,
+  -- YourSqlDba clears existing connections to the target database before restore.
+  --
+  -- Sysadmin users are not restricted to delegated targets. For them, killing
+  -- sessions automatically could affect an unrelated or production database after
+  -- a parameter mistake, so they must handle active sessions explicitly.
+  If Not Exists(Select * From Maint.IsSysAdminSpecial (ORIGINAL_LOGIN()))
+     And DB_ID(@TargetDb) Is Not Null
+  Begin
+    Exec S#.KillDbUsers @db=@QuotedTargetDb
+  End
   
   Print @sql
   Exec (@sql)
@@ -11367,6 +11895,9 @@ GO
 grant execute on Maint.DuplicateDbFromBackupHistory to guest
 GO
 grant execute on Maint.RestoreDb to guest
+GO
+grant execute on Maint.DeleteOldBackups to guest
+GO
 -- some tests
 --Exec Maint.SaveDbOnNewFileSet 
 --  @DbName = 'RegardMaurice'
@@ -11460,6 +11991,8 @@ Begin
   ---------------------------------------------------------------------------------------
   -- Setup of 2 maintenance tasks
   ---------------------------------------------------------------------------------------
+  Exec yInstall.AssertDboOnlyCanAdministerYourSqlDbaCode
+
   Declare @nomJob Sysname
 
   If right(@FullBackupPath, 1)<>'\'
@@ -11905,6 +12438,8 @@ As
 
 Begin
   Set nocount on
+
+  Exec yInstall.AssertDboOnlyCanAdministerYourSqlDbaCode
 
   If @ConsecutiveDaysOfFailedBackupsToPutDbOffline < 1
   Begin
@@ -12463,6 +12998,8 @@ Create Or Alter Proc Install.UpdateMaintenanceTasksParam
 , @paramValue nvarchar(max)
 as
 Begin
+  Exec yInstall.AssertDboOnlyCanAdministerYourSqlDbaCode
+
   Update msdb.dbo.sysjobsteps 
   Set 
     command = yInstall.ReplaceParamValue(command, @paramName, @paramValue )  
@@ -12585,14 +13122,13 @@ Begin
   '
   Exec (@sql)
 
-  If Object_Id('tempdb..##NetworkDrivesToSetOnStartup') IS NOT NULL
+  If Object_Id('YourSqlDbaUpgradeSavedInfos.dbo.NetworkDrivesToSetOnStartup') IS NOT NULL
     Exec
     (
     '
     Insert Into Maint.NetworkDrivesToSetOnStartup ([DriveLetter],[Unc]) 
     Select [DriveLetter],[Unc]
-    From ##NetworkDrivesToSetOnStartup
-    Drop table if exists ##NetworkDrivesToSetOnStartup
+    From YourSqlDbaUpgradeSavedInfos.dbo.NetworkDrivesToSetOnStartup
     '
     )
 End
@@ -12610,6 +13146,8 @@ Begin
   Declare @cmd nvarchar(4000)
 
   Set nocount on
+
+  Exec yInstall.AssertDboOnlyCanAdministerYourSqlDbaCode
 
   Exec yMaint.SaveXpCmdShellStateAndAllowItTemporary 
 
@@ -12674,6 +13212,8 @@ Begin
   Declare @cmd nvarchar(4000)
 
   Set nocount on
+
+  Exec yInstall.AssertDboOnlyCanAdministerYourSqlDbaCode
 
   If Len(@DriveLetterOrUNC) = 1
     Set @DriveLetterOrUNC = @DriveLetterOrUNC + ':'
@@ -12797,6 +13337,8 @@ Begin
 
   Set NoCount on
 
+  Exec yInstall.AssertDboOnlyCanAdministerYourSqlDbaCode
+
   Exec yMirroring.ReportYourSqlDbaVersionOnTargetServers 
     @MirrorServer = @MirrorServer
   , @remoteVersion = @remoteServerYourSqlDbaVersion Output
@@ -12882,6 +13424,8 @@ Begin
   -- the correct originating JobNo and its parameters whenever needed.
 
   Set Nocount on
+  Exec yInstall.AssertDboOnlyCanAdministerYourSqlDbaCode
+
   Declare @RestoreSeq Int
   Declare @errorN Int
   Declare @jobNo Int
@@ -13101,6 +13645,8 @@ Begin
   Declare @remoteServerYourSqlDbaVersion nvarchar(100)
 
   Set NoCount on
+
+  Exec yInstall.AssertDboOnlyCanAdministerYourSqlDbaCode
      
   -- Create a link server for the Mirror
   
@@ -13581,7 +14127,8 @@ Begin
       End
       Else
       Begin
-        Raiserror (N'%s: %s %s', 11, 1, @@SERVERNAME, @Sql, @Msgs)    
+        Declare @serverName sysname = S#.Servername()
+        Raiserror (N'%s: %s %s', 11, 1, @serverName, @Sql, @Msgs)    
       End
     End  
   End Try
@@ -13670,8 +14217,7 @@ GO
 -- or services to connect. The DBA needs to have a means to have exclusive
 -- access to new datasource definitions or connect strings 
 -- reflecting the new databases names.
--- Suffix supplied by @DbNameSuffixForMaintenance is 
--- added to the name of databases supplied by @dbList.  The backup
+-- The fixed suffix MaintenanceMode is added to the name of databases supplied by @dbList.  The backup
 -- reflect the name of the new database name and is placed into the backup path.
 -- Backup can be bypassed by supplying empty string to @PathOfBackupBeforeMaintenance 
 -- but it is obviously not recommanded.
@@ -13686,15 +14232,18 @@ GO
 -- @@MARK: Tooling for database on application update
 Create Or Alter Procedure Maint.PrepDbForMaintenanceMode 
   @DbList nVARCHAR(max) = '' -- @DbList : See comments later for further explanations
-, @DbNameSuffixForMaintenance nvarchar(128)
 , @PathOfBackupBeforeMaintenance nvarchar(512) = NULL 
 , @SetRecoveryModeToSimple int = 0
+With Execute As Owner
 as
 Begin 
  
   Set nocount on    
+
+  Exec yInstall.AssertDboOnlyCanAdministerYourSqlDbaCode
   
-  Set @DbNameSuffixForMaintenance= isnull(@DbNameSuffixForMaintenance, '')
+  Declare @ValidationMessage nvarchar(4000)
+
   Set @PathOfBackupBeforeMaintenance = ISNULL (@PathOfBackupBeforeMaintenance, '')
   
   If Right(@PathOfBackupBeforeMaintenance ,1) = '\'
@@ -13702,9 +14251,10 @@ Begin
         Left(@PathOfBackupBeforeMaintenance, len(@PathOfBackupBeforeMaintenance) - 1)
     
   Select d.name collate database_default as Dbname, bl.lastLogBkpFile, bl.EncryptionAlgorithm, bl.EncryptionCertificate, row_number() over (order by line) seq 
-  into #Tmp
+  into #PrepDbForMaintenanceModeDbList
   From 
-    yUtl.SplitParamInRows (@dbList) AS X
+    Maint.MaintenanceEnums as E
+    CROSS APPLY yUtl.SplitParamInRows (@dbList) AS X
     
     join 
     master.sys.databases d
@@ -13714,7 +14264,7 @@ Begin
     Maint.JobLastBkpLocations bl
     on bl.dbName = d.name collate database_default
     
-  Where d.name Not Like ('%[_]' + replace(@DbNameSuffixForMaintenance, '_', '[_]'));
+  Where d.name collate database_default Not Like ('%[_]' + replace(E.MaintenanceModeSuffix, '_', '[_]'));
 
 
   Declare @name sysname
@@ -13731,46 +14281,56 @@ Begin
   Begin
 
     Select top 1 @name = DbName, @seq = seq, @lastLogBkpFile = lastLogBkpFile, @EncryptionAlgorithm = EncryptionAlgorithm, @EncryptionCertificate = EncryptionCertificate
-    from #Tmp Where seq > @seq Order by seq
+    from #PrepDbForMaintenanceModeDbList Where seq > @seq Order by seq
 
     If @@rowcount = 0 break
 
+    Select @ValidationMessage = ErrorMessage
+    From Maint.MaintenanceEnums as E
+      CROSS APPLY yMaint.ValidateDelegatedDbManagement(@name, @name + '_' + E.MaintenanceModeSuffix, NULL)
+    If @ValidationMessage IS NOT NULL
+    Begin
+      Raiserror(@ValidationMessage, 11, 1)
+      Return
+    End
+
     Begin Try
 
-      Set @sql = 
-      '
-      If Db_name() <> "Master"  Use master;
-      Update [YourSQLDba].[Maint].[JobLastBkpLocations] Set keepTrace=1 Where dbName="<db>"    
-      If Not Exists (Select * From [<db>].sys.tables Where name="RecoveryModelBeforePrepDbForMaintenanceMode")
-        Select convert(sysname, DATABASEPROPERTYEX ("<db>", "recovery")) as recovery_model_desc 
-        Into [<db>].dbo.RecoveryModelBeforePrepDbForMaintenanceMode
-	   
-	    Alter database [<db>] Set Single_User With Rollback  Immediate
-	    Alter database [<db>] MODIFY NAME = [<db>_<suffix>]
-	    Alter database [<db>_<suffix>] Set MULTI_USER With Rollback  Immediate	 
-      '
-      Set @sql = replace(@sql, '<db>', @name)
-      Set @sql = replace(@sql, '<suffix>', @DbNameSuffixForMaintenance)
-      Set @sql = replace(@sql, '"', '''')
+      Select @sql = Code
+      From
+        (Select jPrms=(Select DbName=@name, MaintenanceModeSuffix From Maint.MaintenanceEnums For JSON PATH)) as jPrms
+        CROSS APPLY S#.GetTemplateFromCmtAndReplaceTags('===PrepDbForMaintenanceMode_RenameDb===', NULL, jPrms) as Sql
+/*===PrepDbForMaintenanceMode_RenameDb===
+If Db_name() <> 'Master'  Use master;
+Update [YourSQLDba].[Maint].[JobLastBkpLocations] Set keepTrace=1 Where dbName='#DbName#'
+If Not Exists (Select * From [#DbName#].sys.tables Where name='RecoveryModelBeforePrepDbForMaintenanceMode')
+  Select convert(sysname, DATABASEPROPERTYEX ('#DbName#', 'recovery')) as recovery_model_desc 
+  Into [#DbName#].dbo.RecoveryModelBeforePrepDbForMaintenanceMode
+
+Exec [YourSQLDba].S#.killDbUsers @db=[#DbName#]
+Alter database [#DbName#] Set Single_User With Rollback Immediate
+Alter database [#DbName#] MODIFY NAME = [#DbName#_#MaintenanceModeSuffix#]
+Alter database [#DbName#_#MaintenanceModeSuffix#] Set MULTI_USER With Rollback Immediate
+Print '#DbName# renamed to #DbName#_#MaintenanceModeSuffix# for maintenance'
+===PrepDbForMaintenanceMode_RenameDb===*/
     
       --print @sql
       exec(@sql)
-      Set @sql = 
-      '
-      use [<db>_<suffix>];
+      Select @sql = Code
+      From
+        (Select jPrms=(Select DbName=@name, MaintenanceModeSuffix From Maint.MaintenanceEnums For JSON PATH)) as jPrms
+        CROSS APPLY S#.GetTemplateFromCmtAndReplaceTags('===PrepDbForMaintenanceMode_SetLogMark===', NULL, jPrms) as Sql
+/*===PrepDbForMaintenanceMode_SetLogMark===
+Use [#DbName#_#MaintenanceModeSuffix#];
 
-	    Begin Transaction PrepDbForMaintenanceMode With mark "Mark to point in time restore for RestoreDbAtStartOfMaintenanceMode"
-      Update dbo.RecoveryModelBeforePrepDbForMaintenanceMode Set recovery_model_desc = recovery_model_desc
-      Commit Transaction PrepDbForMaintenanceMode
-      '
-      Set @sql = replace(@sql, '<db>', @name)
-      Set @sql = replace(@sql, '<suffix>', @DbNameSuffixForMaintenance)
-      Set @sql = replace(@sql, '"', '''')
+Begin Transaction PrepDbForMaintenanceMode With mark 'Mark to point in time restore for RestoreDbAtStartOfMaintenanceMode'
+Update dbo.RecoveryModelBeforePrepDbForMaintenanceMode Set recovery_model_desc = recovery_model_desc
+Commit Transaction PrepDbForMaintenanceMode
+===PrepDbForMaintenanceMode_SetLogMark===*/
     
       --print @sql
       exec(@sql)
       
-      Print @name + ' renamed to ' + @name + '_' + @DbNameSuffixForMaintenance + ' for maintenance'
     End Try
     Begin Catch
       Set @msgErr = @name + '> ' + ERROR_MESSAGE()
@@ -13787,18 +14347,21 @@ Begin
         -- Always make a log backup if the database has a log backup file exists for this database
         If @lastLogBkpFile IS Not Null
         Begin
-          Set @sql = yMaint.MakeBackupCmd( @name + '_' + @DbNameSuffixForMaintenance, 'L', @lastLogBkpFile, 0, Null, @EncryptionAlgorithm, @EncryptionCertificate)
+          Select @sql = BkpCmd.Sql
+          From Maint.MaintenanceEnums as E
+            CROSS APPLY yMaint.iTvf_MakeBackupCmd( @name + '_' + E.MaintenanceModeSuffix, 'L', @lastLogBkpFile, 0, Null, @EncryptionAlgorithm, @EncryptionCertificate) as BkpCmd
           exec(@sql)        
         End               
       
         If @PathOfBackupBeforeMaintenance <> ''
         Begin
-          Set @sql = 'EXECUTE [YourSQLDba].[Maint].[SaveDbCopyOnly] @dbname = "<db>_<suffix>",@PathAndFilename="<backuppath>\<db>_<suffix>.Bak"'
-          
-          Set @sql = replace(@sql, '<db>', @name)
-          Set @sql = replace(@sql, '<suffix>', @DbNameSuffixForMaintenance)
-          Set @sql = replace(@sql, '<backuppath>', @PathOfBackupBeforeMaintenance)    
-          Set @sql = replace(@sql, '"', '''')
+          Select @sql = Code
+          From
+            (Select jPrms=(Select DbName=@name, MaintenanceModeSuffix, PathOfBackupBeforeMaintenance=@PathOfBackupBeforeMaintenance From Maint.MaintenanceEnums For JSON PATH)) as jPrms
+            CROSS APPLY S#.GetTemplateFromCmtAndReplaceTags('===PrepDbForMaintenanceMode_SaveDbCopyOnly===', NULL, jPrms) as Sql
+/*===PrepDbForMaintenanceMode_SaveDbCopyOnly===
+EXECUTE [YourSQLDba].[Maint].[SaveDbCopyOnly] @dbname = '#DbName#_#MaintenanceModeSuffix#', @PathAndFilename='#PathOfBackupBeforeMaintenance#\#DbName#_#MaintenanceModeSuffix#.Bak'
+===PrepDbForMaintenanceMode_SaveDbCopyOnly===*/
           
           exec(@sql)        
 
@@ -13806,7 +14369,8 @@ Begin
       
       End Try
       Begin Catch
-        Set @msgErr = @name + '_' + @DbNameSuffixForMaintenance + '> ' + ERROR_MESSAGE()
+        Select @msgErr = @name + '_' + E.MaintenanceModeSuffix + '> ' + ERROR_MESSAGE()
+        From Maint.MaintenanceEnums as E
         Raiserror (N'%s', 11, 1, @msgErr)
       End Catch
       
@@ -13817,23 +14381,24 @@ Begin
     -- recovery model to simple during the maintenance
     if @SetRecoveryModeToSimple = 1
     begin
-        Set @sql = 
-    '   
-    if DATABASEPROPERTYEX ("<db>_<suffix>", "recovery") <> "SIMPLE" 
-	     Alter database [<db>_<suffix>] Set RECOVERY SIMPLE WITH NO_WAIT	   
-    '
-      Set @sql = replace(@sql, '<db>', @name)
-      Set @sql = replace(@sql, '<suffix>', @DbNameSuffixForMaintenance)
-      Set @sql = replace(@sql, '"', '''')
+      Select @sql = Code
+      From
+        (Select jPrms=(Select DbName=@name, MaintenanceModeSuffix From Maint.MaintenanceEnums For JSON PATH)) as jPrms
+        CROSS APPLY S#.GetTemplateFromCmtAndReplaceTags('===PrepDbForMaintenanceMode_SetRecoverySimple===', NULL, jPrms) as Sql
+/*===PrepDbForMaintenanceMode_SetRecoverySimple===
+If DATABASEPROPERTYEX ('#DbName#_#MaintenanceModeSuffix#', 'recovery') <> 'SIMPLE' 
+  Alter database [#DbName#_#MaintenanceModeSuffix#] Set RECOVERY SIMPLE WITH NO_WAIT
+Print '#DbName#_#MaintenanceModeSuffix# is in SIMPLE recovery model'
+===PrepDbForMaintenanceMode_SetRecoverySimple===*/
       
       Begin Try
         --print @sql
         exec(@sql)
         
-        Print @name + '_' + @DbNameSuffixForMaintenance + ' is in SIMPLE recovery model'
       End Try
       Begin Catch
-        Set @msgErr = @name + '_' + @DbNameSuffixForMaintenance + '> ' + ERROR_MESSAGE()
+        Select @msgErr = @name + '_' + E.MaintenanceModeSuffix + '> ' + ERROR_MESSAGE()
+        From Maint.MaintenanceEnums as E
         Raiserror (N'%s', 11, 1, @msgErr)
       End Catch
       
@@ -13841,7 +14406,6 @@ Begin
 
 
   End
-
 End -- Maint.PrepDbForMaintenanceMode
 GO
 -- -------------------------------------------------------------------------
@@ -13865,7 +14429,7 @@ Begin
   '
   Restore Database [<db>] From Disk = "<FullBackupFile>" With NoRecovery ,stats=1, replace
   <LogRestore>
-  Restore Log [<db>] With Recovery
+  Restore Log [<db>] With Recovery;
   '
 
   -- Find all log backups associated with the full backup    
@@ -13950,14 +14514,17 @@ GO
 -- -------------------------------------------------------------------------
 Create Or Alter Procedure Maint.RestoreDbAtStartOfMaintenanceMode 
   @DbList nVARCHAR(max) 
-, @DbNameSuffixForMaintenance nvarchar(128) 
 , @PathOfBackupBeforeMaintenance nvarchar(512) = NULL
+With Execute As Owner
 as
 Begin 
  
   Set nocount on    
+
+  Exec yInstall.AssertDboOnlyCanAdministerYourSqlDbaCode
   
-  Set @DbNameSuffixForMaintenance = isnull(@DbNameSuffixForMaintenance, '')
+  Declare @ValidationMessage nvarchar(4000)
+
   Set @PathOfBackupBeforeMaintenance = ISNULL (@PathOfBackupBeforeMaintenance, '')
   
   If Right(@PathOfBackupBeforeMaintenance ,1) = '\'
@@ -13965,23 +14532,26 @@ Begin
         Left(@PathOfBackupBeforeMaintenance, len(@PathOfBackupBeforeMaintenance) - 1)
     
   Select 
-    d.name collate database_default as Dbname
+    SourceDb = x.line collate database_default
+  , d.name collate database_default as Dbname
   , lastLogBkpFile
   , lastFullBkpFile
   , row_number() over (order by line) seq 
-  into #Tmp
+  into #RestoreDbAtStartOfMaintenanceModeDbList
   From 
-    yUtl.SplitParamInRows (@dbList) AS X
+    Maint.MaintenanceEnums as E
+    CROSS APPLY yUtl.SplitParamInRows (@dbList) AS X
     
     join 
     master.sys.databases d
-    on d.name = x.line + '_' + @DbNameSuffixForMaintenance collate database_default
+    on d.name = x.line + '_' + E.MaintenanceModeSuffix collate database_default
   
     left join
     Maint.JobLastBkpLocations bl
     on bl.dbName = x.line collate database_default
-  
+
   Declare @name sysname
+  Declare @SourceDb sysname
   Declare @sql nvarchar(max)
   Declare @seq int
   Declare @lastLogBkpFile nvarchar(512)
@@ -13993,13 +14563,22 @@ Begin
   While (1=1)
   Begin
 
-    Select top 1 @name = DbName
+    Select top 1 @SourceDb = SourceDb
+               , @name = DbName
                , @seq = seq
                , @lastLogBkpFile = lastLogBkpFile
                , @lastFullBkpFile = lastFullBkpFile
-    from #Tmp Where seq > @seq Order by seq
+    from #RestoreDbAtStartOfMaintenanceModeDbList Where seq > @seq Order by seq
 
     If @@rowcount = 0 break
+
+    Select @ValidationMessage = ErrorMessage
+    From yMaint.ValidateDelegatedDbManagement(@SourceDb, @name, NULL)
+    If @ValidationMessage IS NOT NULL
+    Begin
+      Raiserror(@ValidationMessage, 11, 1)
+      Return
+    End
 
     If @PathOfBackupBeforeMaintenance = '' And @lastLogBkpFile Is Null
     Begin 
@@ -14017,9 +14596,10 @@ Begin
         Begin
           -- Kill all connection Before launching the RESTORE Command
           Set @sql = '
+          Exec YourSqlDba.S#.killDbUsers @db=[<db>]
           ALTER DATABASE [<db>] SET Single_User WITH ROLLBACK IMMEDIATE
-          ALTER DATABASE [<db>] SET MULTI_USER WITH ROLLBACK IMMEDIATE
           Restore Database [<db>] From Disk = "<backuppath>\<db>.Bak" With stats=1, replace
+          ALTER DATABASE [<db>] SET MULTI_USER WITH ROLLBACK IMMEDIATE
           '
         
           Set @sql = replace(@sql, '<db>', @name)
@@ -14039,9 +14619,11 @@ Begin
 
           -- Kill all connection Before launching the RESTORE Command
           Set @sql = '
-          ALTER DATABASE [<db>] SET Single_user WITH ROLLBACK IMMEDIATE
-          ALTER DATABASE [<db>] SET MULTI_USER WITH ROLLBACK IMMEDIATE
-          '+@Sql
+          Exec YourSqlDba.S#.killDbUsers @db=[<db>]
+          ALTER DATABASE [<db>] SET Single_user WITH ROLLBACK IMMEDIATE;
+          '+@Sql+
+          'ALTER DATABASE [<db>] SET MULTI_USER WITH ROLLBACK IMMEDIATE;'
+
                  
           Set @sql = replace(@sql, '<db>', @name)
           Set @sql = replace(@sql, '<backuppath>', @PathOfBackupBeforeMaintenance)    
@@ -14063,13 +14645,13 @@ Begin
      
   End
   
-  Drop Table If Exists #Tmp
+  Drop Table If Exists #RestoreDbAtStartOfMaintenanceModeDbList
 
 End -- Maint.RestoreDbAtStartOfMaintenanceMode
 GO
 -- --------------------------------------------------------------------------
 -- Restore databases names to their original value and original recovery mode.
--- Database list need to be supplied, and suffix use to rename the database.
+-- Database list need to be supplied. The fixed MaintenanceMode suffix is used to rename the database.
 -- If the database is part of regular YourSqlDba full backups, then a new
 -- file backup set (a new total backup and a new log backup are directed to 
 -- a new file set) so you keep backup before maintenance process.
@@ -14078,109 +14660,101 @@ GO
 -- -------------------------------------------------------------------------
 Create Or Alter Procedure Maint.ReturnDbToNormalUseFromMaintenanceMode 
   @DbList nVARCHAR(max) = '' -- @DbList : See comments later for further explanations
-, @DbNameSuffixForMaintenance nvarchar(128)
+With Execute As Owner
 as
 Begin 
-
   Set nocount on
 
-  Set @DbNameSuffixForMaintenance= isnull(@DbNameSuffixForMaintenance, '')
-
-  Select d.name as Dbname, row_number() over (order by line) seq 
-  into #Tmp
-  From 
-    yUtl.SplitParamInRows (@dbList) AS X
-    join 
-    master.sys.databases d
-    on d.name collate database_default = x.line  + '_' + @DbNameSuffixForMaintenance
-
-  Declare @dbOrig sysname
-  Declare @sql nvarchar(max)
-  Declare @seq int
-  Declare @msgErr nvarchar(max)
-  Declare @DbAndSuffix sysname
-  Declare @recovery_model_saved Int
-  Declare @recovery_model sysname 
- 
-  Set @seq = 0
-
-  Select * from #tmp
-
-  Begin Try
+  Exec yInstall.AssertDboOnlyCanAdministerYourSqlDbaCode 
+  Declare @seq int = 0
+  Declare @Sql Nvarchar(max)
+  Declare @ErrMsg Nvarchar(4000)
 
   While (1=1)
   Begin
-      
-    Select top 1 @DbAndSuffix = DbName, @seq = seq 
-    from #Tmp Where seq > @seq Order by seq
+    Select top 1 @Sql=S.Code, @ErrMsg=db.ErrMsg, @Seq=db.Seq
+    From
+      (
+      Select 
+        DbOrig = DbOrig.DbOrig
+      , DbAndSuffix = d.name
+      , ErrMsg=ISNULL(V.ErrorMessage,'')
+      , j
+      , seq = row_number() over (order by line)
+      From 
+        (Select dbList=@dbList, suffix=MaintenanceModeSuffix From Maint.MaintenanceEnums) as Prm
+        CROSS APPLY yUtl.SplitParamInRows (Prm.dbList) AS X
+        join 
+        master.sys.databases d
+        on d.name collate database_default = x.line  + '_' + Prm.Suffix
+        CROSS APPLY (Select DbOrig = STUFF(d.name, len(d.name)-Len(Prm.Suffix), Len(Prm.Suffix)+1, '')) as DbOrig
+        CROSS APPLY (Select DbAndSuffix=Suffix) as DbAndSuffix
+        OUTER APPLY yMaint.ValidateDelegatedDbManagement(DbOrig, d.name, NULL) as V
+        CROSS APPLY (select ErrMsg=ISNULL(V.ErrorMessage,'')) as ErrMsg
+        CROSS APPLY (Select j=(Select DbOrig, DbOrigQuoted=QuoteName(DbOrig.DbOrig)
+                                    , DbAndSuffix=QuoteName(d.Name), ErrMsg 
+                               For Json path)
+                    ) as j
+      ) as db
+      CROSS APPLY S#.GetTemplateFromCmtAndReplaceTags('===ReturnDbToNormalUseFromMaintenanceMode===',null, j) as S
+      /*===ReturnDbToNormalUseFromMaintenanceMode===
+      Begin Try 
 
-    If @@rowcount = 0 break
+        If Len(IsNull(@ErrMsg, N'')) > 0 
+        Begin
+          Raiserror(@ErrMsg, 11, 1)
+          Return
+        End
 
-    -- remove the suffix from the name
-    Set @dbOrig = STUFF(  @DbAndSuffix
-                      , len(@DbAndSuffix)-Len(@DbNameSuffixForMaintenance)
-                      , Len(@DbNameSuffixForMaintenance)+1, ''
-                      )
+        Use #DbAndSuffix#;
 
-    Set @sql = 
-    '
-    Use [<DbAndSuffix>];
-    Set @recovery_model_saved = 
-    convert(int, objectpropertyex(object_id("dbo.RecoveryModelBeforePrepDbForMaintenanceMode"), "isUserTable"))
-    '
-    Set @sql = replace(@sql, '<DbAndSuffix>', @DbAndSuffix)
-    Set @sql = replace(@sql, '"', '''')
-    Exec Sp_ExecuteSql @Sql, N'@recovery_model_saved int output', @recovery_model_saved Output
+        Declare @recovery_model as sysname = NULL
+        -- the table exists
+        If object_id('dbo.RecoveryModelBeforePrepDbForMaintenanceMode') IS NOT NULL
+        Begin 
+          Select @recovery_model = recovery_model_desc From dbo.RecoveryModelBeforePrepDbForMaintenanceMode
+        End
 
-    If @Recovery_model_saved = 1
-    Begin
-      Set @sql = 'select @recovery_model = recovery_model_desc From [<DbAndSuffix>].dbo.RecoveryModelBeforePrepDbForMaintenanceMode'
-      Set @sql = replace(@sql, '<DbAndSuffix>', @DbAndSuffix)
-      Exec Sp_ExecuteSql @Sql, N'@recovery_model sysname output', @recovery_model Output
-   
-      Set @sql = 
-      '
-      If Db_name() <> "Master"  Use Master;
-	     Alter database [<DbAndSuffix>] SET Single_User WITH ROLLBACK IMMEDIATE
-	     Alter database [<DbAndSuffix>] SET Multi_User
-      Alter Database [<DbAndSuffix>] Set RECOVERY <recovery_model>
-      Drop Table If Exists [<DbAndSuffix>].dbo.RecoveryModelBeforePrepDbForMaintenanceMode
-      '
-      Set @sql = replace(@sql, '<DbAndSuffix>', @DbAndSuffix)
-      Set @sql = replace(@sql, '<recovery_model>', @recovery_model)
-      Set @sql = replace(@sql, '"', '''')
-      Exec (@sql)
-    End
+        Use Master;
 
-    Set @sql = 
-    '
-    If Db_name() <> "Master"  Use Master;
-      Alter database [<DbAndSuffix>] SET Single_user WITH ROLLBACK IMMEDIATE
-      Alter database [<DbAndSuffix>] MODIFY NAME = [<db>]
-      Alter database [<db>] Set MULTI_USER With Rollback  Immediate
-    '
-    Set @sql = replace(@sql, '<DbAndSuffix>', @DbAndSuffix)
-    Set @sql = replace(@sql, '<Db>', @dbOrig)
-    Set @sql = replace(@sql, '"', '''')
-    Exec (@sql)
- 	   
-    If Exists(Select *
-              From [YourSQLDba].[Maint].[JobLastBkpLocations]
-              Where dbName=@DbOrig
-                And lastFullBkpFile Is Not Null)
-    Begin
-   	  Exec [YourSQLDba].[Maint].[SaveDbOnNewFileSet] @DbName=@DbOrig
-      Update [YourSQLDba].[Maint].[JobLastBkpLocations] Set keepTrace=0 Where dbName=@DbOrig
-	   End
+        Exec YourSqlDba.S#.killDbUsers @db=#DbAndSuffix#
+	       Alter database #DbAndSuffix# SET Single_User WITH ROLLBACK IMMEDIATE
+        If @recovery_model is not null
+          Exec('Alter Database #DbAndSuffix# Set RECOVERY '+@recovery_model)
 
-    Print @dbOrig + ' returned to normal use'
+        Drop Table If Exists #DbAndSuffix#.dbo.RecoveryModelBeforePrepDbForMaintenanceMode
+
+        Exec YourSqlDba.S#.killDbUsers @db=#DbAndSuffix#
+        Alter database #DbAndSuffix# SET Single_user WITH ROLLBACK IMMEDIATE
+        Alter database #DbAndSuffix# MODIFY NAME = #DbOrigQuoted#
+        Alter database #DbOrigQuoted# Set MULTI_USER With Rollback  Immediate
+        If Exists
+           (
+           Select *
+           From [YourSQLDba].[Maint].[JobLastBkpLocations]
+           Where dbName collate database_default = '#DbOrig#'
+             And lastFullBkpFile Is Not Null
+           )
+        Begin
+   	      Exec [YourSQLDba].[Maint].[SaveDbOnNewFileSet] @DbName='#DbOrig#'
+          Update [YourSQLDba].[Maint].[JobLastBkpLocations] Set keepTrace=0 Where dbName collate database_default = '#DbOrig#'
+	       End
+        Print '#dbOrig# returned to normal use'
+      End Try
+      Begin Catch
+        Declare @msgErr Nvarchar(4000)
+        Set @msgErr = '#dbOrig#> ' + ERROR_MESSAGE()
+        Raiserror (N'%s', 11, 1, @msgErr)
+      End Catch
+
+      Print '#dbOrig# database is returned to normal use'
+      ===ReturnDbToNormalUseFromMaintenanceMode===*/
+    Where db.seq > @Seq
+    Order by db.Seq
+    If @@rowcount = 0 
+      Break
+    Exec sp_executeSql @Sql, N'@ErrMsg nvarchar(4000)', @ErrMsg=@ErrMsg
   End
-
-  End Try
-  Begin Catch
-    Set @msgErr = @DbOrig + '> ' + ERROR_MESSAGE()
-    Raiserror (N'%s', 11, 1, @msgErr)
-  End Catch
 
 
 End -- Maint.ReturnDbToNormalUseFromMaintenanceMode
@@ -16880,6 +17454,8 @@ Begin
  Set @err = ''
  
  Set NOCOUNT ON
+
+ Exec yInstall.AssertDboOnlyCanAdministerYourSqlDbaCode
  
   -- Apply only name filters here because databases to recover are in RESTORING state
   -- Databases in this state in mirroring context are databases that goes through the mirror.
@@ -17404,7 +17980,8 @@ Begin
 
   --for each BD to process
   Set @dbname = ''
-  
+  Declare @serverName sysname = S#.Servername()
+
   While 1=1
   Begin
      declare @pathBkp nvarchar(512), @language sysname
@@ -17503,6 +18080,7 @@ Begin
       -- efficient kill for all connections
       Set @sql = 
       '
+      Exec YourSqlDba.S#.killDbUsers @db=[<dbname>] 
       ALTER DATABASE [<dbname>] SET Single_user WITH ROLLBACK IMMEDIATE
       ALTER DATABASE [<dbname>] SET Multi_User 
       ' 
@@ -17579,7 +18157,7 @@ Begin
         Exec yExecNLog.ExecWithProfilerTrace @sql, @MaxSeverity output, @Msgs output
         If @maxSeverity > 10 
         Begin
-          Raiserror (N'Mirroring.Failover error %s: %s %s', 11, 1, @@SERVERNAME, @Sql, @Msgs)    
+          Raiserror (N'Mirroring.Failover error %s: %s %s', 11, 1, @serverName, @Sql, @Msgs)    
           Return (1)
         End
 
@@ -17625,7 +18203,7 @@ Begin
       Exec yExecNLog.ExecWithProfilerTrace @sql, @MaxSeverity output, @Msgs output
       If @maxSeverity > 10 
       Begin
-        Raiserror (N'Mirroring.Failover error %s: %s %s', 11, 1, @@SERVERNAME, @Sql, @Msgs)    
+        Raiserror (N'Mirroring.Failover error %s: %s %s', 11, 1, @serverName, @Sql, @Msgs)    
         Return (1)
       End
       
@@ -17763,6 +18341,14 @@ grant execute on dbo.DuplicateDbFromBackupHistory to guest
 GO
 grant execute on dbo.RestoreDb to guest
 GO
+grant execute on dbo.DeleteOldBackups to guest
+GO
+grant execute on dbo.PrepDbForMaintenanceMode to guest
+GO
+grant execute on dbo.RestoreDbAtStartOfMaintenanceMode to guest
+GO
+grant execute on dbo.ReturnDbToNormalUseFromMaintenanceMode to guest
+GO
 -- check YourSqlDba account access through mirror server, and correct it if necessary. If failure to do it send a e-mail
 -- @@MARK: Mirroring : Verify and clean up mirroring setups
 Exec yMirroring.CleanMirrorServerForMissingServerAndCheckServerAccessAsYourSqlDbaAccount 
@@ -17790,6 +18376,13 @@ If Schema_id('utl') is NOT NULL drop schema utl
 GO
 -- @@MARK: Version Message 
 Exec Install.PrintVersionInfo
+GO
+If DB_ID('YourSqlDbaUpgradeSavedInfos') IS NOT NULL
+Begin
+  Exec #killDbUsers @db=YourSqlDbaUpgradeSavedInfos
+  Exec('Alter Database YourSqlDbaUpgradeSavedInfos Set Single_User With Rollback Immediate')
+  Exec('Drop Database YourSqlDbaUpgradeSavedInfos')
+End
 
 /*====== to follow a runnning job
 Select
