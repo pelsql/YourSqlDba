@@ -218,6 +218,9 @@ UpgradeLog*.htm
 *.mdf
 *.ldf
 
+# OneNote export content should stay local and not be committed
+oneNote-export/
+
 # Business Intelligence projects
 *.rdl.data
 *.bim.layout

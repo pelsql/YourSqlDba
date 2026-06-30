@@ -8,6 +8,10 @@
 
 **Everything about YourSqlDba** can be found in this **[OneNote Online documentation](https://1drv.ms/o/c/12c385255443c4ed/Eu3EQ1QlhcMggBKoGwAAAAABRvootARfhNKB2ZzsOSOrfA?e=usHzVk)**,
 which requires nothing more than a web browser to navigate.
+
+
+**Everything about YourSqlDba** is now documented in the **[GitHub Pages documentation](https://pelsql.github.io/YourSqlDba/)**,
+which can be read directly in a web browser.
 Pay attention to the landing page and the section describing what YourSqlDba does and how it works.
 There is also, on the landing page, a **`QuickLinks`** table referencing frequently read and relevant pages.
 
@@ -35,6 +39,87 @@ Design simplification for transaction log backup files.
 The initial log backup produced immediately after a full or differential maintenance backup now keeps its own file name and is not reused by the regular log backup job.
 After that initial log backup, the next regular log backup job creates a new reusable log backup file and records it in `Maint.JobLastBkpLocations.lastLogBkpFile`.
 If `@BkpLogsOnSameFile = 0`, regular log backups continue to create a new file for each run.
+
+1. **Controlled delegation of database management operations**
+
+   YourSqlDba now provides a least-privilege delegation model for operations
+   that normally require elevated SQL Server permissions. It is intended for
+   application owners and senior support users who need to refresh
+   non-production databases, test application upgrades, roll back failed
+   upgrades, or clean up backups without receiving `sysadmin` privileges.
+
+   A sysadmin authorizes each delegated login through table
+   `Maint.DelegatedDbManagement`:
+
+   - `SourceDatabaseList` authorizes general backup, duplication, restore,
+     cleanup, and maintenance-mode operations.
+   - `MaintenanceModeDatabaseList` grants additional access limited to the
+     application-upgrade workflow.
+
+   Delegated backup and restore procedures include:
+
+   - `Maint.SaveDbOnNewFileSet`
+   - `Maint.SaveDbCopyOnly`
+   - `Maint.DuplicateDb`
+   - `Maint.DuplicateDbFromBackupHistory`
+   - `Maint.RestoreDb`
+   - `Maint.DeleteOldBackups`
+
+   The application-upgrade workflow uses:
+
+   - `Maint.PrepDbForMaintenanceMode`
+   - `Maint.RestoreDbAtStartOfMaintenanceMode`
+   - `Maint.ReturnDbToNormalUseFromMaintenanceMode`
+
+   For non-sysadmin users, a restore target must use the source database name
+   followed by an underscore and a suffix. For example, a delegated user may
+   restore `Payroll` as `Payroll_UpgradeTest`, but not as `Payroll` or
+   `PayrollTest`. This prevents delegated users from overwriting the source
+   database or unrelated databases.
+
+   Privileged procedures execute as the database owner. Consequently,
+   `YourSqlDba` is configured with `TRUSTWORTHY ON`. Before performing any
+   privileged operation, YourSqlDba verifies that only `dbo` can administer
+   code and security inside the YourSqlDba database.
+
+   Full instructions are available in the
+   [delegated database management documentation](https://pelsql.github.io/YourSqlDba/maintenance/your-sql-dba-domaint.html).
+
+2. **Simplified transaction log backup file management**
+
+   The initial transaction log backup produced after a full or differential
+   maintenance backup now keeps its own file name and is no longer reused by
+   the regular log backup job.
+
+   The next regular log backup creates the reusable log backup file and records
+   it in `Maint.JobLastBkpLocations.lastLogBkpFile`. When
+   `@BkpLogsOnSameFile = 0`, each regular log backup continues to use a new file.
+
+3. **More resilient YourSqlDba upgrades**
+
+   Upgrade information is now preserved temporarily in the
+   `YourSqlDbaUpgradeSavedInfos` database. This better protects the existing
+   configuration if an upgrade fails. The temporary database is removed after
+   a successful upgrade.
+
+   Also a better mecanism is provided to provide exclusive 
+   access to YourSqlDba during upgrade.
+
+4. For delegation to non-sysamin, active database sessions are now terminated 
+   explicitly before operations that require exclusive access to process restores.
+   Their ability to restore to specific databases is limited to a restrictive
+   naming related to the databases they are allowed to manage. 
+
+   Since those users cannot normally terminate active sessions themselves,
+   YourSqlDba clears existing connections to the target database before restore.
+  
+   Sysadmin users do not have such restriction for restore targets. For them, killing
+   sessions automatically could affect an unrelated or production database after
+   a parameter mistake, so they must handle active sessions explicitly for 
+   Maint.DuplicateDb, Maint.DuplicateDbFromHistory, Maint.RestoreDb. They are 
+   allowed to use procedure S#.KillDbUsers for their script but with proper care,
+   as this procedure does really the job!
+   
 
 [View script 7.1.0.12 on GitHub](YourSQLDba_InstallOrUpdateScript.sql)
 
