@@ -1,72 +1,6 @@
-# YourSqlDba
+## Version history
 
-**Contact info  [Maurice Pelchat](https://www.linkedin.com/in/maurice-pelchat-9891495/)**
-
-**To get the script of the most recent release of YourSqlDba** - **_Go to [Version History](#version-history) to get a specific script version and see details about changes between versions._**
-
->To display **currently installed release of YourSqlDba**, execute this query:<br/> **select * from Install.VersionInfo()**
-
-**Everything about YourSqlDba** is now documented in the **[GitHub Pages documentation](https://pelsql.github.io/YourSqlDba/)**,
-which can be read directly in a web browser.
-Pay attention to the landing page and the section describing what YourSqlDba does and how it works.
-There is also, on the landing page, a **`QuickLinks`** table referencing frequently read and relevant pages.
-
-> YourSqlDba operates exclusively through SQL Agent jobs and Database Mail, both of which need to be configured.
-> A helper stored procedure must be executed (**see `Goals/QuickLinks table/Install.InitialSetupOfYourSQLDba`**) once per instance after downloading and running the YourSqlDba script.
-> This procedure provides the necessary parameters to set up Database Mail, backup directories, and default behaviors.
-> It also creates two SQL Agent jobs and schedules them to run as required.
-> Future version updates do not require re-running this procedure.
-
-> Each of the two jobs has a single maintenance step.
-> Both call the same main stored procedure (**see `Goals/QuickLinks table/Maint.YourSQLDba_DoMaint`**) with different parameters depending on the job type.
-> These parameters reflect some of those defined during installation (**see `Goals/QuickLinks table/Install.InitialSetupOfYourSQLDba`**) and include many default values.
-> `Maint.YourSQLDba_DoMaint` parameters are explained in detail in the online documentation.
-
-> YourSqlDba is essentially a **large T-SQL script** that automates database maintenance tasks for SQL Server.
-> It creates, on the instance where it runs, a database named *YourSqlDba* packed with T-SQL modules (functions, stored procedures, and views).
-> You do not need to be concerned with all of them, though some are useful tools for occasional day-to-day DBA work beyond regular maintenance.
-
----
-
-### Version history
-
-**Version 7.1.0.12**
-
-### Version history & release notes
-
-Full version history and individual release notes have been moved to `docs/releases.md`.
-
-See: [docs/releases.md](docs/releases.md) or the online documentation: [https://pelsql.github.io/YourSqlDba/releases.html](https://pelsql.github.io/YourSqlDba/releases.html)
-   `@BkpLogsOnSameFile = 0`, each regular log backup continues to use a new file.
-
-3. **More resilient YourSqlDba upgrades**
-
-   Upgrade information is now preserved temporarily in the
-   `YourSqlDbaUpgradeSavedInfos` database. This better protects the existing
-   configuration if an upgrade fails. The temporary database is removed after
-   a successful upgrade.
-
-   Also a better mecanism is provided to provide exclusive 
-   access to YourSqlDba during upgrade.
-
-4. For delegation to non-sysamin, active database sessions are now terminated 
-   explicitly before operations that require exclusive access to process restores.
-   Their ability to restore to specific databases is limited to a restrictive
-   naming related to the databases they are allowed to manage. 
-
-   Since those users cannot normally terminate active sessions themselves,
-   YourSqlDba clears existing connections to the target database before restore.
-  
-   Sysadmin users do not have such restriction for restore targets. For them, killing
-   sessions automatically could affect an unrelated or production database after
-   a parameter mistake, so they must handle active sessions explicitly for 
-   Maint.DuplicateDb, Maint.DuplicateDbFromHistory, Maint.RestoreDb. They are 
-   allowed to use procedure S#.KillDbUsers for their script but with proper care,
-   as this procedure does really the job!
-   
-
-[View script 7.1.0.12 on GitHub](YourSQLDba_InstallOrUpdateScript.sql)
-
+[View script 7.1.0.12 on GitHub](../YourSQLDba_InstallOrUpdateScript.sql)
 
 **[Get script 7.1.0.12](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)**
 
@@ -178,7 +112,6 @@ You can scroll through the list or search for a specific string. Once an item is
 
 These comments highlight the architectural elements of YourSqlDba. Reading them helps provide an overview of the project. They also make it easier to locate those elements in YourSqlDba, which is a very large script.
 
-
 **Version 7.1.0.2**
 
 In mirroring mode, restore could block log backups. Added internal locking to prevent this.
@@ -271,7 +204,6 @@ Order By cmdStartTime, JobNo, Seq, TypSeq, Typ, Line
 
 Alongside some works are done to incorporate elements of an outside library (of mine), that I already started to use in part in previous versions. The goal is to allow a significant rewrite of YourSqlDba on the basis to make it much more compact and easy to read. I expect to "deflated" a lot YourSqlDba using elements of this new library, and eventually remove a lot of old routines from YourSqlDba.
 
-
 **[Get script of 6.8.1.0](https://raw.githubusercontent.com/pelsql/YourSqlDba/df2f7622aa5606d08d144f33ca6c3674a7166a81/YourSQLDba_InstallOrUpdateScript.sql)**
 ##This version
 >- If extend reporting capablities of YourSqlDba to help diagnosis in maintenance and harden exception trapping and reporting in it its own code.
@@ -282,77 +214,9 @@ Alongside some works are done to incorporate elements of an outside library (of 
 >This version adds column SessionId to view Perfmon.SessionInfo 
 
 **[Get script of 6.8.0.2](https://raw.githubusercontent.com/pelsql/YourSqlDba/2e744db1731ac73749e1c32a4cffbf0e1c4c6084/YourSQLDba_InstallOrUpdateScript.sql)**
->This version is a significant rewrite of the YourSqlDba logging system, and reporting of code played and exceptions whenever they occur. Previous code evolved to become too complex to maintain. The new logging system relies on a different architecture for logging YourSqlDba actions and errors. It reduced code size, made it more modern with fewer code paths, and easier to follow. It considers that more than one job may run at a time. I changed Maint.HistoryView parameters to starting and ending times of the job. Output also includes other job events that happen in that period. Poor SQL Agent's job history output formatting required new methods to leave a more readable result. What led to this significant review was some deadlock reported in the logging table when doing YourSqlDba mirroring. Solutions brought with version 6.7.3.2 needed a better retrofit of the architecture to make it sounder. I decided it was time to review the whole thing, so it is. A small correction 
+>This version is a significant rewrite of the YourSqlDba logging system, and reporting of code played and exceptions whenever they occur. Previous code evolved to become too complex to maintain. The new logging system relies on a different architecture for logging YourSqlDba actions and errors. Previous code evolved to become too complex to maintain. The new logging system relies on a different architecture for logging YourSqlDba actions and errors. It reduced code size, made it more modern with fewer code paths, and easier to follow. It considers that more than one job may run at a time. I changed Maint.HistoryView parameters to starting and ending times of the job. Output also includes other job events that happen in that period. Poor SQL Agent's job history output formatting required new methods to leave a more readable result. What led to this significant review was some deadlock reported in the logging table when doing YourSqlDba mirroring. Solutions brought with version 6.7.3.2 needed a better retrofit of the architecture to make it sounder. I decided it was time to review the whole thing, so it is. A small correction 
 
 **[Get script of 6.7.3.2](https://raw.githubusercontent.com/pelsql/YourSqlDba/9d78b52824110221bb2e9d6314286decbc88f4ab/YourSQLDba_InstallOrUpdateScript.sql)**
 >This version has two set of unreleated feature changes. One is an improvment of the way to get exclusive access to a database by switching to single_user mode instead to offline. Using offline mode proved to be less reliable since latest SQL Server version, since going offline was blocked sometimes by SQL internal processes.
 
->The next modification related to Mirroring.FailOver. It is a follow up for external backups solutions performing directly SQL backups to their datastore and able to do some kind of warm standy server. For example CommVault supports some kind of standy-by server very similar to YourSqlDba "Mirroring" solution. Since CommVault handles also backups and restores, a last sync must be done through CommVault console. Mirroring.Failover cannot attempt to do a last sync because it has no more control on backups. However remaining tasks of Mirroring.FailOver remain valuable (sync of logins, adjusting database owner, updating compatibility level, an recovering database on destination server). A new defaut parameter was than added to let know to Mirroring.Failover if some data sync must be done, and it is set to ON by default. For actual YourSqlDba users, default parameter can be ommitted, so use case remains the same. CommVault users must explicitly put this parameter to off when they want to use Mirroring.Failover to automate remaining failOver tasks without attempts of data synching from the procedure.
-
->Some other stuff very specific to CommVault direct handling of backups is explained there **(https://onedrive.live.com/view.aspx?resid=12C385255443C4ED!7080&migratedtospo=true&redeem=aHR0cHM6Ly8xZHJ2Lm1zL28vYy8xMmMzODUyNTU0NDNjNGVkL0V1M0VRMVFsaGNNZ2dCS29Hd0FBQUFBQlJ2b290QVJmaE5LQjJaenNPU09yZkE_ZT01OjRmYWJlNDFlYzdiZTQxYTM4ZWY1NjQ0ZjhlMDdhYmIxJnNoYXJpbmd2Mj10cnVlJmZyb21TaGFyZT10cnVlJmF0PTk&wd=target%28External%20backup%20solution%20and%20YourSqlDba.one%7C74432c93-3c8e-4c12-85ca-57184e019ae5%2FCommVault%20example%7Cba9123e9-aecf-49fc-84a3-3b6ec94b3b2d%2F%29&wdorigin=NavigationUrl)**. An helper stored procedure was added to documentation to generate restores from a directory of .Bak files with a naming specific to CommVault. Restoring CommVault backups in the form of on-disk equivalent of Sql backups is an option offered by CommVault. So this helper stored proc is welcomed, as it avoids to write a lot of restore commands (one for each file). This procedure is provided as-is in the documentation, and is not part of YourSqlDba common code. It is pretty well documented and could be used for another similar application.
-
-**[Get script of 6.7.3.1](https://raw.githubusercontent.com/pelsql/YourSqlDba/22844466770e0f898eadc1ec28e7fcb7be10f2e0/YourSQLDba_InstallOrUpdateScript.sql)**
->Fix of 6.7.3.0 (Integrity tests could report an error) 
-Introduces as a new feature providing some interoperability with other external backups solutions like CommVault backups. In this case you must modify YourSqlDba jobs by disabling or removing log backups job. Main maintenance parameter needs to be adjusted to not ask for full backups, leaving other maintenance actions, for other optimizations and integrity testing, with the same parameters ;  
-
->Some minimal setup is needed with CommVault backups jobs (full or logs); You must add for full backups a pre-job and for log backups a post job as instructed in **(https://onedrive.live.com/view.aspx?resid=12C385255443C4ED!7080&migratedtospo=true&redeem=aHR0cHM6Ly8xZHJ2Lm1zL28vYy8xMmMzODUyNTU0NDNjNGVkL0V1M0VRMVFsaGNNZ2dCS29Hd0FBQUFBQlJ2b290QVJmaE5LQjJaenNPU09yZkE_ZT01OjRmYWJlNDFlYzdiZTQxYTM4ZWY1NjQ0ZjhlMDdhYmIxJnNoYXJpbmd2Mj10cnVlJmZyb21TaGFyZT10cnVlJmF0PTk&wd=target%28External%20backup%20solution%20and%20YourSqlDba.one%7C74432c93-3c8e-4c12-85ca-57184e019ae5%2FCommVault%20example%7Cba9123e9-aecf-49fc-84a3-3b6ec94b3b2d%2F%29&wdorigin=NavigationUrl)**. 
-
->Fix: Incorrect database size computing prevented integrity testing for very large databases on a table by table basis as intended. Now it works as intended. Above 1Tb (VLDB), integrity testing will now go through checktables as expected.  
-
-**[Get script of 6.7.2.0](https://raw.githubusercontent.com/pelsql/YourSqlDba/2e6044f1f37ecdfe9086fcec141efa1d1d82747b/YourSQLDba_InstallOrUpdateScript.sql)**
->In some cases Maint.HistoryView may cause excessive memory grants when handling whole historyDetails source table. A simple solution was to add reporting elements to a resulting Maint.JobHistoryLineDetails report table through a trigger on Maint.JobHistoryDetails. This minimize greatly the amount of data processed at once and simplify very much Maint.HistoryView function
-
-**[Get script of 6.7.1.0](https://raw.githubusercontent.com/pelsql/YourSqlDba/e2d5e941169c3cefbeab4543f8ca8c978b3d400b/YourSQLDba_InstallOrUpdateScript.sql).**
->Integrity testing may be delayed when number of databases selected is lower than parameter @SpreadCheckDb, and also with some other "too long to explain here" reasons. Some improvements were implemented to uniformize processing length for DBCC Checkdb from day to day
-
-**[Get script of 6.7.0.6](https://raw.githubusercontent.com/pelsql/YourSqlDba/0abcc636c9405e0ebefaadd93a71d85c8b7e9479/YourSQLDba_InstallOrUpdateScript.sql).**
->On update or install, enabling Service broker on Msdb seems to hang. Now it is done with rollback immediate option which solves the problem
-
-If you run any of these older versions go straigh to the latest one, with some attention to comments on versions 6.7.0.1, 6.5.9.3, and the ones above. You can also explore all commits or YourSQLDba_InstallOrUpdateScript.sql compare differences.
-
-* 6.7.0.5 - Fix to 6.6.0.1 for DoRestore which needs a @migrationTestMode default value to 0 to make sense when used with Mirroring.FailOver
-* 6.7.0.4 - Improvement of Maint.HistoryView to reduce false positive when searching errors
-* 6.7.0.3 - Fix to a change in 6.6.0.3 for printing of code, which translated to string truncation error
-* 6.7.0.2 - Fix to a change in 6.6.0.3 for DBCC Shrink_Log.  
-
-* 6.7.0.1 - This version add a new feature Maint.HistoryView that deprecate some others and solve a minor update bug
-  1) A new function called YourSQLDba.Maint.HistoryView allows inspection of YourSqlDba history in a much more readeable form. It accepts 3 parameters: a job Number, a step number, a flag to filter only reported errors. Email messages are adjusted accordingly. The stored procedures ShowHistory and ShowHistoryError are deprecated.
-
-  2) A minor update bug was deleting job history
-  3) A minor bug found when writing Maint.HistoryView. Single line queries having no ending linefeed weren't printed.The printing query function was corrected.
-
-* 6.6.0.3 - This version solve some annoying bugs
-  1) When a backup occurs on a given database, and the log backups job attempts a log shrink at the same time
-     the log of the same database, an error will be thrown for the Shrink log operation. This problem is solved by the mean
-     of application lock which signals that a backup operation is ongoing, so YourSqlDba log backups has a mean to knows 
-     when to defer the shrink operation.
-  2) Two minor fix were done on Install.InitialSetupOfYourSqlDba. The email setup could be done improperly if another email
-     profile already exists, and the test message sent to test mail setup was not properly sent.
-  3) In yMirroring.MirrorLoginSync, when a login must be recreated, and the default language is not set, the 
-     create login command becomes null, returning an error. In a such context the option is simply removed.
-
-* 6.6.0.1 -  This version implement a new parameter for mirroring called @migrationTestMode.
-  1) It's goal is just to set mirroring as a simple mean to backup/restore to another server
-  e.g. when migrating to a newer SQL version. In that mode, only full backups are restored to remote server, and put online
-  While they exist and are online, YourSqlDba do not attempt another restore of any kind.  
-  To restore normal YourSqlDba mirroring, just remove the @migrationTestMode=1 parameter and suppress 
-  test databases on target server.
-
-  2) In another field, Install.InitialSetupOfYourSqlDba was improved to send a email on successful install.  
-  If this email reach its destination, it proves that email configuration is ok.
-
-* 6.5.9.4 - Specify default value for backup encryption parameters for SaveDbOnNewFileSet.
-* 6.5.9.3 - Many improvements related to security and very large databases handling (1TB and more). 
-  1) Support of backup encryption (and a minor bug correction related to getting backup information to allow it)
-  2) Instead of full checkdb, spreading checktables across the  week
-  3) Increase of  fragmentation thresold for database reorganizaton and rebuild
-  4) Adjusting of backup parameters for increased performance.
-* 6.5.9.2 - Minor bug fix synchronizing local windows user login
-* 6.5.9.1 - Improvement about Sync logins 
-* 6.5.8.1 - Optimization of database index defrag
-* 6.5.8.0 - Exclude case sensitive database from YourSqlDba maintenace with reporting an error
-* 6.5.7.9 - Take into account possible invalid dbownership on some databases (handled properly in YourSqlDba) 
-* 6.5.7.8 - Improved parameter validation of parameters starting by "@Replace..." in mirroring feature  
-* 6.5.7.7 - At failover Restore database ownership after database recovery on mirror server  
-* 6.5.7.6 - Correction to improper test of database status   
-* 6.5.7.5 - Correction to error message for SetYourSqlDbaAccount
+The rest of the release notes continue in the repository README; older versions are listed for reference.
