@@ -6,10 +6,6 @@
 
 >To display **currently installed release of YourSqlDba**, execute this query:<br/> **select * from Install.VersionInfo()**
 
-**Everything about YourSqlDba** can be found in this **[OneNote Online documentation](https://1drv.ms/o/c/12c385255443c4ed/Eu3EQ1QlhcMggBKoGwAAAAABRvootARfhNKB2ZzsOSOrfA?e=usHzVk)**,
-which requires nothing more than a web browser to navigate.
-
-
 **Everything about YourSqlDba** is now documented in the **[GitHub Pages documentation](https://pelsql.github.io/YourSqlDba/)**,
 which can be read directly in a web browser.
 Pay attention to the landing page and the section describing what YourSqlDba does and how it works.
