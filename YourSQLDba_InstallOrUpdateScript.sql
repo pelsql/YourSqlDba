@@ -19,7 +19,7 @@
 Drop Table if Exists #version
 create table #Version (version nvarchar(40), VersionDate datetime)
 set nocount on
-insert into #Version Values ('7.1.0.11', convert(datetime, '2026-01-01', 120))  
+insert into #Version Values ('7.1.0.12', convert(datetime, '2026-01-01', 120))  
 
 --Alter database yoursqldba set single_user with rollback immediate
 --go
@@ -9479,6 +9479,13 @@ Begin
        , @sql = @sql
        , @errorN = @errorN output
 
+      If @DoLogBkp = 1 And @errorN = 0
+      Begin
+        Update Maint.JobLastBkpLocations
+        Set lastLogBkpFile = @filename
+        Where dbName = @DbName
+      End
+
       -- In the context of Mirror server, restore the backup to the mirror server 
       If    @DoBackup IN ('F', 'L', 'D') 
         And ISNULL(@DbMirrorServer, '') <> ''
@@ -9536,9 +9543,14 @@ Begin
 
         If @errorN_BkpPartielInit = 0 -- version 
         Begin
-          Update Maint.JobLastBkpLocations   
-          Set lastLogBkpFile = @filename
-          Where dbName = @DbName 
+          Update Maint.JobLastBkpLocations
+          Set lastLogBkpFile = NULL
+          Where dbName = @DbName
+
+          Set @msg = 'Initial log backup for ['+@DbName+'] kept in its own file. Next regular log backup will create a new reusable log backup file: '+ISNULL(@filename, '')
+          Exec yExecNLog.LogAndOrExec
+            @context = 'yMaint.backups'
+          , @Info = @msg
           
           -- shrink the log after backup (the procedure acts depending on the size)
           -- Exec yMaint.ShrinkLog  @DbName
