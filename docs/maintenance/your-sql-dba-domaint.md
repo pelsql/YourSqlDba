@@ -20,6 +20,12 @@ Use this procedure to define:
 - whether backups are restored to a standby or mirror server;
 - how maintenance results are reported.
 
+## Table of contents
+{: .no_toc .text-delta }
+
+1. TOC
+{:toc}
+
 ## Execution model
 
 `Maint.YourSqlDba_DoMaint` is intended to be the top-level entry point for

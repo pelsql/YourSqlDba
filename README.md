@@ -13,6 +13,15 @@ To display the currently installed version of YourSqlDba, execute:
 SELECT * FROM Install.VersionInfo();
 ```
 
+> [!WARNING]
+> **Breaking change — Starting with version 7.1.0.12 — delegated database management:** Existing non-sysadmin
+> backup, restore, duplication, backup cleanup, or maintenance-mode workflows
+> may stop working after this upgrade. Each delegated login and its authorized
+> databases must now be configured in `Maint.DelegatedDbManagement`, and restore
+> targets must follow the new naming restrictions. Review the
+> [delegated database management documentation](docs/maintenance/delegated-database-management.md)
+> before upgrading any instance that uses delegated operations.
+
 Everything about YourSqlDba is documented in the
 **[GitHub Pages documentation](https://pelsql.github.io/YourSqlDba/)**,
 which can be read directly in a web browser. Start with the landing page for an
