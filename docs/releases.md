@@ -13,7 +13,7 @@ title: Version history and release notes
 > may stop working after this upgrade. Each delegated login and its authorized
 > databases must now be configured in `Maint.DelegatedDbManagement`, and restore
 > targets must follow the new naming restrictions. Review the
-> [delegated database management documentation](maintenance/delegated-database-management.html)
+> [delegated database management documentation](maintenance/delegated-database-management.md)
 > before upgrading any instance that uses delegated operations.
 
 1. **Controlled delegation of database management operations**

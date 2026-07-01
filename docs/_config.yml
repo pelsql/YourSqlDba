@@ -20,3 +20,8 @@ callouts:
 
 plugins:
   - jekyll-remote-theme
+  - jekyll-relative-links
+
+relative_links:
+  enabled: true
+  collections: true

@@ -220,6 +220,7 @@ UpgradeLog*.htm
 
 # OneNote export content should stay local and not be committed
 oneNote-export/
+/docs/REFERENCE.pdf
 
 # Business Intelligence projects
 *.rdl.data

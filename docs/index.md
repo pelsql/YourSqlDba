@@ -21,18 +21,18 @@ integrity checks, index maintenance, metrics collection, and diagnostics.
 QuickLinks
 ----------
 
-- Version history and release notes: [Releases](releases.html)
+- Version history and release notes: [Releases](releases.md)
 - Project README: [README.md](https://github.com/pelsql/YourSqlDba#readme)
-- Installation and first-time setup: [Installation guide](installation.html)
-- Main maintenance entry point: [`Maint.YourSqlDba_DoMaint`](maintenance/your-sql-dba-domaint.html)
-- Delegated database management: [Controlled backup, restore, database refresh, cleanup, and application-upgrade operations for selected non-sysadmin users](maintenance/delegated-database-management.html)
-- Job reporting and diagnostics: [`Maint.HistoryView`, Database Mail, and performance diagnostics](diagnostics.html)
+- Installation and first-time setup: [Installation guide](installation.md)
+- Main maintenance entry point: [`Maint.YourSqlDba_DoMaint`](maintenance/your-sql-dba-domaint.md)
+- Delegated database management: [Controlled backup, restore, database refresh, cleanup, and application-upgrade operations for selected non-sysadmin users](maintenance/delegated-database-management.md)
+- Job reporting and diagnostics: [`Maint.HistoryView`, Database Mail, and performance diagnostics](diagnostics.md)
 - Latest install script: [YourSQLDba_InstallOrUpdateScript.sql](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)
 
 How to get started
 ------------------
 
-1. Read the [installation guide](installation.html).
+1. Read the [installation guide](installation.md).
 2. Run `YourSQLDba_InstallOrUpdateScript.sql` on the SQL Server instance where
    you want to install YourSqlDba.
 3. Complete the SQL Server Agent and Database Mail setup described in the

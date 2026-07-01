@@ -34,7 +34,7 @@ database or after a restore that has not yet been followed by a full backup.
 
 Run the full maintenance job or execute a suitably configured
 `Maint.YourSqlDba_DoMaint` call to create the required full backup. For related
-backup settings, see [`Maint.YourSqlDba_DoMaint`](maintenance/your-sql-dba-domaint.html#backup-mode).
+backup settings, see [`Maint.YourSqlDba_DoMaint`](maintenance/your-sql-dba-domaint.md#backup-mode).
 
 ### A database is not in the FULL recovery model
 
@@ -45,7 +45,7 @@ recovery for production databases.
 Databases intentionally using another recovery model, such as disposable test
 databases, can be excluded with
 `@ExcDbFromPolicy_CheckFullRecoveryModel`. Review the
-[`Maint.YourSqlDba_DoMaint` recovery model policy](maintenance/your-sql-dba-domaint.html#recovery-model-policy)
+[`Maint.YourSqlDba_DoMaint` recovery model policy](maintenance/your-sql-dba-domaint.md#recovery-model-policy)
 before changing the exclusion list.
 
 ## Maintenance diagnostics with Maint.HistoryView
