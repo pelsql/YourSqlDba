@@ -1,7 +1,22 @@
 title: YourSqlDba
-description: Auto-maintenance tools for SQL Server Databases
+description: Auto-maintenance tools for SQL Server databases
 baseurl: /YourSqlDba
 url: https://pelsql.github.io
-remote_theme: pages-themes/merlot@v0.2.0
+
+remote_theme: just-the-docs/just-the-docs@v0.12.0
+
+search_enabled: true
+heading_anchors: true
+color_scheme: light
+
+aux_links:
+  YourSqlDba on GitHub:
+    - https://github.com/pelsql/YourSqlDba
+
+callouts:
+  warning:
+    title: Warning
+    color: red
+
 plugins:
   - jekyll-remote-theme

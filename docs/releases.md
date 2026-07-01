@@ -1,4 +1,9 @@
-## Version history
+---
+layout: default
+title: Version history and release notes
+---
+
+# Version history and release notes
 
 **Version 7.1.0.12**
 
@@ -261,5 +266,3 @@ Alongside some works are done to incorporate elements of an outside library (of 
 
 **[Get script of 6.7.3.2](https://raw.githubusercontent.com/pelsql/YourSqlDba/9d78b52824110221bb2e9d6314286decbc88f4ab/YourSQLDba_InstallOrUpdateScript.sql)**
 >This version has two set of unreleated feature changes. One is an improvment of the way to get exclusive access to a database by switching to single_user mode instead to offline. Using offline mode proved to be less reliable since latest SQL Server version, since going offline was blocked sometimes by SQL internal processes.
-
-The rest of the release notes continue in the repository README; older versions are listed for reference.

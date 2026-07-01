@@ -1,0 +1,37 @@
+<script>
+  (function () {
+    const storageKey = "your-sql-dba-color-scheme";
+    const storedTheme = localStorage.getItem(storageKey);
+    const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+    const initialTheme = storedTheme === "dark" || storedTheme === "light"
+      ? storedTheme
+      : systemTheme;
+
+    function updateButton(theme) {
+      const button = document.getElementById("theme-toggle");
+      if (!button) return;
+
+      const nextTheme = theme === "dark" ? "light" : "dark";
+      button.textContent = nextTheme === "dark" ? "Dark mode" : "Light mode";
+      button.setAttribute("aria-label", `Switch to ${nextTheme} mode`);
+    }
+
+    function applyTheme(theme, remember) {
+      jtd.setTheme(theme);
+      document.documentElement.dataset.colorScheme = theme;
+      if (remember) localStorage.setItem(storageKey, theme);
+      updateButton(theme);
+    }
+
+    window.toggleColorScheme = function () {
+      const currentTheme = document.documentElement.dataset.colorScheme || initialTheme;
+      applyTheme(currentTheme === "dark" ? "light" : "dark", true);
+    };
+
+    document.addEventListener("DOMContentLoaded", function () {
+      applyTheme(initialTheme, false);
+    });
+  })();
+</script>
