@@ -144,11 +144,13 @@ execution.
 
 ## Reporting and troubleshooting
 
-Maintenance reports are sent by email and include a query for `Maint.HistoryView`.
+`Maint.HistoryView` is the primary maintenance diagnostic tool. Maintenance
+reports sent by email include a ready-to-run query for it. When the report
+identifies an error, the query is already restricted to the relevant job and
+error-related events.
 
-Start troubleshooting from the email report and then use `Maint.HistoryView` to
-inspect the detailed execution history, including commands, messages, and
-errors.
+See [Diagnostics and reporting](diagnostics.md#maintenance-diagnostics-with-mainthistoryview)
+for complete-history and error-investigation examples.
 
 For the main maintenance procedure reference, see
 [Maint.YourSqlDba_DoMaint](maintenance/your-sql-dba-domaint.md).

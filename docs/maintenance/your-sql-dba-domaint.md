@@ -289,15 +289,15 @@ procedures. Losing the certificate can make encrypted backups unusable.
 ## Reporting
 
 Each run records its execution context and detailed history in YourSqlDba tables.
-Maintenance email reports include a query that uses `Maint.HistoryView` to
-review the run.
+`Maint.HistoryView` is the primary tool for understanding what happened during
+a maintenance run. It presents commands, informational messages, execution
+context, status, and errors, including activity from overlapping jobs.
 
-Use the report first, then inspect `Maint.HistoryView` when deeper
-troubleshooting is required.
-
-`Maint.HistoryView` is the main tool for understanding what happened during a
-maintenance run. It can show commands, informational messages, context, and
-errors tied to a specific job execution.
+Maintenance email reports include a ready-to-run query for this function. When
+an error is reported, the query is already restricted to the relevant job and
+error-related events. See
+[Diagnostics and reporting](../diagnostics.md#maintenance-diagnostics-with-mainthistoryview)
+for usage examples.
 
 ## Common customization examples
 

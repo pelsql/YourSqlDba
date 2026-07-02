@@ -15,6 +15,11 @@ The central maintenance procedure is:
 Maint.YourSqlDba_DoMaint
 ```
 
+Its primary diagnostic companion is
+[`Maint.HistoryView`](diagnostics.md#maintenance-diagnostics-with-mainthistoryview).
+It presents the commands, messages, status, and errors recorded by maintenance
+jobs and can correlate jobs that ran during the same period.
+
 This page explains the DBA workflow, the default jobs, and the first checks
 after setup.
 
@@ -39,7 +44,8 @@ It can:
 2. Execute `Install.InitialSetupOfYourSqlDba` with values that match your environment.
 3. Review the SQL Agent jobs and the job steps that call `Maint.YourSqlDba_DoMaint`.
 4. Verify backup paths, mail settings, and the first maintenance run.
-5. Adjust `Maint.YourSqlDba_DoMaint` parameters for your environment.
+5. Use `Maint.HistoryView` to investigate any errors reported by that run.
+6. Adjust `Maint.YourSqlDba_DoMaint` parameters for your environment.
 
 ## Default jobs
 

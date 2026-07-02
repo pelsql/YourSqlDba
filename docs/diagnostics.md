@@ -6,9 +6,32 @@ nav_order: 50
 
 # Diagnostics and reporting
 
-YourSqlDba records the commands, messages, execution status, and errors produced
-by maintenance jobs. It also provides tools for diagnosing Database Mail and
-investigating SQL Server wait statistics.
+Detailed reporting is one of YourSqlDba's strengths. It records the commands,
+messages, execution status, and errors produced by its maintenance jobs.
+`Maint.HistoryView` is the primary tool for examining this history. It can
+isolate the errors from a specific job or present the chronological activity of
+multiple jobs whose execution periods overlap, such as the full-maintenance and
+transaction-log backup jobs.
+
+When a maintenance report identifies an error, the email includes a
+ready-to-run `Maint.HistoryView` query whose time range, job number, and filter
+are already set to the relevant errors. The function can also be queried
+directly to examine the complete activity within a selected period.
+
+Queries commonly use `Maint.MaintenanceEnums`, which supplies filter constants
+and precomputed relative date and time values. These values make it possible to:
+
+- select a recent activity period without calculating or entering its start and
+  end times explicitly;
+- return either error-related events or the complete YourSqlDba activity for
+  that period.
+
+Because `Maint.HistoryView` is an inline table-valued function, its result can
+also be filtered on any returned column. Queries included in job reports add a
+`WHERE` clause on `JobNo` to isolate the job being reported.
+
+This page also covers Database Mail diagnostics when reports are not delivered
+and SQL Server wait-statistics tools for performance investigations.
 
 Use these tools to answer three different questions:
 
