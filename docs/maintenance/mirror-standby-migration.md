@@ -7,9 +7,30 @@ nav_order: 11
 
 # Mirror, standby, and migration testing
 
-This page documents the YourSqlDba mirroring feature that restores backups to a secondary SQL Server instance for validation, standby use, or migration testing.
+YourSqlDba mirroring maintains a restorable copy of selected databases on a
+second SQL Server instance. A primary use case is preparing an upgrade to a
+newer SQL Server version while keeping the final service interruption as short
+as possible.
 
 > This is not SQL Server database mirroring. YourSqlDba uses a separate linked-server restore workflow driven by `Maint.YourSqlDba_DoMaint`.
+
+## Preparing a SQL Server version upgrade
+
+Before the migration, regular maintenance backups are restored continuously on
+the target instance. Full, differential, and transaction log backups keep each
+target database close to the state of its source database. In normal mirroring
+mode, the target remains in `RESTORING` state so that subsequent backups can be
+applied.
+
+This approach provides two important benefits before cutover:
+
+- most of the data has already been transferred and restored on the target;
+- the regular restore activity verifies that the backup chain can be read and
+  applied on the destination instance.
+
+The target SQL Server version must be the same as or newer than the source
+version. This makes it possible to prepare a side-by-side version upgrade
+without attempting an unsupported restore to an older SQL Server version.
 
 ## How it works
 
@@ -34,6 +55,33 @@ The default job step command is:
 EXECUTE [Mirroring].[ProcessRestores]
 ```
 
+## Cutover with Mirroring.Failover
+
+`Mirroring.Failover` performs the final synchronization and switches the
+selected databases from the source instance to the target instance. For each
+eligible database, it:
+
+1. terminates active connections on the source;
+2. creates and restores the final transaction log backup when the database uses
+   the `FULL` or `BULK_LOGGED` recovery model, or a final differential backup
+   when it uses `SIMPLE`;
+3. takes the source database offline to prevent further access or changes;
+4. recovers the target database and brings it online;
+5. restores the database owner when available;
+6. sets the database compatibility level for the target SQL Server version.
+
+The `@IncDb` and `@ExcDb` parameters allow the DBA to cut over a selected group
+of databases independently of the database filters used by the regular
+maintenance job. `@LastDataSync = 0` skips the final YourSqlDba backup and
+restore when another data-synchronization product has already performed that
+step.
+
+{: .warning }
+> `Mirroring.Failover` is a disruptive cutover operation. It disconnects users
+> and leaves the source databases offline before making the target databases
+> available. Validate connectivity, restore status, application configuration,
+> database selection, and the rollback plan before executing it.
+
 ## Key parameters
 
 These are parameters of `Maint.YourSqlDba_DoMaint`.
@@ -50,7 +98,8 @@ These are parameters of `Maint.YourSqlDba_DoMaint`.
 - Use `Mirroring.AddServer` to create and register the linked server for YourSqlDba mirroring.
 - When the mirror server is no longer required, it can be removed with `Mirroring.DropServer`.
 - The linked server name must match the value supplied in `@MirrorServer`.
-- YourSqlDba must be installed on the target server and the versions must match.
+- YourSqlDba must be installed on the target server, and both instances must use
+  the same YourSqlDba version.
 - Remote access must work through the `YourSqlDba` login on the target server.
 - If multiple source servers use the same mirror server, they should share a common `YourSqlDba` password for automatic login mapping.
 
@@ -115,4 +164,5 @@ Common mirror failure causes:
  - `Mirroring.SetYourSqlDbaAccountForMirroring`
  - `Mirroring.AddServer` — creates and registers the linked server used by YourSqlDba mirroring.
  - `Mirroring.DropServer` — removes the linked server when it is no longer required.
+ - `Mirroring.Failover` — performs final synchronization and migration cutover.
  - `Maint.YourSqlDba_DoMaint`
