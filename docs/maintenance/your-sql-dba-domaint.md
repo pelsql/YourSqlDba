@@ -100,7 +100,7 @@ EXEC Maint.YourSqlDba_DoMaint
 | `@BkpLogsOnSameFile` | `int` | `1` | Uses the same log backup file after a full backup when set to `1`; creates a new file each run when set to `0`. |
 | `@SpreadUpdStatRun` | `int` | `7` | Spreads statistics updates across a number of maintenance executions. |
 | `@SpreadCheckDb` | `int` | `7` | Spreads full DBCC checks across a number of maintenance executions. |
-| `@ConsecutiveDaysOfFailedBackupsToPutDbOffline` | `int` | `9999` | Last-resort threshold for putting a database offline after repeated full backup failures. |
+| `@ConsecutiveDaysOfFailedBackupsToPutDbOffline` | `int` | `9999` | Last-resort threshold for putting a database offline after full backups fail on consecutive days. Review the [offline-database warning and recovery procedure](../diagnostics.md#databases-taken-offline-by-yoursqldba) before lowering it. |
 | `@MirrorServer` | `sysname` | Empty string | Optional destination SQL instance for automatic restore of backups. |
 | `@MigrationTestMode` | `int` | `0` | Changes mirror restore behavior to support migration testing. |
 | `@ReplaceSrcBkpPathToMatchingMirrorPath` | `nvarchar(max)` | Empty string | Rewrites backup paths as seen from the mirror server. |
@@ -130,6 +130,13 @@ integrity checks, statistics updates, index maintenance, and full backups.
 
 If a maintenance window is too short for every action, split the work into
 separate job steps or separate SQL Agent jobs.
+
+{: .warning }
+> Integrity errors and a configured number of consecutive days with failed full
+> backups can cause YourSqlDba to take affected databases offline. If a common
+> problem affects many databases, this can make them unavailable together. See
+> [Databases taken offline by YourSqlDba](../diagnostics.md#databases-taken-offline-by-yoursqldba)
+> before configuring the backup-failure threshold.
 
 ## Backup mode
 

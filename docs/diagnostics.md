@@ -45,6 +45,56 @@ Use these tools to answer three different questions:
 1. TOC
 {:toc}
 
+## Databases taken offline by YourSqlDba
+
+{: .warning }
+> **YourSqlDba can take a database offline to protect it or to make a prolonged
+> backup failure impossible to overlook.** If the same underlying problem
+> affects many databases, several or even all eligible user databases can be
+> taken offline during the same maintenance run.
+
+YourSqlDba takes an eligible user database offline in either of these
+situations:
+
+- an integrity check reports an error other than SQL Server error 5128 by
+  itself; taking the database offline prevents continued use while its
+  integrity and recovery options are investigated;
+- full backups have failed on the configured number of consecutive days, as
+  controlled by `@ConsecutiveDaysOfFailedBackupsToPutDbOffline`. Its default
+  value of `9999` effectively leaves this last-resort response disabled unless
+  the DBA deliberately configures a practical threshold.
+
+First determine why the databases were taken offline. Use the error query from
+the maintenance report or query `Maint.HistoryView`, then correct the underlying
+problem. Common causes of widespread backup failures include an unavailable or
+full backup destination and insufficient access for the SQL Server service
+account.
+
+List the databases that are currently offline before changing their state:
+
+```sql
+SELECT name, state_desc
+FROM sys.databases
+WHERE state_desc = N'OFFLINE'
+ORDER BY name;
+```
+
+After reviewing the list, a sysadmin can bring all offline databases online in
+one operation:
+
+```sql
+EXEC YourSqlDba.Maint.BringBackOnlineAllOfflineDb;
+```
+
+This procedure acts on every offline database on the instance, including a
+database that may have been taken offline manually or by another process. It
+does not verify that the original problem has been resolved. Do not use it as a
+substitute for integrity investigation or restore planning when corruption is
+suspected.
+
+If maintenance reports were not received, also investigate their absence with
+[`Maint.DiagDbMail`](#database-mail-diagnostics).
+
 ## Common conditions after installation
 
 Two reported conditions are common immediately after installing YourSqlDba.

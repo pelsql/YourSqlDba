@@ -46,7 +46,13 @@ DBAs can then customize maintenance behavior by adjusting those job steps and th
 | `@BkpLogsOnSameFile` | Reuse the same log file or create a new file each run |
 | `@SpreadUpdStatRun` | Spread statistics updates across multiple runs |
 | `@SpreadCheckDb` | Spread full DBCC checks across multiple runs |
+| `@ConsecutiveDaysOfFailedBackupsToPutDbOffline` | Last-resort threshold for taking a database offline after full backups fail on consecutive days |
 | `@MirrorServer` | Optional instance for restore validation or standby/migration testing |
+
+{: .warning }
+> Before lowering `@ConsecutiveDaysOfFailedBackupsToPutDbOffline` from its
+> default of `9999`, review [why YourSqlDba can take databases offline and how
+> to recover them](diagnostics.md#databases-taken-offline-by-yoursqldba).
 
 ## Backup mode
 
