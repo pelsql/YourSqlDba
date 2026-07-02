@@ -221,6 +221,8 @@ UpgradeLog*.htm
 # OneNote export content should stay local and not be committed
 oneNote-export/
 /docs/REFERENCE.pdf
+/docs/External backup solution and YourSqlDba.pdf
+/docs/maintenance/RestoreMultiplesApartirPointBakSurDisque.sql
 
 # Business Intelligence projects
 *.rdl.data
