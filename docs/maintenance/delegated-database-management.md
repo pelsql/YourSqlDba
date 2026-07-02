@@ -12,6 +12,29 @@ backup, restore, duplication, cleanup, and application-upgrade operations. This
 allows application owners or senior support users to manage their
 non-production databases without receiving unrestricted SQL Server privileges.
 
+Delegation is useful when responsibility for an application is shared with
+someone who is not a DBA. For example, an application owner may need to refresh
+a test database from production, remove obsolete backups created by that
+workflow, or prepare a database for an application upgrade. Granting broad
+server permissions for these tasks would also allow operations on unrelated
+databases. YourSqlDba instead limits the delegated login to explicitly
+authorized source databases and, for restores, to target names derived from
+those sources.
+
+Application upgrades present an additional problem. The upgrade may require
+exclusive access to the database and a reliable point to which it can be
+restored if the upgrade fails. Disconnecting the current sessions is not always
+enough: application services, connection pools, monitoring tools, or scheduled
+processes may immediately reconnect.
+
+The maintenance-mode workflow addresses this by disconnecting users and
+temporarily renaming the database with the `_MaintenanceMode` suffix. Clients
+configured with the original database name can no longer reconnect to it. The
+application owner can then run and validate the upgrade against the renamed
+database. If necessary, the database can be restored to its pre-upgrade state;
+otherwise, the upgraded database is retained. In either case, the final step
+returns it to its original name and normal use.
+
 After validating the delegated workflows, remove broader permissions that are
 no longer required, such as membership in the `dbcreator` fixed server role or
 the `db_backupoperator` fixed database role.
@@ -186,9 +209,8 @@ running cleanup. A sysadmin is not restricted to delegated database variants.
 
 ## Application-upgrade workflow
 
-The maintenance-mode workflow gives an application owner exclusive access to a
-database for an upgrade while retaining a recovery point and a controlled way
-to return the database to service.
+The maintenance-mode workflow introduced above provides the recovery and
+database-name transitions needed to control an application upgrade.
 
 The workflow provides the following procedures. The restore step is optional
 and is used only when the upgrade must be rolled back.
