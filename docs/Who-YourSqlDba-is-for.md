@@ -13,7 +13,7 @@ YourSqlDba is built for people who must manage SQL Server databases and cannot d
 
 IT professionals are often assigned part-time responsibilities for which they have not been sufficiently trained. Database administration is one of those responsibilities. They become accidental DBAs.
 
-After years of trying to train these accidental DBAs, the lack of regular practice leads to serious and recurring omissions.
+After years of trying to train these accidental DBAs, I observed that their lack of regular practice led to serious and recurring omissions.
 
 Someone who carries such an important responsibility, part-time and alongside unrelated priorities, cannot reasonably be expected to review everything every day. It is a thankless task, and a large part of it can be automated.
 
