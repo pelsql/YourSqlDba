@@ -44,6 +44,7 @@ QuickLinks
 
 - Version history and release notes: [Releases](releases.md)
 - Project README: [README.md](https://github.com/pelsql/YourSqlDba#readme)
+- Who YourSqlDba is for: [Introduction](Who-YourSqlDba-is-for.md)
 - Installation and first-time setup: [Installation guide](installation.md)
 - Main maintenance entry point: [`Maint.YourSqlDba_DoMaint`](maintenance/your-sql-dba-domaint.md)
 - Delegated database management: [Controlled backup, restore, database refresh, cleanup, and application-upgrade operations for selected non-sysadmin users](maintenance/delegated-database-management.md)

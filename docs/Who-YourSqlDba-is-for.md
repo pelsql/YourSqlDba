@@ -1,0 +1,82 @@
+---
+layout: default
+title: Who YourSqlDba Is For
+nav_order: 2
+has_children: false
+---
+
+# Who YourSqlDba Is For
+
+YourSqlDba is built for people who must manage SQL Server databases and cannot do it manually every day. It is a functional introduction to the project for accidental DBAs, application owners, and professional DBAs who want reliable maintenance automation.
+
+## The challenge
+
+IT professionals are often assigned part-time responsibilities for which they have not been sufficiently trained. Database administration is one of those responsibilities. They become accidental DBAs.
+
+After years of trying to train these accidental DBAs, the lack of regular practice leads to serious and recurring omissions.
+
+Someone who carries such an important responsibility, part-time and alongside unrelated priorities, cannot reasonably be expected to review everything every day. It is a thankless task, and a large part of it can be automated.
+
+## The idea
+
+SQL Server documents what it owns as ordinary data: databases, tables, indexes, backup history, jobs, and so on. It also makes it possible to script the same operations SSMS performs, because SSMS itself generates T-SQL statements.
+
+T-SQL can build statements dynamically as character strings and execute them. In that context, the variable data is mainly the names of the objects to manage. By integrating metadata — database names, table names, index names, and so on — into character strings representing maintenance statements, you can build an automated database administration feature.
+
+This is where the idea emerged: database maintenance could be automated in pure SQL, in a sufficiently dynamic way to adapt to new databases, new tables, and new indexes. YourSqlDba was born from that idea.
+
+YourSqlDba is delivered as a script that creates a database of the same name and deploys SQL modules into it. The maintenance entry point is a single procedure that calls other procedures.
+
+## Dynamic filtering of databases
+
+Part-time DBAs do not want to name every database manually. YourSqlDba uses filters that target databases dynamically by pattern:
+
+- inclusion patterns to select databases generically,
+- exclusion patterns to remove unwanted databases,
+- multiple lists of patterns to adapt automatically as databases evolve.
+
+The rule is simple:
+
+- if the inclusion filter is not empty, it reduces the set of databases to manage;
+- the exclusion filter then removes what must not be managed from the remaining set;
+- whether or not the inclusion filter reduced the list, the exclusion filter always applies.
+
+Once the selection of databases is determined, the main maintenance procedure performs the work.
+
+## What the solution manages
+
+YourSqlDba automates the core maintenance actions that matter:
+
+- backups,
+- integrity checks,
+- statistics updates,
+- index optimization (reorganize or rebuild as needed).
+
+The optimization task is divided into two parts:
+
+1. updating statistics so SQL Server can choose the best query plans,
+2. reorganizing or rebuilding indexes that become fragmented and bloated over time.
+
+## Why automation matters
+
+A DBA should not have to monitor and drive everything manually if the solution can run on a precise schedule. SQL Server Agent makes recurring execution possible and can report problems.
+
+Reports are essential. YourSqlDba provides them with:
+
+- execution summary,
+- detailed SQL commands issued,
+- success/failure status and error messages,
+- diagnostic queries ready to copy and paste.
+
+## Who should use YourSqlDba
+
+1. Application owners on a single server: deploy maintenance for one dedicated application database and alert the owner if a problem occurs.
+2. Accidental DBAs: prevent forgotten tasks, provide appropriate alerts, and enable escalation to SQL experts when needed.
+3. Professional DBAs: support multiple jobs, different schedules, and detailed diagnostics for problems.
+4. Delegation scenarios: allow restricted backup, restore, and database refresh operations for selected databases and users.
+
+## How it is delivered
+
+YourSqlDba is delivered as a single installable script. Running it creates the `YourSqlDba` database and all maintenance modules.
+
+Initial activation is performed by a utility procedure that only needs to be executed once. A Database Mail configuration completes the process and allows YourSqlDba to communicate results by email.

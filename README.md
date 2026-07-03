@@ -1,17 +1,21 @@
 # YourSqlDba
 
+
 **Contact info: [Maurice Pelchat](https://www.linkedin.com/in/maurice-pelchat-9891495/)**
 
-**[Get the script for the latest release](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)**
+Who YourSqlDba is for: [Introduction](https://github.com/pelsql/YourSqlDba/blob/master/docs/Who-YourSqlDba-is-for.md)
 
-For previous versions and details about changes between releases, see the
-[version history and release notes](docs/releases.md).
+Everything about YourSqlDba is documented in the
+**[GitHub Pages documentation](https://pelsql.github.io/YourSqlDba/)**. 
 
 To display the currently installed version of YourSqlDba, execute:
-
 ```sql
 SELECT * FROM Install.VersionInfo();
 ```
+**[Latest release install script](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)**
+
+For previous versions and details about changes between releases, see the
+[version history and release notes](docs/releases.md).
 
 > [!WARNING]
 > **Breaking change — Starting with version 7.1.0.12 — delegated database management:** Existing non-sysadmin
@@ -21,12 +25,6 @@ SELECT * FROM Install.VersionInfo();
 > targets must follow the new naming restrictions. Review the
 > [delegated database management documentation](docs/maintenance/delegated-database-management.md)
 > before upgrading any instance that uses delegated operations.
-
-Everything about YourSqlDba is documented in the
-**[GitHub Pages documentation](https://pelsql.github.io/YourSqlDba/)**,
-which can be read directly in a web browser. Start with the landing page for an
-overview of what YourSqlDba does and how it works. Its `QuickLinks` table points
-to frequently used documentation.
 
 > YourSqlDba operates through SQL Server Agent jobs and Database Mail, both of
 > which must be configured. After downloading and running the YourSqlDba script,
@@ -38,6 +36,10 @@ to frequently used documentation.
 > Each job has a single maintenance step. Both call the main stored procedure,
 > `Maint.YourSqlDba_DoMaint`, with parameters appropriate for the job type. These
 > parameters are documented in detail in the online documentation.
+
+> The generated report and logs now include the list of databases selected by
+> the maintenance filters, so users can verify the exact database set targeted
+> by each run.
 
 YourSqlDba is a large T-SQL script that automates database maintenance tasks for
 SQL Server. It creates a database named `YourSqlDba` containing T-SQL modules,

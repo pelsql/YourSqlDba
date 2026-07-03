@@ -57,6 +57,12 @@ title: Version history and release notes
    `Maint.DuplicateDbFromBackupHistory`, or `Maint.RestoreDb`. They may call
    `S#.KillDbUsers` explicitly when appropriate.
 
+5. **Improved filter reporting**
+
+   Maintenance reports and logs now include the list of databases selected by
+   the filter rules, making it easier to verify which databases were targeted
+   by each run.
+
 [View script 7.1.0.12 on GitHub](../YourSQLDba_InstallOrUpdateScript.sql)
 
 **[Get script 7.1.0.12](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)**

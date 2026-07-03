@@ -5732,6 +5732,42 @@ Begin
   )
 End
 GO
+Create or alter Function S#.ShowDbList (@Title Nvarchar(max), @StartSeq Int, @IncDb nvarchar(max), @ExcDb nvarchar(max), @HtmlLines Int=0)
+Returns Table
+-- ----------------------------------------------------------------------------------------------------
+-- Formatting function to list selected databases, for reporting into the log and into the report message
+-- ----------------------------------------------------------------------------------------------------
+as 
+Return
+  Select LineOrd, Line
+  From 
+    (Select Title=@Title, StartSeq=@StartSeq, IncDb=@IncDb, ExcDb=@ExcDb, HtmlLines=@HtmlLines) as Prm
+    CROSS APPLY
+    (
+    Select LineOrd=startSeq, Line=Title 
+    -- list all databases selected on multiple rows
+    UNION ALL
+    Select LineOrd=12+Row_number() Over (Order by Line), Line=L.line
+    From 
+      (Select DbList=string_agg('  '+db, Nchar(13)+Nchar(10)) 
+      From yutl.YourSqlDba_ApplyDbFilter(IncDb, ExcDb, 1)) as DbList
+      CROSS APPLY (Select * From S#.SplitSqlCodeLinesIntoRows (dbList)) as L
+    Where HtmlLines=0
+    -- list all databases selected on multiple lines for html
+    UNION ALL
+    Select LineOrd=0, Line=DbList
+    From 
+      (Select DbList='<br>'+string_agg('<br>  '+db, Nchar(13)+Nchar(10)) +'<br><br>'
+      From 
+        (
+        Select top 99.9999 percent db=db collate database_default
+        From yutl.YourSqlDba_ApplyDbFilter(IncDb, ExcDb, 1) 
+        Order By db
+        ) as Filter
+      ) as DbList
+    Where HtmlLines=1
+    ) DbSet
+GO
 Create or Alter proc yExecNLog.LogAndOrExec  
   @YourSqlDbaNo nvarchar(max) = NULL
 , @context nvarchar(4000) = NULL
@@ -5882,6 +5918,8 @@ Begin
         UNION ALL Select LineOrd=9, Line='Task requested: Backup Transaction Logs to '+J.LogBackupPath Where J.DoLogBkp = 1 Or J.DoLogBkp is null
         Union All Select LineOrd=10, Line='Databases to match: ' + replace(J.IncDb, nchar(10), '') Where ltrim(replace(J.IncDb, nchar(10), ''))<> ''
         Union All Select LineOrd=11, Line='Databases to exclude: ' + replace(J.ExcDb, nchar(10), '') Where ltrim(replace(J.ExcDb, nchar(10), ''))<> ''
+        -- list all databases selected
+        Union All Select LineOrd, Line From S#.ShowDbList ('Resulting database set below', 12, IncDb, ExcDb, 0)
         ) as Det
       
 
@@ -6969,7 +7007,8 @@ Return
 #kw#Select
 #id#  cmdStartTime, JobNo, seq, Typ, line, Txt, MaintJobName, MainSqlCmd, Who, Prog, Host, SqlAgentJobName, JobId, JobStart, JobEnd
 #kw#From 
-#cm#  -- set of constants for the function below (& precomputed date range constants) 
+#cm#  -- YourSQLDba.Maint.MaintenanceEnums provides Enums HV$ShowErrOnly, HV$ShowAll & precomputed dates values relative to "now"
+#cm#  -- for YourSQLDba.Maint.HistoryView. Here only HV$ShowErrOnly, HV$ShowAll are used.
 #id#  YourSQLDba.Maint.MaintenanceEnums #kw#as #id#E #cm#-- HV$Now, HV$FromMidnight, HV$FromYesterdayMidnight, HV$Since12Hours, HV$Since10Min, HV$Since1Hour
 #kw#  cross apply#id# YourSQLDba.Maint.HistoryView('#StartOfMaintTxt#', '#EndOfMaintTxt#', E.HV$ShowAll) #cm#-- E.HV$ShowErrOnly=1, E.HV$ShowAll=0
 #id#Order By #id#cmdStartTime, Seq, TypSeq, Typ, Line
@@ -6984,7 +7023,8 @@ Return
 <pre>
 #kw#Select #id#cmdStartTime, JobNo, seq, Typ, line, Txt, MaintJobName, MainSqlCmd, Who, Prog, Host, SqlAgentJobName, JobId, JobStart, JobEnd </span> 
 #kw#From
-#cm#  -- set of constants for the function below (& precomputed date range constants) 
+#cm#  -- YourSQLDba.Maint.MaintenanceEnums provides Enums HV$ShowErrOnly, HV$ShowAll & precomputed dates values relative to "now"
+#cm#  -- for YourSQLDba.Maint.HistoryView. Here only HV$ShowErrOnly, HV$ShowAll are used.
 #id#  YourSQLDba.Maint.MaintenanceEnums #kw#AS #id#E #cm# -- HV$Now, HV$FromMidnight, HV$FromYesterdayMidnight, HV$Since12Hours, HV$Since10Min, HV$Since1Hour
 #kw#  cross apply#id# YourSQLDba.Maint.HistoryView('#StartOfMaintTxt#', '#EndOfMaintTxt#', E.HV$ShowErrOnly) #cm#-- E.HV$ShowErrOnly=1, E.HV$ShowAll=0
 #kw#Where #id#JobNo=#JobNo# 
@@ -7067,12 +7107,14 @@ Begin
     , Inf.*
     , Ctx.JobNo
     , SendOnErrorOnly=@SendOnErrorOnly
+    , dbList
     From
       yMaint.InstructionsToGetJobHistory -- format HTML message related to what Maint.HistoryView to run for the situation (Success or error)
       (
         @StartOfMaint
       , Ctx.JobNo
       ) as Inf 
+      CROSS JOIN (Select dbList=Line From S#.ShowDbList ('', NULL, Ctx.IncDb, Ctx.ExcDb, 1)) as DbList
     ) as ReportElements
     CROSS APPLY (Select JsonReportElements=(Select ReportElements.* FOR JSON PATH)) as jsonReportElements
     CROSS APPLY (Select MsgBody=g.Code From S#.GetTemplateFromCmtAndReplaceTags ('===MsgBody===', NULL, jsonReportElements) as g) as MsgBody
@@ -7123,6 +7165,8 @@ Begin
     <tr><td> Result:</td> <td>#shortResultMessTmp#</td></tr>
   </Table>
 <Strong>#HowToShowHistory#</Strong>
+  <font size="2"><b>List of databases managed from #Host# by #reportSource# #JobNameSource#</b></font>
+  #dbList#
   <font size="2"><b>Command launched from #Host# by #reportSource# #JobNameSource#</b></font>
   <br>
   <table border=1 cellspacing=0 style="background:#CCCCCC;border-collapse:collapse;border:none">
