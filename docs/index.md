@@ -12,6 +12,10 @@ database maintenance tasks. It provides a practical default setup for routine
 maintenance while remaining adaptable to instances with many databases,
 different schedules, or more specialized operational requirements.
 
+For a more broad understanding of YourSqlDba use cases see:
+
+Who YourSqlDba is for: [Introduction](Who-YourSqlDba-is-for.md)
+
 Summary
 -------
 
