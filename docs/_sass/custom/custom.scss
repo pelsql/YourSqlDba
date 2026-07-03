@@ -1,0 +1,15 @@
+// Improve the readability of inline code produced by single backticks without
+// changing fenced code blocks.
+.main-content :not(pre) > code {
+  padding: 0.1em 0.25em;
+  font-size: 0.95em;
+  font-weight: 600;
+  color: #0550ae;
+  background-color: #f1f3f5;
+  border-radius: 0.2rem;
+}
+
+html[data-color-scheme="dark"] .main-content :not(pre) > code {
+  color: #79c0ff;
+  background-color: #24292f;
+}
