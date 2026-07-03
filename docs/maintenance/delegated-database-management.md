@@ -35,9 +35,12 @@ database. If necessary, the database can be restored to its pre-upgrade state;
 otherwise, the upgraded database is retained. In either case, the final step
 returns it to its original name and normal use.
 
-After validating the delegated workflows, remove broader permissions that are
-no longer required, such as membership in the `dbcreator` fixed server role or
-the `db_backupoperator` fixed database role.
+Non-sysadmin users must be registered with their access limits in the
+`YourSqlDba.Maint.DelegatedDbManagement` table. See the [Authorization model](#authorization-model)
+to understand how to configure this, and [Configure a delegated login](#configure-a-delegated-login)
+for examples. After validating the delegated workflows, remove broader permissions
+that are no longer required, such as membership in the `dbcreator` fixed server role
+or the `db_backupoperator` fixed database role.
 
 See the procedures for [delegated backups](#delegated-backup-procedures),
 [duplication and restore](#delegated-duplication-and-restore-procedures),
@@ -50,12 +53,6 @@ See the procedures for [delegated backups](#delegated-backup-procedures),
 > and its authorized source databases to `Maint.DelegatedDbManagement` before
 > those scripts are run again. Restore targets must also follow the naming rules
 > described below.
-
-## Table of contents
-{: .no_toc .text-delta }
-
-1. TOC
-{:toc}
 
 ## Authorization model
 
@@ -196,7 +193,9 @@ EXEC Maint.DuplicateDbFromBackupHistory
 Before restoring over an existing delegated target, YourSqlDba terminates its
 active sessions because a non-sysadmin user normally cannot do so. This is not
 done automatically for sysadmins: they may restore unrelated databases and
-must therefore handle active sessions explicitly when appropriate.
+must therefore handle active sessions explicitly when appropriate. The YourSqlDba
+procedure `S#.KillDbUsers` makes this task easier. **Reminder:** a SQL script
+cannot request confirmation, so verify these carefully before running them.
 
 ## Delegated backup cleanup
 
@@ -205,7 +204,8 @@ only for database variants derived from its authorized source databases. The
 same source-name, underscore, and suffix rule applies.
 
 Review `@Path`, retention, extension, `@IncDb`, and `@ExcDb` carefully before
-running cleanup. A sysadmin is not restricted to delegated database variants.
+running cleanup. A sysadmin is not restricted to delegated database variants
+and so you must be careful to ensure the filters are as expected.
 
 ## Application-upgrade workflow
 
@@ -217,10 +217,11 @@ and is used only when the upgrade must be rolled back.
 
 1. `Maint.PrepDbForMaintenanceMode` disconnects users, renames the database with
    the `_MaintenanceMode` suffix, and establishes the recovery point.
-2. `Maint.RestoreDbAtStartOfMaintenanceMode` restores that recovery point while
-   leaving the database under its maintenance-mode name.
-3. `Maint.ReturnDbToNormalUseFromMaintenanceMode` returns the upgraded or
-   restored database to its original name and normal use.
+2. `Maint.RestoreDbAtStartOfMaintenanceMode` restores the database to that recovery
+   point (erasing the effects of a failed upgrade) while leaving the database under
+   its maintenance-mode name.
+3. `Maint.ReturnDbToNormalUseFromMaintenanceMode` returns the upgraded or restored
+   database to its original name and normal use.
 
 Example:
 
@@ -241,6 +242,18 @@ EXEC Maint.ReturnDbToNormalUseFromMaintenanceMode
 
 Authorization for this workflow can come from either `SourceDatabaseList` or
 `MaintenanceModeDatabaseList`.
+
+## Upgrade checklist
+
+Before upgrading an instance that already uses non-sysadmin management scripts:
+
+1. Identify every login that calls one of the procedures listed on this page.
+2. Record the source databases required by each login.
+3. Insert or update the corresponding row in `Maint.DelegatedDbManagement`.
+4. Update restore target names to use the `SourceDatabase_suffix` pattern.
+5. Test each delegated workflow with the actual non-sysadmin login.
+6. Review any production database names that could be confused with a delegated
+   derivative.
 
 ## Upgrade checklist
 

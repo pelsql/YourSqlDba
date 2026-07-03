@@ -80,7 +80,9 @@ step.
 > `Mirroring.Failover` is a disruptive cutover operation. It disconnects users
 > and leaves the source databases offline before making the target databases
 > available. Validate connectivity, restore status, application configuration,
-> database selection, and the rollback plan before executing it.
+> database selection, and the rollback plan before executing it. Most users find
+> it easier to keep the same instance names on different servers and adjust name
+> resolution so it points to the new servers.
 
 ## Key parameters
 
@@ -100,8 +102,13 @@ These are parameters of `Maint.YourSqlDba_DoMaint`.
 - The linked server name must match the value supplied in `@MirrorServer`.
 - YourSqlDba must be installed on the target server, and both instances must use
   the same YourSqlDba version.
-- Remote access must work through the `YourSqlDba` login on the target server.
-- If multiple source servers use the same mirror server, they should share a common `YourSqlDba` password for automatic login mapping.
+- Remote access must work through the `YourSqlDba` login on the target server. It is
+  automatically created by `Mirroring.AddServer`; this is typically transparent for
+  users who mirror to a single instance.
+- If multiple source servers use the same mirror server, they should share a common
+  `YourSqlDba` password for automatic login mapping. Conversely, if one source server
+  restores to different mirror servers, the same rule applies; use
+  `Mirroring.SetYourSqlDbaAccountForMirroring` to resolve the mappings.
 
 ## Linked server and security handling
 

@@ -33,18 +33,6 @@ also be filtered on any returned column. Queries included in job reports add a
 This page also covers Database Mail diagnostics when reports are not delivered
 and SQL Server wait-statistics tools for performance investigations.
 
-Use these tools to answer three different questions:
-
-- What did a maintenance job execute, and where did it fail?
-- Why were YourSqlDba email reports or alerts not delivered?
-- Which SQL Server waits accumulated during a measured workload?
-
-## Table of contents
-{: .no_toc .text-delta }
-
-1. TOC
-{:toc}
-
 ## Databases taken offline by YourSqlDba
 
 {: .warning }
@@ -143,15 +131,17 @@ jobs in the same time range.
 
 | Parameter | Purpose |
 | --- | --- |
-| `@StartDateTime` | Start of the reporting interval, supplied as `nvarchar(23)` in SQL style 121 format. |
-| `@EndDateTime` | End of the reporting interval, supplied in the same format. |
+| `@StartDateTime` | Start of the reporting interval, supplied as a canonical SQL datetime string in SQL style 121 format. |
+| `@EndDateTime` | End of the reporting interval, supplied as a canonical SQL datetime string in SQL style 121 format. |
 | `@FilterOption` | Selects all events or only error-related events. Use a constant from `Maint.MaintenanceEnums`. |
 
-The supported date representation is:
+The supported date representation is :
 
 ```text
 YYYY-MM-DD hh:mm:ss.mmm
 ```
+
+`Maint.MaintenanceEnums` values are returned as canonical datetime strings, so no explicit `CONVERT()` call is required when passing them to `Maint.HistoryView`.
 
 Using this unambiguous format prevents the session language from exchanging the
 month and day during conversion.
@@ -183,12 +173,7 @@ SELECT
 FROM
   Maint.MaintenanceEnums AS E
   CROSS APPLY
-  Maint.HistoryView
-  (
-    CONVERT(nvarchar(23), E.HV$Since10Min, 121)
-  , CONVERT(nvarchar(23), E.HV$Now, 121)
-  , E.HV$ShowAll
-  ) AS H
+  Maint.HistoryView(E.HV$Since10Min, E.HV$Now, E.HV$ShowAll) AS H
 ORDER BY
   H.cmdStartTime, H.Seq, H.TypSeq, H.Typ, H.Line;
 ```

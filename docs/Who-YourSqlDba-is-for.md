@@ -70,10 +70,10 @@ Reports are essential. YourSqlDba provides them with:
 
 ## Who should use YourSqlDba
 
-1. Application owners on a single server: deploy maintenance for one dedicated application database and alert the owner if a problem occurs.
-2. Accidental DBAs: prevent forgotten tasks, provide appropriate alerts, and enable escalation to SQL experts when needed.
-3. Professional DBAs: support multiple jobs, different schedules, and detailed diagnostics for problems.
-4. Delegation scenarios: allow restricted backup, restore, and database refresh operations for selected databases and users.
+1. Application owners on a single server: The support team deploys maintenance for the application database. When a problem occurs, the owner alerts the support team. The probability of problems is low.
+2. Accidental DBAs: Prevent forgotten tasks, provide appropriate alerts, and enable escalation to SQL experts when needed if the provided diagnostics do not clarify the issue.
+3. Professional DBAs: Do what accidental DBAs can do, and when maintenance load becomes excessive, divide tasks with different schedules. Detailed diagnostics for problems will be more familiar to them.
+4. Delegation scenarios: For professional or occasional DBAs, reduce operational burden by delegating restricted backup, restore, and database refresh operations for selected databases and specific users. These users are typically application owners.
 
 ## How it is delivered
 

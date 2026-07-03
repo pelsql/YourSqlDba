@@ -20,12 +20,6 @@ Use this procedure to define:
 - whether backups are restored to a standby or mirror server;
 - how maintenance results are reported.
 
-## Table of contents
-{: .no_toc .text-delta }
-
-1. TOC
-{:toc}
-
 ## Execution model
 
 `Maint.YourSqlDba_DoMaint` is intended to be the top-level entry point for
@@ -99,7 +93,7 @@ EXEC Maint.YourSqlDba_DoMaint
 | `@NotifyMandatoryFullDbBkpBeforeLogBkp` | `int` | `1` | Reports an error when a log backup cannot run because no full backup is available. |
 | `@BkpLogsOnSameFile` | `int` | `1` | Uses the same log backup file after a full backup when set to `1`; creates a new file each run when set to `0`. |
 | `@SpreadUpdStatRun` | `int` | `7` | Spreads statistics updates across a number of maintenance executions. |
-| `@SpreadCheckDb` | `int` | `7` | Spreads full DBCC checks across a number of maintenance executions. |
+| `@SpreadCheckDb` | `int` | `7` | Spreads full DBCC checks across a number of maintenance executions; otherwise a summary check is run using the PHYSICAL_ONLY option. |
 | `@ConsecutiveDaysOfFailedBackupsToPutDbOffline` | `int` | `9999` | Last-resort threshold for putting a database offline after full backups fail on consecutive days. Review the [offline-database warning and recovery procedure](../diagnostics.md#databases-taken-offline-by-yoursqldba) before lowering it. |
 | `@MirrorServer` | `sysname` | Empty string | Optional destination SQL instance for automatic restore of backups. |
 | `@MigrationTestMode` | `int` | `0` | Changes mirror restore behavior to support migration testing. |
@@ -242,10 +236,12 @@ Backup cleanup is controlled by:
 
 Small values are common when the backup folder is dedicated to the latest backup
 set. Larger values are useful when the folder must keep several days of recovery
-points.
+points. Obviously, you retain more log files if you lack assurance of reliable
+external backup or if recovery from external storage is slow.
 
 Retention applies to backup files that YourSqlDba can identify as part of its
-maintenance naming rules.
+maintenance naming rules. Files that do not follow these rules are ignored.
+It is the responsibility of the DBA to manage them.
 
 ## Spreading maintenance work
 
@@ -254,11 +250,11 @@ Two parameters reduce the amount of work performed in a single maintenance run:
 | Parameter | Purpose |
 | --- | --- |
 | `@SpreadUpdStatRun` | Spreads statistics updates across several runs. |
-| `@SpreadCheckDb` | Spreads full DBCC checks across several runs. |
+| `@SpreadCheckDb` | Spreads full DBCC checks across several runs; otherwise a summary check is run using the PHYSICAL_ONLY option. |
 
 For example, with the default value `7`, the work is spread over a seven-run
 cycle. This reduces the maintenance window while still ensuring that all
-databases or objects are eventually processed.
+databases and objects are eventually checked at regular intervals.
 
 ## Recovery model policy
 

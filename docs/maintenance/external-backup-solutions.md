@@ -17,12 +17,6 @@ CommVault is used here as a concrete example. Product capabilities, command-line
 paths, schedules, and observed storage savings depend on the installed version
 and environment.
 
-## Table of contents
-{: .no_toc .text-delta }
-
-1. TOC
-{:toc}
-
 ## Separate maintenance from backups
 
 Configure the main `Maint.YourSqlDba_DoMaint` job step without a backup mode so
@@ -76,9 +70,10 @@ do not copy these times unchanged.
 ## Restore CommVault backup files
 
 CommVault can materialize SQL Server backups as `.bak` files instead of
-restoring a database directly. A striped backup normally produces multiple
-media-family files for each full, differential, or log backup. Restoring several
-days can therefore require many ordered `RESTORE` statements.
+restoring a database directly. This is a backup spread across multiple files.
+A striped backup normally produces multiple media-family files for each full,
+differential, or log backup. Restoring several days can therefore require many
+ordered `RESTORE` statements.
 
 The following optional example scans a folder containing files that follow the
 CommVault naming convention and generates the corresponding restore sequence:
@@ -88,18 +83,17 @@ CommVault naming convention and generates the corresponding restore sequence:
 {: .warning }
 > This script is a documentation example. It is not installed by YourSqlDba and
 > is not part of the YourSqlDba product code. It is provided as-is and is not
-> validated against each client's CommVault configuration or file-naming
-> conventions. The user is responsible for testing it in a non-production
-> environment and reviewing every generated `RESTORE` statement before
-> execution.
+> validated for each CommVault configuration. The user is responsible for testing
+> it in a non-production environment and reviewing every generated `RESTORE`
+> statement before execution.
 
 ### Requirements and assumptions
 
 The example:
 
-- requires SQL Server 2017 or later because it uses
+- requires SQL Server 2019 or later because it uses
   `sys.dm_os_enumerate_filesystem`;
-- requires a current YourSqlDba installation for its version-aware
+- requires a compatible YourSqlDba installation for its version-aware
   `RESTORE HEADERONLY` and `RESTORE FILELISTONLY` collectors;
 - expects the SQL Server Database Engine service account to have read access to
   the source folder;

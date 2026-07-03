@@ -60,7 +60,7 @@ DBAs can then customize maintenance behavior by adjusting those job steps and th
 
 | Value | Operation |
 | --- | --- |
-| `F` | Full database backups (plus an initial log backup when applicable) |
+| `F` | Full database backups and an initial consecutive transaction log backup when applicable. |
 | `D` | Differential backups |
 | `L` | Transaction log backups |
 | Empty string | No backup operation |
@@ -115,6 +115,11 @@ maintenance behavior.
 
 If a database group should run with different parameters but can use the same
 schedule, add another SQL Agent job step with a specific `@IncDb` value.
+
+**Important note:** YourSqlDba publishes in its maintenance report the databases
+targeted by the combination of `@IncDb` and `@ExcDb`. It is important to verify
+this list to ensure that all databases you intend to maintain and those you intend
+to exclude have been handled correctly.
 
 ### Use a separate SQL Agent job
 
