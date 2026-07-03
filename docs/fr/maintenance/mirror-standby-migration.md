@@ -15,6 +15,9 @@ de SQL Server vers une nouvelle instance tout en gardant l’interruption finale
 > YourSqlDba utilise un flux de restauration séparé via linked server
 > piloté par `Maint.YourSqlDba_DoMaint`.
 
+Pour les signatures, paramètres, prérequis et exemples d’exécution, consultez
+la [référence des procédures de mirroring](mirroring-reference.md).
+
 ## Préparer une mise à niveau de version SQL Server
 
 Avant la migration, des sauvegardes régulières sont restaurées en continu sur l’instance cible. Le mécanisme évite les bases de données déjà recouvrées et donc en ligne, même si à la source elles sont ciblées.
@@ -91,7 +94,7 @@ Ce sont des paramètres de `Maint.YourSqlDba_DoMaint`.
 - Lorsque le serveur miroir n’est plus nécessaire, il peut être supprimé avec `Mirroring.DropServer`.
 - Le nom du linked server doit correspondre à la valeur fournie dans `@MirrorServer`.
 - YourSqlDba doit être installé sur le serveur cible, et les deux instances doivent utiliser la même version de YourSqlDba.
-- L’accès distant doit fonctionner via la connexion `YourSqlDba` sur le serveur cible. Elle est automatiquement créé par Mirroring.AddServer. Typiquement cela est transparent, car la plupart des utilisateurs ne font du 'Mirroring' que vers une seule instance.
+- L’accès distant doit fonctionner via la connexion `YourSqlDba` sur le serveur cible. Elle est automatiquement créée par `Mirroring.AddServer`. Typiquement, cela est transparent, car la plupart des utilisateurs ne font du mirroring que vers une seule instance.
 - Si plusieurs serveurs source utilisent le même serveur miroir, ils doivent partager un mot de passe YourSqlDba commun pour la correspondance de connexion automatique. De manière inverse si le serveur source envoie des bases de données sur des serveurs différents, la même règle s'applique. La question se règle alors par `Mirroring.SetYourSqlDbaAccountForMirroring`.
 
 ## Gestion du linked server et de la sécurité
@@ -116,7 +119,7 @@ ces paramètres peuvent être utilisés comme solution de contournement.
 Lorsque le serveur miroir utilise une structure de chemins différente de celle de la source — par exemple, des mappages de lecteurs différents vers les mêmes répertoires — utilisez ces paramètres :
 
 `@ReplaceSrcBkpPathToMatchingMirrorPath` : une chaîne de recherche-et-remplacement de la forme `sourcePath>mirrorPath` pour traduire les chemins de sauvegarde pour le serveur miroir.
-`@ReplacePathsInDbFilenames` : ne chaîne de recherche-et-remplacement qui réécrit les chemins des fichiers de base de données lors de la restauration.
+`@ReplacePathsInDbFilenames` : une chaîne de recherche-et-remplacement qui réécrit les chemins des fichiers de base de données lors de la restauration.
 
 Ces valeurs de paramètre sont normalisées en supprimant les sauts de ligne et les espaces répétés avant utilisation.
 
@@ -158,9 +161,11 @@ Causes courantes d’échec de mirroring :
 
 ## Objets associés
 
-- `Mirroring.SetYourSqlDbaAccountForMirroring`
-- `Mirroring.AddServer` — crée et enregistre le linked server utilisé par le mirroring YourSqlDba.
-- `Mirroring.DropServer` — supprime le linked server lorsqu’il n’est plus nécessaire.
-- `Mirroring.Failover` — effectue la synchronisation finale et la bascule de migration.
+- [`Mirroring.AddServer`](mirroring-reference.md#mirroringaddserver) — crée et enregistre le linked server utilisé par le mirroring YourSqlDba.
+- [`Mirroring.DropServer`](mirroring-reference.md#mirroringdropserver) — supprime le linked server lorsqu’il n’est plus nécessaire.
+- [`Mirroring.DoRecovery`](mirroring-reference.md#mirroringdorecovery) — récupère les bases locales sélectionnées qui sont en état `RESTORING`.
+- [`Mirroring.Failover`](mirroring-reference.md#mirroringfailover) — effectue la synchronisation finale et la bascule de migration.
+- [`Mirroring.SetYourSqlDbaAccountForMirroring`](mirroring-reference.md#mirroringsetyoursqldbaaccountformirroring) — reconstruit les correspondances de logins du mirroring.
+- [`Upgrade.MakeDbCompatibleToTarget`](mirroring-reference.md#upgrademakedbcompatibletotarget) — applique le niveau de compatibilité cible après la migration.
+- [`Mirroring.ProcessRestores`](mirroring-reference.md#mirroringprocessrestores) — procédure de travail interne exécutée par SQL Agent.
 - `Maint.YourSqlDba_DoMaint`
-

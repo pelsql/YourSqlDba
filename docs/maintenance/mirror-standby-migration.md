@@ -14,6 +14,9 @@ as possible.
 
 > This is not SQL Server database mirroring. YourSqlDba uses a separate linked-server restore workflow driven by `Maint.YourSqlDba_DoMaint`.
 
+For signatures, parameters, prerequisites, and execution examples, see the
+[Mirroring procedure reference](mirroring-reference.md).
+
 ## Preparing a SQL Server version upgrade
 
 Before the migration, regular maintenance backups are restored continuously on
@@ -168,8 +171,11 @@ Common mirror failure causes:
 
 ## Related objects
 
- - `Mirroring.SetYourSqlDbaAccountForMirroring`
- - `Mirroring.AddServer` — creates and registers the linked server used by YourSqlDba mirroring.
- - `Mirroring.DropServer` — removes the linked server when it is no longer required.
- - `Mirroring.Failover` — performs final synchronization and migration cutover.
- - `Maint.YourSqlDba_DoMaint`
+- [`Mirroring.AddServer`](mirroring-reference.md#mirroringaddserver) — creates and registers the linked server used by YourSqlDba mirroring.
+- [`Mirroring.DropServer`](mirroring-reference.md#mirroringdropserver) — removes the linked server when it is no longer required.
+- [`Mirroring.DoRecovery`](mirroring-reference.md#mirroringdorecovery) — recovers selected local databases from `RESTORING` state.
+- [`Mirroring.Failover`](mirroring-reference.md#mirroringfailover) — performs final synchronization and migration cutover.
+- [`Mirroring.SetYourSqlDbaAccountForMirroring`](mirroring-reference.md#mirroringsetyoursqldbaaccountformirroring) — rebuilds the mirroring login mappings.
+- [`Upgrade.MakeDbCompatibleToTarget`](mirroring-reference.md#upgrademakedbcompatibletotarget) — applies the target compatibility level after migration.
+- [`Mirroring.ProcessRestores`](mirroring-reference.md#mirroringprocessrestores) — internal SQL Agent restore worker.
+- `Maint.YourSqlDba_DoMaint`

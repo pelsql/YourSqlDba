@@ -15,6 +15,6 @@ Cette section documente comment les DBA utilisent et personnalisent cette procé
 
 - [Maint.YourSqlDba_DoMaint](your-sql-dba-domaint.md)
 - [Miroir, standby et tests de migration](mirror-standby-migration.md)
+- [Référence des procédures de mirroring](mirroring-reference.md)
 - [Délégation de la gestion de base de données](delegated-database-management.md)
 - [Solutions de sauvegarde externes](external-backup-solutions.md)
-
