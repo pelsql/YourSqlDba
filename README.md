@@ -6,7 +6,9 @@
 Who YourSqlDba is for: [Introduction](https://github.com/pelsql/YourSqlDba/blob/master/docs/Who-YourSqlDba-is-for.md)
 
 Everything about YourSqlDba is documented in the
-**[GitHub Pages documentation](https://pelsql.github.io/YourSqlDba/)**. 
+**[GitHub Pages documentation](https://pelsql.github.io/YourSqlDba/)**.
+
+Pour une version française, consultez la **[documentation française](https://pelsql.github.io/YourSqlDba/fr/)**.
 
 To display the currently installed version of YourSqlDba, execute:
 ```sql
@@ -16,6 +18,8 @@ SELECT * FROM Install.VersionInfo();
 
 For previous versions and details about changes between releases, see the
 [version history and release notes](docs/releases.md).
+
+Pour l'historique complet, consultez l'[historique des versions et notes de version](docs/fr/releases.md).
 
 > [!WARNING]
 > **Breaking change — Starting with version 7.1.0.12 — delegated database management:** Existing non-sysadmin
