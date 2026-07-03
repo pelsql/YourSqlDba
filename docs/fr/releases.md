@@ -134,7 +134,7 @@ ce qui causait une erreur dans les commandes de sauvegarde de journal.
 
 [Obtenir script 7.1.0.4 sur GitHub](https://raw.githubusercontent.com/pelsql/YourSqlDba/5a0674c0221b007c7bc238a78aa7f42a63164528/YourSQLDba_InstallOrUpdateScript.sql)
  
-Si vous avez le script 7.1.0.3, réappliquez ce script, car la mise à niveau du fournisseur de YourSqlDba 
+Si vous avez le script 7.1.0.3, réappliquez ce script, car la mise à niveau du "provider" de YourSqlDba 
 "Mirror server" peut être incorrecte.
 
 **Correctif** pour le petit nombre d'utilisateurs qui utilisent un compte de service géré en groupe 

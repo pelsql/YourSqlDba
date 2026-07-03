@@ -93,4 +93,3 @@ scheduled maintenance jobs, while some are also useful for occasional DBA work.
    `Maint.DuplicateDbFromBackupHistory`, or `Maint.RestoreDb`. They may call
    `S#.KillDbUsers` explicitly when appropriate.
 
-For the complete history, see the [release notes](docs/releases.md).

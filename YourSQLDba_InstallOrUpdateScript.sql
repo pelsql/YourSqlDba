@@ -640,17 +640,29 @@ Select
 , HV$Since12Hours
 , HV$Since10Min
 , HV$Since1Hour
+
 -- ------ MaintenanceModeSuffix = 'MaintenanceMode'
--- for Proc PrepDbForMaintenanceMode, RestoreDbAtStartOfMaintenanceMode,ReturnDbToNormalUseFromMaintenanceMode
+-- for Proc PrepDbForMaintenanceMode, RestoreDbAtStartOfMaintenanceMode,
+-- ReturnDbToNormalUseFromMaintenanceMode
 -- and function yMaint.ValidateDelegatedDbManagement
 , MaintenanceModeSuffix = 'MaintenanceMode' 
 From
-  (Select HV$Now=Getdate()) as Now
-  CROSS APPLY (Select HV$FromMidnight=DateAdd(Day, DateDiff(Day, 0, HV$Now), 0)) as FromMidnight
-  CROSS APPLY (Select HV$FromYesterdayMidnight=DateAdd(Day, DateDiff(Day, 0, HV$Now)-1, 0)) as FromYesterdayMidnight
-  CROSS APPLY (Select HV$Since12Hours=DateAdd(Hour, DateDiff(Hour, 0, HV$Now)-12, 0)) as Since12Hours
-  CROSS APPLY (Select HV$Since10min=DateAdd(Mi, DateDiff(Mi, 0, HV$Now)-10, 0)) as Since10Min
-  CROSS APPLY (Select HV$Since1Hour=DateAdd(hh, DateDiff(hh, 0, HV$Now)-1, 0)) as Since1Hour
+  (Select dHV$Now = GetDate()) as dNow
+  CROSS APPLY (Select dHV$FromMidnight = DateAdd(Day, DateDiff(Day, 0, dHV$Now), 0)) as dFromMidnight
+  CROSS APPLY (Select dHV$FromYesterdayMidnight = DateAdd(Day, DateDiff(Day, 0, dHV$Now) - 1, 0)) as dFromYesterdayMidnight
+  CROSS APPLY (Select dHV$Since12Hours = DateAdd(Hour, DateDiff(Hour, 0, dHV$Now) - 12, 0)) as dSince12Hours
+  CROSS APPLY (Select dHV$Since10Min = DateAdd(Minute, DateDiff(Minute, 0, dHV$Now) - 10, 0)) as dSince10Min
+  CROSS APPLY (Select dHV$Since1Hour = DateAdd(Hour, DateDiff(Hour, 0, dHV$Now) - 1, 0)) as dSince1Hour
+  CROSS APPLY
+  (
+    Select
+      HV$Now = Convert(nvarchar(23), dHV$Now, 121)
+    , HV$FromMidnight = Convert(nvarchar(23), dHV$FromMidnight, 121)
+    , HV$FromYesterdayMidnight = Convert(nvarchar(23), dHV$FromYesterdayMidnight, 121)
+    , HV$Since12Hours = Convert(nvarchar(23), dHV$Since12Hours, 121)
+    , HV$Since10Min = Convert(nvarchar(23), dHV$Since10Min, 121)
+    , HV$Since1Hour = Convert(nvarchar(23), dHV$Since1Hour, 121)
+  ) as HV
 GO
 -- @@MARK: Maintenance : Delegated database copy/restore management
 If object_id('Maint.DelegatedDbManagement') is null
