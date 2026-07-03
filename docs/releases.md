@@ -146,7 +146,7 @@ from that binary content.
 provider, they are forcefully deleted to be asked to be recreated 
 with Mirroring.AddServer, which will then use the MSOLEDBSQL provider.
 
-[Doc reference on how to do a Mirroring.AddServer](https://onedrive.live.com/personal/12c385255443c4ed/_layouts/15/Doc.aspx?sourcedoc=%7B5443c4ed-8525-20c3-8012-a81b00000000%7D&action=view&redeem=aHR0cHM6Ly8xZHJ2Lm1zL28vYy8xMmMzODUyNTU0NDNjNGVkL0V1M0VRMVFsaGNNZ2dCS29Hd0FBQUFBQlJ2b290QVJmaE5LQjJaenNPU09yZkE_ZT11c0h6Vms&wd=target%28REFERENCE.one%7Cc7b30aeb-6ae2-4bd6-a550-14feb11d776d%2FMirroring.AddServer%7Ca71c4787-8076-4ed3-a6be-d6c5c3c8b6b3%2F%29&wdorigin=703&wdpartid=%7B2da72b12-728f-4f44-ba3b-477df906c323%7D%7B80%7D&wdsectionfileid=%7B12c385255443c4ed%21sfb02454d2d084363a169b209686c280b%7D)
+[Mirroring.AddServer procedure reference](maintenance/mirroring-reference.md#mirroringaddserver)
 (ignore the error "cannot add YourSqlDbaRemoteServerCred because it already exists"
 
 ---
