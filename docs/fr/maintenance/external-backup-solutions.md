@@ -2,7 +2,7 @@
 layout: default
 title: Solutions de sauvegarde externes
 parent: Maintenance
-grand_parent: YourSqlDba documentation
+grand_parent: YourSqlDba documentation (fr)
 nav_order: 30
 ---
 
@@ -108,4 +108,3 @@ les fichiers de média, les chemins cibles, l’ordre de restauration et le posi
 
 Pour une restauration simple à partir d’un seul fichier de sauvegarde autonome, préférez
 [`Maint.RestoreDb`](delegated-database-management.md#delegated-duplication-and-restore-procedures).
-

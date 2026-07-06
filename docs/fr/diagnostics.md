@@ -1,6 +1,7 @@
 ﻿---
 layout: default
 title: Diagnostics et rapports
+parent: YourSqlDba documentation (fr)
 nav_order: 50
 ---
 
@@ -215,4 +216,3 @@ Exécutez `Maint.DiagDbMail` lorsque la maintenance se termine mais que son rapp
 ```sql
 EXEC Maint.DiagDbMail;
 ```
-

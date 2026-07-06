@@ -1,6 +1,7 @@
 ﻿---
 layout: default
 title: Premiers pas
+parent: YourSqlDba documentation (fr)
 nav_order: 10
 ---
 
@@ -117,4 +118,3 @@ Les personnalisations courantes incluent :
 - configurer le mirroring ou le comportement de restauration de secours
 
 Voir [Configuration](configuration.md) et [Maint.YourSqlDba_DoMaint](maintenance/your-sql-dba-domaint.md) pour les paramètres détaillés.
-

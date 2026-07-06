@@ -1,6 +1,7 @@
 ﻿---
 layout: default
 title: Configuration
+parent: YourSqlDba documentation (fr)
 nav_order: 30
 ---
 
@@ -159,4 +160,3 @@ pour des exemples d’historique complet et d’investigation des erreurs.
 
 Pour la référence de la procédure de maintenance principale, voir
 [Maint.YourSqlDba_DoMaint](maintenance/your-sql-dba-domaint.md).
-

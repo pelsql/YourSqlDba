@@ -1,13 +1,23 @@
 ---
 layout: default
 title: Who YourSqlDba Is For
-nav_order: 2
+parent: YourSqlDba documentation
+nav_order: 1
 has_children: false
 ---
 
 # Who YourSqlDba Is For
 
-YourSqlDba is built for people who must manage SQL Server databases and cannot do it manually every day. It is a functional introduction to the project for accidental DBAs, application owners, and professional DBAs who want reliable maintenance automation.
+YourSqlDba is intended first for DBAs, whether accidental or professional. The
+former often have only a basic understanding of the role, unlike the latter,
+but the solution can serve both through an immediately usable initial
+configuration and advanced customization options.
+
+Another target audience consists of people responsible for specialized
+application solutions that rely on a SQL Server instance dedicated to a single
+database. Without being DBAs, they know that the data must be backed up and
+protected, and they need reliable maintenance that requires little daily
+administration.
 
 ## The challenge
 
@@ -16,6 +26,21 @@ IT professionals are often assigned part-time responsibilities for which they ha
 After years of trying to train these accidental DBAs, I observed that their lack of regular practice led to serious and recurring omissions.
 
 Someone who carries such an important responsibility, part-time and alongside unrelated priorities, cannot reasonably be expected to review everything every day. It is a thankless task, and a large part of it can be automated.
+
+Automation is equally relevant to a professional DBA. YourSqlDba can provide a
+complete solution while retaining the flexibility to divide or parallelize the
+work when the number or size of databases, or the available maintenance window,
+requires a more elaborate arrangement.
+
+At the other end of the experience spectrum, YourSqlDba keeps the person
+responsible for the application informed through its reports. That person can
+see whether maintenance and backups are running successfully without having to
+understand their internal operation.
+
+This visibility does not replace keeping a copy of the backups outside the SQL
+Server. Depending on the environment, the application owner must be reminded to
+rotate removable media regularly, or backups should be written to a file server
+that is itself protected by a higher-level backup service.
 
 ## The idea
 

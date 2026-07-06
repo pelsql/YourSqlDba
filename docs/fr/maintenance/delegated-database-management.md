@@ -2,7 +2,7 @@
 layout: default
 title: Délégation de la gestion de base de données
 parent: Maintenance
-grand_parent: YourSqlDba documentation
+grand_parent: YourSqlDba documentation (fr)
 nav_order: 20
 ---
 
@@ -221,4 +221,3 @@ Avant de mettre à niveau une instance qui utilise déjà des scripts de gestion
 4. Mettez à jour les noms de cibles de restauration pour qu’ils utilisent `SourceDatabase_suffix`.
 5. Testez chaque flux délégué avec le vrai login non-sysadmin.
 6. Vérifiez tout nom de base de production qui pourrait être confondu avec un dérivé délégué.
-

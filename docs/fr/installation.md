@@ -1,6 +1,7 @@
 ﻿---
 layout: default
 title: Installation et mise à niveau
+parent: YourSqlDba documentation (fr)
 nav_order: 20
 ---
 
@@ -85,4 +86,3 @@ les définitions par défaut des tâches, les chemins de sauvegarde, le profil d
 > **Attention :** `Install.InitialSetupOfYourSqlDba` recrée la définition par défaut
 > des tâches de maintenance quotidienne et de sauvegarde du journal. Vérifiez toute
 > étape SQL Agent personnalisée avant de la relancer.
-

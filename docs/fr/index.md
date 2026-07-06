@@ -1,11 +1,11 @@
 ﻿---
 layout: default
-title: YourSqlDba documentation (Français)
-nav_order: 1
+title: YourSqlDba documentation (fr)
+nav_order: 2
 has_children: true
 ---
 
-# YourSqlDba (Français)
+# YourSqlDba (fr)
 
 YourSqlDba est un script T-SQL libre qui automatise les tâches courantes de
 maintenance des bases de données SQL Server. Il fournit une configuration par
@@ -13,10 +13,11 @@ défaut pratique pour la maintenance régulière, tout en restant adaptable aux
 instances qui hébergent de nombreuses bases, utilisent différents horaires ou
 ont des exigences opérationnelles plus spécialisées.
 
-**Documentation anglaise : [YourSqlDba](../)**
+**Commencez ici : [Pour qui est YourSqlDba](Who-YourSqlDba-is-for.md)** présente
+les besoins à l’origine du projet et la manière dont son approche répond à
+différents profils responsables de bases de données.
 
-Pour mieux comprendre les cas d’utilisation du produit, consultez
-[Pour qui est YourSqlDba](Who-YourSqlDba-is-for.md).
+**Documentation anglaise : [YourSqlDba](../)**
 
 Résumé
 ------

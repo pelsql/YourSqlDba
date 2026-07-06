@@ -2,7 +2,7 @@
 layout: default
 title: Maint.YourSqlDba_DoMaint
 parent: Maintenance
-grand_parent: YourSqlDba documentation
+grand_parent: YourSqlDba documentation (fr)
 nav_order: 10
 ---
 
@@ -234,4 +234,3 @@ Deux paramètres réduisent la quantité de travail effectuée dans une seule ex
 
 Par exemple, avec la valeur par défaut `7`, le travail est réparti sur un cycle de sept exécutions.
 Cela réduit la fenêtre de maintenance tout en garantissant que toutes les bases sont vérifiées à intervalles réguliers.
-

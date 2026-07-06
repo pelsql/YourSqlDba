@@ -1,7 +1,7 @@
 ﻿---
 layout: default
 title: Maintenance
-parent: YourSqlDba documentation
+parent: YourSqlDba documentation (fr)
 nav_order: 40
 has_children: true
 ---

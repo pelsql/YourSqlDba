@@ -2,7 +2,7 @@
 layout: default
 title: Miroir, standby et tests de migration
 parent: Maintenance
-grand_parent: YourSqlDba documentation
+grand_parent: YourSqlDba documentation (fr)
 nav_order: 11
 ---
 

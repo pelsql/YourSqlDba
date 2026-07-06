@@ -1,16 +1,24 @@
 ﻿---
 layout: default
 title: Pour qui est YourSqlDba
-nav_order: 2
+parent: YourSqlDba documentation (fr)
+nav_order: 1
 has_children: false
 ---
 
 # Pour qui est YourSqlDba
 
-YourSqlDba est conçu pour les personnes qui doivent gérer des bases de données SQL Server
-et ne peuvent pas le faire manuellement chaque jour. Il s’agit d’une introduction fonctionnelle
-au projet pour les DBA accidentels, les propriétaires d’applications et les DBA professionnels
-qui souhaitent une automatisation de maintenance fiable.
+YourSqlDba s’adresse d’abord aux DBA, accidentels ou professionnels. Les
+premiers n’ont souvent qu’une connaissance élémentaire de ce rôle, contrairement
+aux seconds, mais la solution peut répondre aux besoins des deux grâce à une
+configuration initiale directement exploitable et à des possibilités de
+personnalisation avancées.
+
+Un autre public cible est constitué des responsables de solutions applicatives
+spécialisées reposant sur une instance SQL Server dédiée à une seule base. Sans
+être DBA, ils savent que les données doivent être sauvegardées et protégées, et
+ont besoin d’une maintenance fiable nécessitant peu d’administration
+quotidienne.
 
 ## Le défi
 
@@ -25,13 +33,30 @@ Quelqu’un qui assume une responsabilité aussi importante, à temps partiel et
 non liées, ne peut raisonnablement pas tout vérifier chaque jour. C’est une tâche ingrate, et une grande partie
 peut être automatisée.
 
+Pour un DBA professionnel, l’automatisation demeure tout aussi pertinente.
+YourSqlDba peut fournir une solution complète, tout en offrant la flexibilité
+nécessaire pour répartir ou paralléliser le travail lorsque le nombre de bases,
+leur volume ou la fenêtre de maintenance imposent une organisation plus
+élaborée.
+
+À l’autre extrémité du spectre, YourSqlDba maintient un dialogue opérationnel
+avec le responsable applicatif grâce à ses rapports. Celui-ci peut savoir si la
+maintenance et les sauvegardes s’exécutent correctement, sans devoir maîtriser
+leur fonctionnement interne.
+
+Cette visibilité ne remplace toutefois pas une copie des sauvegardes à
+l’extérieur du serveur. Selon l’environnement, il faut rappeler au responsable
+d’échanger régulièrement les supports amovibles, ou configurer les sauvegardes
+vers un serveur de fichiers lui-même protégé par un service de sauvegarde de
+niveau supérieur.
+
 ## L’idée
 
 SQL Server documente ce qu’il possède comme des données ordinaires : bases, tables, index, historique de sauvegarde,
 tâches, etc. Il permet aussi de générer par script les mêmes opérations que SSMS exécute, car SSMS génère lui-même
 des instructions T-SQL.
 
-Le langage T-SQL permet la construction dynamiqueme des instructions sous forme de chaînes de caractères et les exécuter.
+Le langage T-SQL permet de construire dynamiquement des instructions sous forme de chaînes de caractères, puis de les exécuter.
 Dans ce contexte, les données variables sont essentiellement les noms des objets à gérer. En intégrant des métadonnées —
 les noms de bases de données, de tables, d’index, etc. — dans des chaînes représentant des instructions de maintenance,
 on peut construire une fonctionnalité d’administration de bases de données automatisée.
@@ -100,4 +125,3 @@ et tous les modules de maintenance.
 
 L’activation initiale est réalisée par une procédure utilitaire qui ne doit être exécutée qu’une seule fois.
 Une configuration Database Mail complète le processus et permet à YourSqlDba de communiquer les résultats par courriel.
-

@@ -1,6 +1,8 @@
 ---
 layout: default
 title: Historique des versions et notes de version
+parent: YourSqlDba documentation (fr)
+nav_order: 60
 ---
 
 # Historique des versions et notes de version
