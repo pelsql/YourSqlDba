@@ -3,9 +3,9 @@
 
 **Contact info: [Maurice Pelchat](https://www.linkedin.com/in/maurice-pelchat-9891495/)**
 
-**Pour la version française, consultez **[LISMOI.md](LISMOI.md)**.
+> **Pour la version française, consultez [LISMOI.md](LISMOI.md).**
 
-Who YourSqlDba is for: [Introduction](https://github.com/pelsql/YourSqlDba/blob/master/docs/Who-YourSqlDba-is-for.md)
+Who YourSqlDba is for: [Introduction](https://pelsql.github.io/YourSqlDba/Who-YourSqlDba-is-for.html)
 
 Everything about YourSqlDba is documented in the
 **[GitHub Pages documentation](https://pelsql.github.io/YourSqlDba/)**.
@@ -17,7 +17,7 @@ SELECT * FROM Install.VersionInfo();
 **[Latest release install script](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)**
 
 For previous versions and details about changes between releases, see the
-[version history and release notes](docs/releases.md).
+[version history and release notes](https://pelsql.github.io/YourSqlDba/releases.html).
 
 > [!WARNING]
 > **Breaking change — Starting with version 7.1.0.12 — delegated database management:** Existing non-sysadmin
@@ -25,7 +25,7 @@ For previous versions and details about changes between releases, see the
 > may stop working after this upgrade. Each delegated login and its authorized
 > databases must now be configured in `Maint.DelegatedDbManagement`, and restore
 > targets must follow the new naming restrictions. Review the
-> [delegated database management documentation](docs/maintenance/delegated-database-management.md)
+> [delegated database management documentation](https://pelsql.github.io/YourSqlDba/maintenance/delegated-database-management.html)
 > before upgrading any instance that uses delegated operations.
 
 > YourSqlDba operates through SQL Server Agent jobs and Database Mail, both of

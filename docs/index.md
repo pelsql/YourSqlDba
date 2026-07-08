@@ -16,7 +16,7 @@ different schedules, or more specialized operational requirements.
 needs that led to the project and how its approach serves different types of
 database administrators.
 
-**Documentation française disponible : [YourSqlDba (fr)](fr/)**
+> **Documentation française : [YourSqlDba (fr)](fr/)**
 
 Summary
 -------

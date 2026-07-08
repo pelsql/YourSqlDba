@@ -1,12 +1,12 @@
 ﻿---
 layout: default
-title: Pour qui est YourSqlDba
+title: À qui s'adresse YourSqlDba
 parent: YourSqlDba documentation (fr)
 nav_order: 1
 has_children: false
 ---
 
-# Pour qui est YourSqlDba
+# À qui s'adresse YourSqlDba
 
 YourSqlDba s’adresse d’abord aux DBA, accidentels ou professionnels. Les
 premiers n’ont souvent qu’une connaissance élémentaire de ce rôle, contrairement

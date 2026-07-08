@@ -13,11 +13,11 @@ défaut pratique pour la maintenance régulière, tout en restant adaptable aux
 instances qui hébergent de nombreuses bases, utilisent différents horaires ou
 ont des exigences opérationnelles plus spécialisées.
 
-**Commencez ici : [Pour qui est YourSqlDba](Who-YourSqlDba-is-for.md)** présente
+**Commencez ici : [À qui s'adresse YourSqlDba](Who-YourSqlDba-is-for.md)** présente
 les besoins à l’origine du projet et la manière dont son approche répond à
 différents profils responsables de bases de données.
 
-**Documentation anglaise : [YourSqlDba](../)**
+> **English documentation: [YourSqlDba](../)**
 
 Résumé
 ------
@@ -54,7 +54,7 @@ Liens rapides
 -------------
 
 - [Historique des versions et notes de version](releases.md)
-- [Pour qui est YourSqlDba](Who-YourSqlDba-is-for.md)
+- [À qui s'adresse YourSqlDba](Who-YourSqlDba-is-for.md)
 - [Premiers pas](getting-started.md)
 - [Installation et mise à niveau](installation.md)
 - [Configuration](configuration.md)

@@ -2,9 +2,9 @@
 
 **Coordonnées : [Maurice Pelchat](https://www.linkedin.com/in/maurice-pelchat-9891495/)**
 
-**English version : [README.md](README.md)
+> **English version: [README.md](README.md).**
 
-À qui s'adresse YourSqlDba : [Introduction](https://github.com/pelsql/YourSqlDba/blob/master/docs/fr/Who-YourSqlDba-is-for.md)
+À qui s'adresse YourSqlDba : [Introduction](https://pelsql.github.io/YourSqlDba/fr/Who-YourSqlDba-is-for.html)
 
 Toute la documentation de YourSqlDba est disponible dans la
 **[documentation GitHub Pages en français](https://pelsql.github.io/YourSqlDba/fr/)**.
@@ -17,11 +17,11 @@ SELECT * FROM Install.VersionInfo();
 **[Script d'installation de la dernière version](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)**
 
 Pour les versions précédentes et les détails des changements entre les versions, consultez
-l'[historique des versions et notes de version](docs/fr/releases.md).
+l'[historique des versions et notes de version](https://pelsql.github.io/YourSqlDba/fr/releases.html).
 
 > [!WARNING]
 > **Changement incompatible - À partir de la version 7.1.0.12 - gestion déléguée des bases de données :** Les flux de travail existants de sauvegarde, restauration, duplication, nettoyage des sauvegardes ou mode maintenance pour des utilisateurs non sysadmin peuvent cesser de fonctionner après cette mise à niveau. Chaque connexion déléguée et ses bases de données autorisées doivent maintenant être configurées dans `Maint.DelegatedDbManagement`, et les cibles de restauration doivent respecter les nouvelles restrictions de nommage. Consultez la
-> [documentation sur la gestion déléguée des bases de données](docs/fr/maintenance/delegated-database-management.md)
+> [documentation sur la gestion déléguée des bases de données](https://pelsql.github.io/YourSqlDba/fr/maintenance/delegated-database-management.html)
 > avant de mettre à niveau une instance qui utilise des opérations déléguées.
 
 > YourSqlDba fonctionne avec des travaux SQL Server Agent et Database Mail, qui doivent tous deux être configurés. Après avoir téléchargé et exécuté le script YourSqlDba, exécutez `Install.InitialSetupOfYourSqlDba` une fois par instance. Cette procédure configure Database Mail, les répertoires de sauvegarde et les comportements par défaut. Elle crée et planifie aussi deux travaux SQL Server Agent. Les mises à niveau futures ne nécessitent pas de réexécuter cette procédure.
