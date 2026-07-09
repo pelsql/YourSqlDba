@@ -5,7 +5,7 @@ nav_order: 2
 has_children: true
 ---
 
-# YourSqlDba (fr)
+# YourSqlDba 
 
 YourSqlDba est un script T-SQL libre qui automatise les tâches courantes de
 maintenance des bases de données SQL Server. Il fournit une configuration par
