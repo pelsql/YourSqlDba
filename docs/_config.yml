@@ -25,3 +25,13 @@ plugins:
 relative_links:
   enabled: true
   collections: true
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      lang: en
+  - scope:
+      path: "fr"
+    values:
+      lang: fr
