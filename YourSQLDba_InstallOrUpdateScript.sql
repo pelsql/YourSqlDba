@@ -1,10 +1,16 @@
 ﻿-- Copyright 2008 Maurice Pelchat
--- YourSQLDba : Auto-maintenance tools for SQL Server Databases
--- Author : Maurice Pelchat : Contact info https://www.linkedin.com/in/maurice-pelchat-9891495/
---
+-- YourSQLDba : Auto-maintenance tools for SQL Server Databases/Outils d'automatisation de la maintenance de bases de données SQL Server
+-- Author/Auteur : Maurice Pelchat : Contact info https://www.linkedin.com/in/maurice-pelchat-9891495/
+
 -- GitHub Website Readme : https://github.com/pelsql/YourSqlDba#readme
 -- Latest release of YourSqlDba : https://github.com/pelsql/YourSqlDba/blob/master/YourSQLDba_InstallOrUpdateScript.sql?raw=true
 -- Online Documentation : https://pelsql.github.io/YourSqlDba/
+
+--
+-- GitHub Lismoi  : https://github.com/pelsql/YourSqlDba/blob/master/LISMOI.md
+-- Livraison la plus récente de YourSqlDba : https://github.com/pelsql/YourSqlDba/blob/master/YourSQLDba_InstallOrUpdateScript.sql?raw=true
+-- Documentation en ligne : https://pelsql.github.io/YourSqlDba/fr
+
 --   Pay attention to the documentation landing page, and the Goals/QuickLinks table of the online documentation for all the subjects below:
 --
 --       For a good overview it is goof to have a look to the complete introduction section
