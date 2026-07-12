@@ -30,13 +30,13 @@ Le propriétaire de l’application peut alors exécuter et valider la mise à n
 Si nécessaire, la base peut être restaurée à son état pré-upgrade ; sinon, la base mise à niveau est conservée.
 Dans les deux cas, l’étape finale la remet à son nom d’origine et en usage normal. 
 
-Les utilisateurs non-sysadmin doivent être identifiés avec leurs limites d'accès dans la table `YourSqlDba.Maint.DelegatedDbManagement`. Voir le [Modèle d'autorisation](#modèle-dautorisation) pour comprendre comment le faire et [Configurer un login délégué](#configurer-un-login-délégué). Après validation des flux délégués, retirez à ces utilisateurs les autorisations plus larges qui ne sont plus nécessaires,
+Les utilisateurs non-sysadmin doivent être identifiés avec leurs limites d'accès dans la table `YourSqlDba.Maint.DelegatedDbManagement`. Voir le [Modèle d'autorisation](#modele-dautorisation) pour comprendre comment le faire et [Configurer un login délégué](#configurer-un-login-delegue). Après validation des flux délégués, retirez à ces utilisateurs les autorisations plus larges qui ne sont plus nécessaires,
 comme l’adhésion au rôle fixe de serveur `dbcreator` ou au rôle fixe de base `db_backupoperator`.
 
-Voir les procédures pour les [sauvegardes déléguées](#delegated-backup-procedures),
-[duplication et restauration](#delegated-duplication-and-restore-procedures),
-[nettoyage des sauvegardes](#delegated-backup-cleanup) et le
-[flux de travail de mise à niveau d’application](#application-upgrade-workflow).
+Voir les procédures pour les [sauvegardes déléguées](#procedures-de-sauvegarde-deleguees),
+[duplication et restauration](#procedures-de-duplication-et-de-restauration-deleguees),
+[nettoyage des sauvegardes](#nettoyage-des-sauvegardes-deleguees) et le
+[flux de travail de mise à niveau d’application](#flux-de-travail-de-mise-a-niveau-dapplication).
 
 {: .warning }
 > **Changement critique :** Les scripts existants non-sysadmin qui appellent des procédures déléguées
@@ -45,6 +45,7 @@ Voir les procédures pour les [sauvegardes déléguées](#delegated-backup-proce
 > Les cibles de restauration doivent aussi respecter les règles de nommage ci-dessous.
 
 ## Modèle d’autorisation
+{: #modele-dautorisation }
 
 La délégation est configurée dans `YourSqlDba.Maint.DelegatedDbManagement`.
 La table contient une ligne par login délégué.
@@ -65,6 +66,7 @@ la seconde liste est utile lorsqu’un login ne doit recevoir que l’autorisati
 Les logins sysadmin ne sont pas restreints par cette table.
 
 ## Configurer un login délégué
+{: #configurer-un-login-delegue }
 
 Exécutez ces instructions en tant que sysadmin dans la base de données `YourSqlDba`.
 Les noms de bases dans les deux listes sont séparés par des virgules.
@@ -135,6 +137,7 @@ Ne créez pas une base de production dont le nom ressemble à un dérivé délé
 Par exemple, si `Payroll` est délégué, une base comme `Payroll_Production` semblerait être une dérivée autorisée alors que `PayrollProduction` ne le serait pas.
 
 ## Procédures de sauvegarde déléguées
+{: #procedures-de-sauvegarde-deleguees }
 
 Les procédures suivantes exigent que la base source soit présente dans `SourceDatabaseList` :
 
@@ -150,6 +153,7 @@ EXEC Maint.SaveDbCopyOnly
 ```
 
 ## Procédures de duplication et de restauration déléguées
+{: #procedures-de-duplication-et-de-restauration-deleguees }
 
 Les procédures suivantes appliquent à la fois l’autorisation source et les règles de nommage de la cible :
 
@@ -174,6 +178,7 @@ ne peut normalement pas le faire. Ceci n’est pas effectué automatiquement pou
 et doivent donc gérer explicitement les sessions actives si nécessaire. La procédure S#.KillDbUsers de YourSqlDba facilite cette tâche. RAPPEL (un script SQL ne peut demander de confirmation, alors veuillez les vérifier soigneusement).
 
 ## Nettoyage des sauvegardes déléguées
+{: #nettoyage-des-sauvegardes-deleguees }
 
 `Maint.DeleteOldBackups` permet à un login délégué de supprimer d’anciens fichiers de sauvegarde uniquement pour les variantes de bases qui dérivent
 de ses sources autorisées. La même règle source_nom + underscore + suffixe s’applique.
@@ -182,6 +187,7 @@ Vérifiez attentivement `@Path`, la rétention, l’extension, `@IncDb` et `@Exc
 Un sysadmin n’est pas restreint aux variantes déléguées.
 
 ## Flux de travail de mise à niveau d’application
+{: #flux-de-travail-de-mise-a-niveau-dapplication }
 
 Le flux de travail en mode maintenance introduit ci-dessus fournit les transitions de nommage et le point de récupération nécessaires pour contrôler
 une mise à niveau d’application.
