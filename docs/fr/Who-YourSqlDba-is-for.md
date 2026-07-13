@@ -20,6 +20,17 @@ spécialisées reposant sur une instance SQL Server dédiée à une seule base. 
 ont besoin d’une maintenance fiable nécessitant peu d’administration
 quotidienne.
 
+Il existe deux situations fréquentes pour ces responsables d’applications. Dans
+la première, un DBA, parfois seulement occasionnel, demeure responsable de
+l’environnement SQL Server, mais délègue au responsable applicatif des tâches
+restreintes de sauvegarde, restauration, rafraîchissement ou mise à niveau.
+Dans la seconde, le responsable applicatif reçoit un produit complet ou une
+solution proche d’une appliance. Dans ce mode de livraison, YourSqlDba peut être
+installé et encadré par l’équipe qui livre le produit ; dans des déploiements
+antérieurs, cette maintenance pouvait être lancée par le Planificateur de tâches
+Windows au moyen d’un module PowerShell, plutôt qu’être opérée directement par
+le responsable applicatif.
+
 ## Le défi
 
 Les professionnels informatiques se voient souvent confier des responsabilités à temps partiel
@@ -42,7 +53,9 @@ leur volume ou la fenêtre de maintenance imposent une organisation plus
 À l’autre extrémité du spectre, YourSqlDba maintient un dialogue opérationnel
 avec le responsable applicatif grâce à ses rapports. Celui-ci peut savoir si la
 maintenance et les sauvegardes s’exécutent correctement, sans devoir maîtriser
-leur fonctionnement interne.
+leur fonctionnement interne. Selon le modèle de déploiement, il alerte alors le
+DBA ou l’équipe de support, ou suit les consignes opérationnelles fournies avec
+le produit livré.
 
 Cette visibilité ne remplace toutefois pas une copie des sauvegardes à
 l’extérieur du serveur. Selon l’environnement, il faut rappeler au responsable
@@ -113,10 +126,23 @@ Les rapports sont essentiels. YourSqlDba les fournit avec :
 
 ## Qui devrait utiliser YourSqlDba
 
-1. Propriétaires d’applications déployés sur un serveur unique: Le support applicatif déploie pour lui la maintenance pour la base de données applicative. En cas de problème, le propriétaire en informe le support applicatif. Les chances de problèmes sont faibles.
-2. DBA accidentels : Pour éviter l'oubli de tâches, recevoir des alertes appropriées et permettre l’escalade vers des experts SQL lorsque nécessaire si les diagnostics fournis ne les éclairent pas.
-3. DBA professionnels : Faire ce que les DBA accidentels peuvent faire avec en plus, en cas de charge excessive de la maintenance, diviser les tâches avec des plannings différents. Évidemment les diagnostics détaillés des problèmes leur seront plus familiers.
-4. Scénarios de délégation : Pour les DBA professionels ou occasionnels, se libérer de la charge en délégant des opérations limitées de sauvegarde, restauration et rafraîchissement de bases de données pour des bases sélectionnées et des utilisateurs spécifiques. Ces utilisateurs sont généralement des responsables d'application.
+1. Responsables d’applications avec opérations déléguées : Un DBA
+   professionnel ou occasionnel demeure responsable de l’environnement SQL
+   Server, mais autorise des opérations restreintes de sauvegarde,
+   restauration, rafraîchissement, nettoyage ou mise à niveau applicative pour
+   des bases sélectionnées.
+2. Responsables d’applications recevant un produit : L’équipe qui livre le
+   produit encadre aussi le modèle de maintenance. Le responsable applicatif
+   reçoit surtout les rapports et les consignes d’escalade, tandis que
+   l’exécution de la maintenance peut être masquée derrière l’emballage
+   opérationnel du produit.
+3. DBA accidentels : Pour éviter l'oubli de tâches, recevoir des alertes
+   appropriées et permettre l’escalade vers des experts SQL lorsque nécessaire
+   si les diagnostics fournis ne les éclairent pas.
+4. DBA professionnels : Faire ce que les DBA accidentels peuvent faire avec en
+   plus, en cas de charge excessive de la maintenance, diviser les tâches avec
+   des plannings différents. Évidemment les diagnostics détaillés des problèmes
+   leur seront plus familiers.
 
 ## Comment il est livré
 

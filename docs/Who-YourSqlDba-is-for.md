@@ -19,6 +19,16 @@ database. Without being DBAs, they know that the data must be backed up and
 protected, and they need reliable maintenance that requires little daily
 administration.
 
+There are two common application-owner situations. In the first, a DBA,
+sometimes only an occasional DBA, remains responsible for the SQL Server
+environment but delegates restricted backup, restore, refresh, or upgrade tasks
+to the application owner. In the second, the application owner receives a
+complete product or appliance-like solution. In that delivery model,
+YourSqlDba can be installed and framed by the team that ships the product; in
+earlier deployments this maintenance could be launched by Windows Task
+Scheduler through a PowerShell module rather than being operated directly by
+the application owner.
+
 ## The challenge
 
 IT professionals are often assigned part-time responsibilities for which they have not been sufficiently trained. Database administration is one of those responsibilities. They become accidental DBAs.
@@ -35,7 +45,9 @@ requires a more elaborate arrangement.
 At the other end of the experience spectrum, YourSqlDba keeps the person
 responsible for the application informed through its reports. That person can
 see whether maintenance and backups are running successfully without having to
-understand their internal operation.
+understand their internal operation. Depending on the deployment model, that
+person either alerts the DBA or support team, or follows the operational
+instructions supplied with the delivered product.
 
 This visibility does not replace keeping a copy of the backups outside the SQL
 Server. Depending on the environment, the application owner must be reminded to
@@ -95,10 +107,20 @@ Reports are essential. YourSqlDba provides them with:
 
 ## Who should use YourSqlDba
 
-1. Application owners on a single server: The support team deploys maintenance for the application database. When a problem occurs, the owner alerts the support team. The probability of problems is low.
-2. Accidental DBAs: Prevent forgotten tasks, provide appropriate alerts, and enable escalation to SQL experts when needed if the provided diagnostics do not clarify the issue.
-3. Professional DBAs: Do what accidental DBAs can do, and when maintenance load becomes excessive, divide tasks with different schedules. Detailed diagnostics for problems will be more familiar to them.
-4. Delegation scenarios: For professional or occasional DBAs, reduce operational burden by delegating restricted backup, restore, and database refresh operations for selected databases and specific users. These users are typically application owners.
+1. Application owners receiving delegated operations: A professional or
+   occasional DBA remains responsible for the SQL Server environment but
+   authorizes restricted backup, restore, database refresh, cleanup, or
+   application-upgrade operations for selected databases.
+2. Application owners receiving a product: The team that delivers the product
+   also frames the maintenance model. The application owner mainly receives
+   reports and escalation instructions, while the maintenance execution can be
+   hidden behind the product's operational packaging.
+3. Accidental DBAs: Prevent forgotten tasks, provide appropriate alerts, and
+   enable escalation to SQL experts when needed if the provided diagnostics do
+   not clarify the issue.
+4. Professional DBAs: Do what accidental DBAs can do, and when maintenance load
+   becomes excessive, divide tasks with different schedules. Detailed
+   diagnostics for problems will be more familiar to them.
 
 ## How it is delivered
 
