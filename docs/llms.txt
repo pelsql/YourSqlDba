@@ -40,6 +40,15 @@ Sitemap: https://pelsql.github.io/YourSqlDba/sitemap.xml
 - [Diagnostics et rapports](https://pelsql.github.io/YourSqlDba/fr/diagnostics.html)
 - [Historique des versions et notes de version](https://pelsql.github.io/YourSqlDba/fr/releases.html)
 
+## Références de maintenance en français
+
+- [Vue d’ensemble de la maintenance](https://pelsql.github.io/YourSqlDba/fr/maintenance/): Documentation principale de la maintenance
+- [Maint.YourSqlDba_DoMaint](https://pelsql.github.io/YourSqlDba/fr/maintenance/your-sql-dba-domaint.html): Procédure principale de maintenance, paramètres, actions, filtres et exemples
+- [Gestion déléguée des bases de données](https://pelsql.github.io/YourSqlDba/fr/maintenance/delegated-database-management.html): Opérations contrôlées de sauvegarde, restauration, rafraîchissement, nettoyage et mise à niveau applicative pour les utilisateurs non sysadmin
+- [Solutions de sauvegarde externes](https://pelsql.github.io/YourSqlDba/fr/maintenance/external-backup-solutions.html): Intégration avec les produits de sauvegarde tiers et génération de restaurations CommVault
+- [Mirroring, standby et tests de migration](https://pelsql.github.io/YourSqlDba/fr/maintenance/mirror-standby-migration.html): Copies basées sur la restauration, tests de migration et bascule
+- [Référence des procédures de mirroring](https://pelsql.github.io/YourSqlDba/fr/maintenance/mirroring-reference.html): Référence détaillée des procédures de mirroring et de migration
+
 ## Primary artifact
 
 - [Latest installation or upgrade script](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)
