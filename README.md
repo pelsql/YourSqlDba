@@ -1,5 +1,6 @@
 # YourSqlDba
 
+[![AI documentation: llms.txt](https://img.shields.io/badge/AI%20documentation-llms.txt-555555)](https://pelsql.github.io/YourSqlDba/llms.txt)
 
 **Contact info: [Maurice Pelchat](https://www.linkedin.com/in/maurice-pelchat-9891495/)**
 
