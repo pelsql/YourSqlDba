@@ -1,0 +1,45 @@
+---
+layout: null
+permalink: /llms.txt
+---
+# YourSqlDba
+
+> Open-source SQL Server maintenance and automation toolkit. YourSqlDba installs a dedicated database containing T-SQL procedures, functions, jobs, and supporting objects for backups, integrity checks, index and statistics maintenance, cleanup, diagnostics, delegated database operations, and restore-based migration workflows.
+
+Documentation: https://pelsql.github.io/YourSqlDba/
+French documentation: https://pelsql.github.io/YourSqlDba/fr/
+Source code: https://github.com/pelsql/YourSqlDba
+Complete documentation as Markdown: https://pelsql.github.io/YourSqlDba/llms-full.txt
+Sitemap: https://pelsql.github.io/YourSqlDba/sitemap.xml
+
+## Start here
+
+- [Who YourSqlDba is for](https://pelsql.github.io/YourSqlDba/Who-YourSqlDba-is-for.html): Project goals, audience, design, and capabilities
+- [Getting started](https://pelsql.github.io/YourSqlDba/getting-started.html): Architecture, default jobs, and a DBA quick start
+- [Installation and upgrade](https://pelsql.github.io/YourSqlDba/installation.html): Prerequisites, installation, initial setup, and upgrades
+- [Configuration](https://pelsql.github.io/YourSqlDba/configuration.html): Maintenance parameters, database selection, scheduling, and retention
+- [Diagnostics and reporting](https://pelsql.github.io/YourSqlDba/diagnostics.html): History, errors, Database Mail, and wait statistics
+- [Version history and release notes](https://pelsql.github.io/YourSqlDba/releases.html): Releases and links to install scripts
+
+## Maintenance reference
+
+- [Maintenance overview](https://pelsql.github.io/YourSqlDba/maintenance/): Main maintenance documentation
+- [Maint.YourSqlDba_DoMaint](https://pelsql.github.io/YourSqlDba/maintenance/your-sql-dba-domaint.html): Primary maintenance procedure, parameters, actions, filters, and examples
+- [Delegated database management](https://pelsql.github.io/YourSqlDba/maintenance/delegated-database-management.html): Controlled backup, restore, refresh, cleanup, and application-upgrade operations for non-sysadmin users
+- [External backup solutions](https://pelsql.github.io/YourSqlDba/maintenance/external-backup-solutions.html): Integration with third-party backup products and CommVault restore generation
+- [Mirror, standby, and migration testing](https://pelsql.github.io/YourSqlDba/maintenance/mirror-standby-migration.html): Restore-based copies, migration testing, and cutover
+- [Mirroring procedure reference](https://pelsql.github.io/YourSqlDba/maintenance/mirroring-reference.html): Detailed mirroring and migration procedure reference
+
+## French documentation
+
+- [À qui s’adresse YourSqlDba](https://pelsql.github.io/YourSqlDba/fr/Who-YourSqlDba-is-for.html)
+- [Premiers pas](https://pelsql.github.io/YourSqlDba/fr/getting-started.html)
+- [Installation et mise à niveau](https://pelsql.github.io/YourSqlDba/fr/installation.html)
+- [Configuration](https://pelsql.github.io/YourSqlDba/fr/configuration.html)
+- [Maintenance](https://pelsql.github.io/YourSqlDba/fr/maintenance/)
+- [Diagnostics et rapports](https://pelsql.github.io/YourSqlDba/fr/diagnostics.html)
+- [Historique des versions et notes de version](https://pelsql.github.io/YourSqlDba/fr/releases.html)
+
+## Primary artifact
+
+- [Latest installation or upgrade script](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)

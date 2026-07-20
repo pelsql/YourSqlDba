@@ -1,0 +1,19 @@
+---
+layout: null
+permalink: /sitemap.xml
+---
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+{% assign published_pages = site.pages | where: "output_ext", ".html" | sort: "url" %}
+{% for item in published_pages %}
+  <url>
+    <loc>{{ item.url | absolute_url | xml_escape }}</loc>
+  </url>
+{% endfor %}
+  <url>
+    <loc>{{ '/llms.txt' | absolute_url }}</loc>
+  </url>
+  <url>
+    <loc>{{ '/llms-full.txt' | absolute_url }}</loc>
+  </url>
+</urlset>
