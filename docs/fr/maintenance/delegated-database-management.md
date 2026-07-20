@@ -8,27 +8,43 @@ nav_order: 20
 
 # Délégation de la gestion de base de données
 
-YourSqlDba peut autoriser un login non-sysadmin à effectuer un ensemble restreint d’opérations de sauvegarde,
-restauration, duplication, nettoyage et mise à niveau d’application. Cela permet aux propriétaires d’applications
-ou aux utilisateurs de support senior de gérer leurs bases non production sans recevoir des privilèges SQL Server
+La délégation est utile lorsque la responsabilité d’une application ou d’une
+base précise est partagée avec quelqu’un qui n’est pas DBA. YourSqlDba permet
+alors à un propriétaire d’application ou à un utilisateur de support senior
+d’exécuter des opérations limitées sans recevoir de privilèges SQL Server
 illimités.
 
-La délégation est utile lorsque la responsabilité d’une application est partagée avec quelqu’un qui n’est pas DBA.
-Par exemple, un propriétaire d’application peut avoir besoin de rafraîchir une base de test à partir de la production,
-de supprimer des sauvegardes obsolètes créées par ce flux, ou de préparer une base pour une mise à niveau d’application.
-Accorder des autorisations serveur larges pour ces tâches permettrait également des opérations sur des bases de données qui ne sont pas de son ressort.
-YourSqlDba limite plutôt le login délégué aux bases sources explicitement autorisées et, pour les restaurations,
-aux noms cibles dérivés de ces sources.
+Deux contextes reviennent souvent :
+
+- créer une copie d’archive, de test ou de validation à partir d’une base
+  existante ;
+- gérer une mise à niveau de base de données liée à une mise à niveau
+  applicative.
+
+Pour les copies d’archive ou de test, la procédure
+`Maint.DuplicateDbFromBackupHistory` est souvent le chemin le plus direct. Elle
+restaure une base sous un autre nom à partir des sauvegardes déjà connues de
+YourSqlDba. Par défaut, elle ajoute une dernière sauvegarde de journal,
+habituellement rapide, afin de produire une copie aussi récente que possible
+sans refaire une sauvegarde complète.
+
+Les procédures plus spécialisées permettent aussi de créer une sauvegarde
+copy-only, restaurer un fichier précis ou nettoyer les sauvegardes associées au
+flux délégué. Dans tous les cas, YourSqlDba limite le login délégué aux bases
+sources explicitement autorisées et, pour les restaurations, aux noms cibles
+dérivés de ces sources.
 
 Les mises à niveau applicatives posent un problème supplémentaire. La mise à niveau peut nécessiter un accès exclusif à la base
 de données et un point de restauration fiable en cas d’échec de mise à niveau. Déconnecter les sessions en cours ne suffit pas toujours :
 les services applicatifs, pools de connexions, outils de supervision ou processus planifiés peuvent se reconnecter immédiatement.
 
-Le flux de travail en mode maintenance traite cela en déconnectant les utilisateurs et en renommant temporairement la base
-avec le suffixe `_MaintenanceMode`. Les clients configurés avec le nom de base d’origine ne peuvent plus s’y reconnecter ni aucun autre service ou API.
-Le propriétaire de l’application peut alors exécuter et valider la mise à niveau contre la base renommée. Il doit disposer de chaînes de connexion privées qui reflètent ce changement de nom et qui lui permettent de connecter uniquement l’application requise (et quelques services) sans que les autres utilisateurs puissent se reconnecter.
-Si nécessaire, la base peut être restaurée à son état pré-upgrade ; sinon, la base mise à niveau est conservée.
-Dans les deux cas, l’étape finale la remet à son nom d’origine et en usage normal. 
+Le flux de travail en mode maintenance regroupe les étapes nécessaires :
+déconnecter les utilisateurs, renommer temporairement la base avec le suffixe
+`_MaintenanceMode`, établir un point de récupération, puis revenir au nom
+normal après validation. Les clients configurés avec le nom d’origine ne
+peuvent plus se reconnecter pendant l’intervention. Si la mise à niveau échoue,
+la base peut être restaurée à son état initial ; si elle réussit, elle est
+simplement remise en usage normal.
 
 Les utilisateurs non-sysadmin doivent être identifiés avec leurs limites d'accès dans la table `YourSqlDba.Maint.DelegatedDbManagement`. Voir le [Modèle d'autorisation](#modele-dautorisation) pour comprendre comment le faire et [Configurer un login délégué](#configurer-un-login-delegue). Après validation des flux délégués, retirez à ces utilisateurs les autorisations plus larges qui ne sont plus nécessaires,
 comme l’adhésion au rôle fixe de serveur `dbcreator` ou au rôle fixe de base `db_backupoperator`.
@@ -157,20 +173,30 @@ EXEC Maint.SaveDbCopyOnly
 
 Les procédures suivantes appliquent à la fois l’autorisation source et les règles de nommage de la cible :
 
-- `Maint.DuplicateDb` crée une sauvegarde intermédiaire et la restaure sous le nom cible.
-- `Maint.DuplicateDbFromBackupHistory` restaure à partir des emplacements de sauvegarde enregistrés par YourSqlDba.
+- `Maint.DuplicateDb` crée une sauvegarde intermédiaire, la restaure sous le
+  nom cible, puis supprime cette sauvegarde intermédiaire par défaut.
+- `Maint.DuplicateDbFromBackupHistory` restaure à partir des sauvegardes déjà
+  enregistrées par YourSqlDba et peut ajouter une dernière sauvegarde de
+  journal avant la restauration.
 - `Maint.RestoreDb` restaure un fichier de sauvegarde spécifié ; la base source est validée à partir des informations de sauvegarde.
+
+`Maint.DuplicateDbFromBackupHistory` est généralement plus rapide lorsque la
+chaîne de sauvegardes existe déjà : il évite de refaire une sauvegarde complète
+et réutilise les sauvegardes de journal subséquentes déjà produites. La
+dernière sauvegarde de journal qu’il ajoute est conservée dans le fichier de
+journal existant ; elle reste ensuite soumise aux règles normales de rétention
+des sauvegardes.
 
 Exemples :
 
 ```sql
-EXEC Maint.DuplicateDb
-    @SourceDb = N'Payroll',
-    @TargetDb = N'Payroll_AppSupport';
-
 EXEC Maint.DuplicateDbFromBackupHistory
     @SourceDb = N'Payroll',
     @TargetDb = N'Payroll_UpgradeTest';
+
+EXEC Maint.DuplicateDb
+    @SourceDb = N'Payroll',
+    @TargetDb = N'Payroll_AppSupport';
 ```
 
 Avant de restaurer sur une cible déléguée existante, YourSqlDba termine ses sessions actives car un utilisateur non-sysadmin
@@ -206,11 +232,13 @@ EXEC Maint.PrepDbForMaintenanceMode
 
 -- Exécutez et validez la mise à niveau de l’application contre Payroll_MaintenanceMode.
 
--- Si un retour arrière est nécessaire en cas de mise à niveau ratée:
+-- Si la mise à niveau échoue, revenez au point de récupération.
+-- Vous pouvez retenter la mise à niveau sans relancer Maint.PrepDbForMaintenanceMode ;
+-- après chaque échec, restaurez de nouveau ce même point de récupération.
 EXEC Maint.RestoreDbAtStartOfMaintenanceMode
     @DbList = N'Payroll';
 
--- Remettez en service la base mise à niveau ou restaurée :
+-- Remettez en service la base mise à niveau ou restaurée au point de récupération :
 EXEC Maint.ReturnDbToNormalUseFromMaintenanceMode
     @DbList = N'Payroll';
 ```

@@ -7,19 +7,26 @@ nav_order: 20
 
 # Delegated database management
 
-YourSqlDba can authorize a non-sysadmin login to perform a restricted set of
-backup, restore, duplication, cleanup, and application-upgrade operations. This
-allows application owners or senior support users to manage their
-non-production databases without receiving unrestricted SQL Server privileges.
+Delegation is useful when responsibility for an application or a specific
+database is shared with someone who is not a DBA. YourSqlDba allows an
+application owner or senior support user to perform limited operations without
+receiving unrestricted SQL Server privileges.
 
-Delegation is useful when responsibility for an application is shared with
-someone who is not a DBA. For example, an application owner may need to refresh
-a test database from production, remove obsolete backups created by that
-workflow, or prepare a database for an application upgrade. Granting broad
-server permissions for these tasks would also allow operations on unrelated
-databases. YourSqlDba instead limits the delegated login to explicitly
-authorized source databases and, for restores, to target names derived from
-those sources.
+Two contexts are common:
+
+- creating an archive, test, or validation copy from an existing database;
+- managing a database upgrade tied to an application upgrade.
+
+For archive or test copies, `Maint.DuplicateDbFromBackupHistory` is often the
+most direct path. It restores a database under another name from the backups
+already known to YourSqlDba. By default, it adds a final transaction log backup,
+usually quick, so the copy is as current as possible without creating another
+full backup.
+
+More specialized procedures can also create a copy-only backup, restore a
+specific file, or clean up backups associated with the delegated workflow. In
+all cases, YourSqlDba limits the delegated login to explicitly authorized
+source databases and, for restores, to target names derived from those sources.
 
 Application upgrades present an additional problem. The upgrade may require
 exclusive access to the database and a reliable point to which it can be
@@ -27,13 +34,12 @@ restored if the upgrade fails. Disconnecting the current sessions is not always
 enough: application services, connection pools, monitoring tools, or scheduled
 processes may immediately reconnect.
 
-The maintenance-mode workflow addresses this by disconnecting users and
-temporarily renaming the database with the `_MaintenanceMode` suffix. Clients
-configured with the original database name can no longer reconnect to it. The
-application owner can then run and validate the upgrade against the renamed
-database. If necessary, the database can be restored to its pre-upgrade state;
-otherwise, the upgraded database is retained. In either case, the final step
-returns it to its original name and normal use.
+The maintenance-mode workflow groups the required steps: disconnect users,
+temporarily rename the database with the `_MaintenanceMode` suffix, establish a
+recovery point, then return to the normal name after validation. Clients
+configured with the original database name cannot reconnect during the
+operation. If the upgrade fails, the database can be restored to its initial
+state; if it succeeds, it is simply returned to normal use.
 
 Non-sysadmin users must be registered with their access limits in the
 `YourSqlDba.Maint.DelegatedDbManagement` table. See the [Authorization model](#authorization-model)
@@ -171,23 +177,29 @@ EXEC Maint.SaveDbCopyOnly
 The following procedures enforce both the source authorization and target
 naming rules:
 
-- `Maint.DuplicateDb` creates an intermediate backup and restores it under the
-  target name.
-- `Maint.DuplicateDbFromBackupHistory` restores from the backup locations
-  recorded by YourSqlDba.
+- `Maint.DuplicateDb` creates an intermediate backup, restores it under the
+  target name, and deletes that intermediate backup by default.
+- `Maint.DuplicateDbFromBackupHistory` restores from backups already recorded
+  by YourSqlDba and can add a final transaction log backup before the restore.
 - `Maint.RestoreDb` restores a specified backup file; the source database is
   validated from the backup information.
+
+`Maint.DuplicateDbFromBackupHistory` is usually faster when the backup chain
+already exists: it avoids creating another full backup and reuses the
+subsequent transaction log backups already produced. The final transaction log
+backup it adds is kept in the existing log backup file; it then remains subject
+to the normal backup retention rules.
 
 Examples:
 
 ```sql
-EXEC Maint.DuplicateDb
-    @SourceDb = N'Payroll',
-    @TargetDb = N'Payroll_AppSupport';
-
 EXEC Maint.DuplicateDbFromBackupHistory
     @SourceDb = N'Payroll',
     @TargetDb = N'Payroll_UpgradeTest';
+
+EXEC Maint.DuplicateDb
+    @SourceDb = N'Payroll',
+    @TargetDb = N'Payroll_AppSupport';
 ```
 
 Before restoring over an existing delegated target, YourSqlDba terminates its
@@ -231,11 +243,13 @@ EXEC Maint.PrepDbForMaintenanceMode
 
 -- Run and validate the application upgrade against Payroll_MaintenanceMode.
 
--- If a rollback is required:
+-- If the upgrade fails, return to the recovery point.
+-- You can retry the upgrade without rerunning Maint.PrepDbForMaintenanceMode;
+-- after each failure, restore that same recovery point again.
 EXEC Maint.RestoreDbAtStartOfMaintenanceMode
     @DbList = N'Payroll';
 
--- Return either the upgraded or restored database to service:
+-- Return either the upgraded database or the restored recovery point to service:
 EXEC Maint.ReturnDbToNormalUseFromMaintenanceMode
     @DbList = N'Payroll';
 ```
@@ -254,16 +268,3 @@ Before upgrading an instance that already uses non-sysadmin management scripts:
 5. Test each delegated workflow with the actual non-sysadmin login.
 6. Review any production database names that could be confused with a delegated
    derivative.
-
-## Upgrade checklist
-
-Before upgrading an instance that already uses non-sysadmin management scripts:
-
-1. Identify every login that calls one of the procedures listed on this page.
-2. Record the source databases required by each login.
-3. Insert or update the corresponding row in
-   `Maint.DelegatedDbManagement`.
-4. Update restore target names so they use `SourceDatabase_suffix`.
-5. Test each delegated workflow with the real non-sysadmin login.
-6. Review any production database names that could be mistaken for delegated
-   derivatives.
