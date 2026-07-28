@@ -17,11 +17,12 @@ Two contexts are common:
 - creating an archive, test, or validation copy from an existing database;
 - managing a database upgrade tied to an application upgrade.
 
-For archive or test copies, `Maint.DuplicateDbFromBackupHistory` is often the
-most direct path. It restores a database under another name from the backups
-already known to YourSqlDba. By default, it adds a final transaction log backup,
-usually quick, so the copy is as current as possible without creating another
-full backup.
+To create a test copy that is as current as possible,
+`Maint.DuplicateDbFromBackupHistory` is often the simplest and most
+resource-efficient method. It restores a database under another name from the
+source database's backup history. By default, it adds a final transaction log
+backup, usually quick, so the copy is as current as possible without creating
+another full backup.
 
 More specialized procedures can also create a copy-only backup, restore a
 specific file, or clean up backups associated with the delegated workflow. In

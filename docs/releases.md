@@ -65,6 +65,13 @@ nav_order: 60
    the filter rules, making it easier to verify which databases were targeted
    by each run.
 
+6. **Internal script-generation function**
+
+   `S#.MultipleReplaces` did not always guarantee that replacements followed
+   the order of the JSON elements supplied as input. Although no known issue
+   had been attributed to this behavior, the function was corrected to
+   guarantee that order.
+
 [View script 7.1.0.12 on GitHub](../YourSQLDba_InstallOrUpdateScript.sql)
 
 **[Get script 7.1.0.12](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)**

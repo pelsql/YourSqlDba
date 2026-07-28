@@ -21,10 +21,11 @@ Deux contextes reviennent souvent :
 - gérer une mise à niveau de base de données liée à une mise à niveau
   applicative.
 
-Pour les copies d’archive ou de test, la procédure
-`Maint.DuplicateDbFromBackupHistory` est souvent le chemin le plus direct. Elle
-restaure une base sous un autre nom à partir des sauvegardes déjà connues de
-YourSqlDba. Par défaut, elle ajoute une dernière sauvegarde de journal,
+Pour créer une copie de test aussi récente que possible, la procédure
+`Maint.DuplicateDbFromBackupHistory` constitue souvent la méthode la plus simple
+et la plus économique en ressources. Elle restaure une base sous un autre nom à
+partir de l’historique de sauvegarde de la base source. Par défaut, elle ajoute
+une dernière sauvegarde du journal,
 habituellement rapide, afin de produire une copie aussi récente que possible
 sans refaire une sauvegarde complète.
 

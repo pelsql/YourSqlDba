@@ -61,6 +61,12 @@ nav_order: 60
    Les rapports de maintenance et les journaux incluent maintenant la liste des bases de données sélectionnées 
    par les règles de filtrage, ce qui facilite la vérification des bases ciblées par chaque exécution.
 
+6. **Fonction interne de génération de script**
+
+   `S#.MultipleReplaces` ne garantissait pas toujours que les remplacements suivaient l’ordre des
+   éléments JSON fournis en entrée. Bien qu’aucun problème connu n’ait été attribué à ce comportement,
+   la fonction a été corrigée afin de garantir cet ordre.
+
 [Voir script 7.1.0.12 sur GitHub](../YourSQLDba_InstallOrUpdateScript.sql)
 
 **[Obtenir script 7.1.0.12](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)**

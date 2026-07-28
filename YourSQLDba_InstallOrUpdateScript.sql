@@ -1134,7 +1134,9 @@ Return
        --  SrcTemplate='Backup #DbName# TO Disk =''#path#'' With #appendOption#'
        --, JsonDataSource=(Select dbName='Msdb', path='C:\SQL\Bkps', AppendOption='Init' For JSON Path)
        --) as Prm
-      CROSS APPLY (select Rowkey=[key], RowValue=Value, Pos=CharIndex('"'+[Key]+'":', JsonDataSource) From openjson (JsonDataSource)) as Rows
+      -- Converting [key] to int preserves the JSON array order when processing multiple replacements;
+      -- OPENJSON returns array indexes as strings.
+      CROSS APPLY (select Rowkey=Convert(Int,[key]), RowValue=Value, Pos=CharIndex('"'+[Key]+'":', JsonDataSource) From openjson (JsonDataSource)) as Rows
       cross apply openJson (RowValue)
     )
   , TagReplacements As
