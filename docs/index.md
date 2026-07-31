@@ -7,14 +7,18 @@ has_children: true
 
 # YourSqlDba
 
-YourSqlDba is an open-source T-SQL script that automates common SQL Server
-database maintenance tasks. It provides a practical default setup for routine
-maintenance while remaining adaptable to instances with many databases,
-different schedules, or more specialized operational requirements.
+YourSqlDba is an open-source maintenance and automation tool for Microsoft SQL
+Server, developed by Maurice Pelchat. Written entirely in T-SQL, it is
+distributed as a single script that creates a database named `YourSqlDba` on
+the SQL Server instance. It automates backups, integrity checks, index and
+statistics maintenance, cleanup, diagnostics, and reporting. It can also
+delegate selected database-management operations to non-`sysadmin` users under
+explicit controls.
 
-**Start here: [Who YourSqlDba Is For](Who-YourSqlDba-is-for.md)** explains the
-needs that led to the project and how its approach serves different types of
-database administrators.
+**Start here: [What is YourSqlDba?](what-is-yoursqldba.md)** provides the
+canonical project overview. [Who YourSqlDba Is For](Who-YourSqlDba-is-for.md)
+explains the needs that led to the project and how its approach serves
+different types of database administrators.
 
 > **Documentation française : [YourSqlDba (fr)](fr/)**
 
@@ -49,6 +53,7 @@ QuickLinks
 ----------
 
 - Version history and release notes: [Releases](releases.md)
+- Canonical project overview: [What is YourSqlDba?](what-is-yoursqldba.md)
 - Project README: [README.md](https://github.com/pelsql/YourSqlDba#readme)
 - Who YourSqlDba is for: [Introduction](Who-YourSqlDba-is-for.md)
 - Installation and first-time setup: [Installation guide](installation.md)

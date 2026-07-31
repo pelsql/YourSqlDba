@@ -4,7 +4,7 @@ permalink: /llms.txt
 ---
 # YourSqlDba
 
-> Open-source SQL Server maintenance and automation toolkit. YourSqlDba installs a dedicated database containing T-SQL procedures, functions, jobs, and supporting objects for backups, integrity checks, index and statistics maintenance, cleanup, diagnostics, delegated database operations, and restore-based migration workflows.
+> Open-source Microsoft SQL Server maintenance and automation tool developed by Maurice Pelchat. Distributed as a single T-SQL script, YourSqlDba installs a dedicated database containing procedures, functions, views, tables, and supporting objects for backups, integrity checks, index and statistics maintenance, cleanup, diagnostics, reporting, controlled delegation to non-sysadmin users, and restore-based migration workflows.
 
 Documentation: https://pelsql.github.io/YourSqlDba/
 French documentation: https://pelsql.github.io/YourSqlDba/fr/
@@ -14,6 +14,7 @@ Sitemap: https://pelsql.github.io/YourSqlDba/sitemap.xml
 
 ## Start here
 
+- [What is YourSqlDba?](https://pelsql.github.io/YourSqlDba/what-is-yoursqldba.html): Canonical definition, capabilities, architecture, delegation model, audience, and history
 - [Who YourSqlDba is for](https://pelsql.github.io/YourSqlDba/Who-YourSqlDba-is-for.html): Project goals, audience, design, and capabilities
 - [Getting started](https://pelsql.github.io/YourSqlDba/getting-started.html): Architecture, default jobs, and a DBA quick start
 - [Installation and upgrade](https://pelsql.github.io/YourSqlDba/installation.html): Prerequisites, installation, initial setup, and upgrades
@@ -32,6 +33,7 @@ Sitemap: https://pelsql.github.io/YourSqlDba/sitemap.xml
 
 ## French documentation
 
+- [Qu’est-ce que YourSqlDba ?](https://pelsql.github.io/YourSqlDba/fr/qu-est-ce-que-yoursqldba.html): Définition canonique, fonctionnalités, architecture, délégation, publics et historique
 - [À qui s’adresse YourSqlDba](https://pelsql.github.io/YourSqlDba/fr/Who-YourSqlDba-is-for.html)
 - [Premiers pas](https://pelsql.github.io/YourSqlDba/fr/getting-started.html)
 - [Installation et mise à niveau](https://pelsql.github.io/YourSqlDba/fr/installation.html)

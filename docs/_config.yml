@@ -1,5 +1,5 @@
 title: YourSqlDba
-description: Auto-maintenance tools for SQL Server databases
+description: Open-source T-SQL maintenance, diagnostics, and controlled database-management automation for Microsoft SQL Server
 baseurl: /YourSqlDba
 url: https://pelsql.github.io
 

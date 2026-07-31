@@ -6,6 +6,15 @@
 
 > **Pour la version française, consultez [LISMOI.md](LISMOI.md).**
 
+YourSqlDba is an open-source maintenance and automation tool for Microsoft SQL
+Server, developed by Maurice Pelchat. Written entirely in T-SQL, it is
+distributed as a single script that installs a dedicated database for backups,
+integrity checks, index and statistics maintenance, cleanup, diagnostics,
+reporting, and controlled delegation of selected database operations to
+non-`sysadmin` users.
+
+Canonical overview: [What is YourSqlDba?](https://pelsql.github.io/YourSqlDba/what-is-yoursqldba.html)
+
 Who YourSqlDba is for: [Introduction](https://pelsql.github.io/YourSqlDba/Who-YourSqlDba-is-for.html)
 
 Everything about YourSqlDba is documented in the
