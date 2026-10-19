@@ -5,6 +5,13 @@ parent: YourSqlDba documentation
 nav_order: 60
 ---
 
+## Latest release: 7.1.0.13
+**[Get script 7.1.0.13](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)**
+
+Old backup cleanup has been improved. The `YourSqlDba` database is now backed up
+separately at the end of maintenance to preserve the most complete and up-to-date
+maintenance history possible for recovery after a major server failure.
+
 # Version history and release notes
 
 **Version 7.1.0.12**
@@ -74,7 +81,7 @@ nav_order: 60
 
 [View script 7.1.0.12 on GitHub](../YourSQLDba_InstallOrUpdateScript.sql)
 
-**[Get script 7.1.0.12](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)**
+**[Get script 7.1.0.12](https://raw.githubusercontent.com/pelsql/YourSqlDba/7108bbbc96cce2172265598679b73473fd472f76/YourSQLDba_InstallOrUpdateScript.sql)**
 
 **Version 7.1.0.11**
 - `YourSqlDba` is now created in the `FULL` recovery model.

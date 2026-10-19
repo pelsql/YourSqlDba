@@ -24,7 +24,7 @@
 Drop Table if Exists #version
 create table #Version (version nvarchar(40), VersionDate datetime)
 set nocount on
-insert into #Version Values ('7.1.0.12', convert(datetime, '2026-01-01', 120))  
+insert into #Version Values ('7.1.0.13', convert(datetime, '2026-01-01', 120))  
 
 --Alter database yoursqldba set single_user with rollback immediate
 --go
@@ -84,7 +84,7 @@ Create or Alter Proc #KillDbUsers @db sysname, @showKills Int = 0
 as
 Begin
   Declare @sql nvarchar(max)=''
-  SELECT @sql=@Sql+aKill
+  SELECT @sql=@Sql+aKill+nchar(13)+nchar(10)
   FROM 
     (
     Select distinct aKill='Kill '+cast(request_session_id as nvarchar(6))+';'
@@ -2830,6 +2830,7 @@ namespace CLR_SomeFileOps
     {
 
       [SqlFunction(Name = "Clr_GetFolderListDetailed", TableDefinition = "FileName nvarchar(255), FileExtension nvarchar(255), FileSizeByte bigint, ModifiedDate datetime, CreatedDate datetime, ErrMsg nvarchar(4000)", FillRowMethodName = "Clr_GetFolderListDetailedFillRow")]
+
          public static IEnumerable Clr_GetFolderListDetailed(string FolderPath, string SearchPattern) 
          {
             string[] FilesIn;
@@ -2839,33 +2840,42 @@ namespace CLR_SomeFileOps
 
             char[] charsToTrim = {'\\'};
 
-            if (FolderPath.EndsWith("\\"))
-                FolderPath = FolderPath.TrimEnd(charsToTrim);
             try 
             {
+                if (FolderPath.EndsWith("\\"))
+                    FolderPath = FolderPath.TrimEnd(charsToTrim);
                 FilesIn = System.IO.Directory.GetFiles(FolderPath, SearchPattern);
-                foreach (string f in FilesIn)
+            }
+            catch (Exception ex)
+            {
+                fd = new FileDetails();
+                // No individual file is known when folder enumeration fails.
+                fd.ModifiedDate = new DateTime(1900, 1, 1);
+                fd.CreatedDate = new DateTime(1900, 1, 1);
+                fd.ErrMessage = ex.Message;
+                FilesOut.Add(fd);
+                return FilesOut;
+            }
+            foreach (string f in FilesIn)
+            {
+                fd = new FileDetails();
+                fd.FileName = Path.GetFileName(f);
+                // Keep SQL-compatible dates even if reading metadata fails.
+                fd.ModifiedDate = new DateTime(1900, 1, 1);
+                fd.CreatedDate = new DateTime(1900, 1, 1);
+                try
                 {
                     fi = new FileInfo(f);
-                    fd = new FileDetails();
-                    fd.FileName = fi.Name;
                     fd.FileExtension = fi.Extension;
                     fd.FileSizeByte = fi.Length;
                     fd.ModifiedDate = fi.LastWriteTime;
                     fd.CreatedDate = fi.CreationTime;
-                    FilesOut.Add(fd);
                 }
-            }
-            catch (Exception ex) 
-            {
-                FilesOut.Clear();
-                fd = new FileDetails();
-                fd.FileName = "<ERROR>";
-                fd.FileExtension = "ERR";
-                fd.FileSizeByte = 0;
-                fd.ModifiedDate = Convert.ToDateTime("1900-01-01");
-                fd.CreatedDate = Convert.ToDateTime("1900-01-01");
-                fd.ErrMessage = ex.Message;
+                catch (Exception ex)
+                {
+                    // Preserve the file name and continue with the next file.
+                    fd.ErrMessage = ex.Message;
+                }
                 FilesOut.Add(fd);
             }
             return FilesOut;
@@ -2876,13 +2886,22 @@ namespace CLR_SomeFileOps
          {
             FileDetails fd = (FileDetails)obj;
 
-            FileName = new SqlChars(fd.FileName);
-            FileExtension = new SqlChars(fd.FileExtension);
+            FileName = ToSqlChars(fd.FileName);
+            FileExtension = ToSqlChars(fd.FileExtension);
             FileSizeByte = new SqlInt64(fd.FileSizeByte);
             ModifiedDate = new SqlDateTime(fd.ModifiedDate);
             CreatedDate = new SqlDateTime(fd.CreatedDate);
-            ErrMsg = new SqlChars(fd.ErrMessage);
+            ErrMsg = ToSqlChars(fd.ErrMessage);
          }
+
+         private static SqlChars ToSqlChars(string value)
+         {
+             if (value == null)
+                 return SqlChars.Null;
+
+             return new SqlChars(value.ToCharArray());
+         }
+
 
         [SqlFunction(Name = "Clr_FileExists", TableDefinition = "FilePath nvarchar(512), ExistsFlag TinyInt", FillRowMethodName = "Clr_FileExistsFillRow")]
         public static IEnumerable Clr_FileExists(string FilePath) 
@@ -2898,7 +2917,7 @@ namespace CLR_SomeFileOps
         public static void Clr_FileExistsFillRow(Object obj, out SqlChars FileName, out SqlByte ExistsFlag)
         {
            FileExists fe = (FileExists)obj;
-           FileName = new SqlChars (fe.FilePath);
+           FileName = ToSqlChars (fe.FilePath);
            ExistsFlag = new SqlByte (fe.ExistsFlag);
         }
 
@@ -5367,7 +5386,13 @@ Return
         Or Exists (Select * From yUtl.SplitParamInRows (@IncDb) as P Where I.Db Collate Database_Default like P.Line) -- restrict to included
       )
     And Not Exists (Select * From yUtl.SplitParamInRows (@ExcDb) as P Where I.Db Collate Database_Default like P.Line) -- must not exist in excluded
-
+  Union   
+  Select 
+    I.*
+  From Maint.DbInfoForYourSqlDba as I   -- exclude states cases for which the database can't be taken in backup
+  Where I.Db IN ('Master', 'Model', 'Msdb', 'YourSqlDba') -- always include these databases for maintenance
+    And (I.state_desc = 'ONLINE' Or ISNULL(@OnlineOnly,0) = 0)
+    And I.MaintenanceAllowed=1
 -- yUtl.YourSqlDba_ApplyDbFilter 
 GO
 -- Test the stack
@@ -8819,30 +8844,27 @@ go
 --    (subdirectories are not selected).
 --
 -- 2. The files name must contain the date and time of its creation.
---    The format is like 
---    '%[_][[][0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9][_][0-9][0-9]h[0-9][0-9]m[0-9][0-9][_]___][_]%'
+--    The format is like (where is digit and x is any character):
+--    '%_[nnnn-nn-nn_nnhnnmnn_xxx]_%'
+--    OR MSDB_[nnnn-nn-nn]_%'
+
 --    Example: AdventureWorks_[2009-04-27_00h06m53_Mon]_database.Bak
 --  and
 --    The files name must end with the optional @extension.
 --
--- 3.   ( @BkpRetDays is not NULL
---      and
---        The beginning of the file name is in the selected database list in the 
---        temporary table @tDb
---      and 
---        AgeInMinutes > (@BkpRetDays * 1440)           -- AgeInMinutes is the age of the file in minutes
---      )
---    Or
---      ( @BkpRetDaysForUnSelectedDb is not NULL  
---      and
---        The file was not selected by @tDb
---      and
---        AgeInMinutes > (@BkpRetDaysForUnSelectedDb * 1440)  -- AgeInMinutes is the age of the file in minutes
---      )
+-- 3. The files must be older than the retention days specified by @BkpRetDays 
 --
--- For sysadmins, the msdb database file backup is always deleted by
--- the Maint.DeleteOldBackups procedure when @extension = .bak.
--- ------------------------------------------------------------------------------
+-- 4. Il a file is unselected by the database name list, it will be deleted if it is older 
+--    than the retention days specified by @BkpRetDaysForUnSelectedDb. This is to delete old backups 
+--    of databases that are not in the selected database list, and this may happen for databases 
+--    that have been dropped or renamed. To keep these files, set @BkpRetDaysForUnSelectedDb to NULL
+--    or move it to a subdirectory of the backup directory or somewhere else. Only sysadmins can delete
+--    these files.
+--
+-- 5. CLR errors are retained for logging and their files are never deleted.
+-- 6. The procedure will log the deletion of each file and any errors encountered. Also if a criteria
+--    of 3 or 4 is met on the same file, the file will be deleted and logged only once. 
+-- --------------------------------------------------------------------------------------------------------
 -- @@MARK: Maintenance - Old backup cleanup
 Create Or Alter Procedure Maint.DeleteOldBackups
   @oper nvarchar(200) = 'YourSQLDba_Operator'
@@ -8853,9 +8875,6 @@ Create Or Alter Procedure Maint.DeleteOldBackups
 , @BkpRetDaysForUnSelectedDb int = NULL   -- Optional number of days to keep the backup
                                           -- files not selected by there database name.
                                           -- by default no cleanup.  
-, @RefDate Datetime = NULL  -- Optional reference date and time for the clean up  
-                            -- Format:  '20090925 18:00'
-                            --           yyyymmdd hh:mm
 , @extension sysname = ''   -- Optional file extention 
                             -- any file extension of any length is accepted
                             -- Examples: .bak for full backups  
@@ -8871,23 +8890,6 @@ Begin
   Set NoCount On
 
   Exec yInstall.AssertDboOnlyCanAdministerYourSqlDbaCode
-  
-  Declare @Info nvarchar(max)
-  Declare @FullFilePath nvarchar(max) 
-  declare @err nvarchar(max)
-  Declare @IsSysAdmin bit = 0
-
-  If Exists (Select * From Maint.IsSysAdminSpecial(ORIGINAL_LOGIN()))
-    Set @IsSysAdmin = 1
-  
-  If Right(@path, 1) <> '\'
-    Set @path = @path + '\'
-
-  Declare @StartOfCleanup datetime   
-
-  set @StartOfCleanup = getdate()
-  If @RefDate is NULL
-    Set @RefDate = convert(datetime, getdate(), 120)
 
   -- Maint.DeleteOldBackups is mostly called from a YourSqlDba_DoMaint
   -- so we should have a context to init some parameters
@@ -8895,7 +8897,6 @@ Begin
     @oper = Ctx.oper
   , @IncDb = CTX.IncDb
   , @ExcDb = CTX.ExcDb
-  , @RefDate = Ctx.JobStart
   From 
     dbo.MainContextInfo (null) as Ctx
   -- if we don't have a context, set on to create a new job entry in the job history table to log this standalone delete action
@@ -8907,12 +8908,12 @@ Begin
       (Select 
         oper = @oper
       , MaintJobName = 'Maint.DeleteOldBackups'
-      , jobStart = @RefDate
+      , jobStart = getdate()
       ) as Prm
       Cross Apply 
       (
       Select 
-        JsonPrm= (Select oper, MaintJobName='DeleteOldBackups', jobStart  For JSON PATH, WITHOUT_ARRAY_WRAPPER )
+        JsonPrm= (Select oper, MaintJobName='DeleteOldBackups', jobStart, incDb=@IncDb, excDb=@ExcDb For JSON PATH, WITHOUT_ARRAY_WRAPPER )
       ) as JsonPrm
       CROSS APPLY dbo.ScriptSetGlobalAccessToPrm (JsonPrm) as S
     Exec (@Sql) -- Execute SQL generated by previous query
@@ -8922,29 +8923,28 @@ Begin
       @context = 'Maint.DeleteOldBackups'
     , @Info = 'Start of backup cleanup'
 
-  -- Create a table of the databases selected
-  declare @tDb table 
-  (
-    DbName sysname collate database_default primary key clustered
-  , DbOwner sysname NULL -- because actual owner may be invalid after a restore
-  , FullrecoveryMode int    -- If = 1 log backup allowed
-  , cmptLevel tinyInt
-  )
 
-  insert into @tDb
-  SELECT D.Db, D.db_owner, D.FullRecoveryMode, D.compatibility_level
-  FROM YourSQLDba.yUtl.YourSqlDba_ApplyDbFilter (@IncDb, @ExcDb, 1) as D 
+  Drop table if exists #tDb
+  SELECT DbName=D.Db Collate Database_Default, D.db_owner, D.FullRecoveryMode, D.compatibility_level
+  Into #TDb
+  FROM 
+    dbo.MainContextInfo (null) as Ctx
+    CROSS APPLY YourSQLDba.yUtl.YourSqlDba_ApplyDbFilter (ctx.IncDb, ctx.ExcDb, 1) as D
 
   -- A delegated login may only clean backups of a user-named variant of a
   -- database in its SourceDatabaseList (for example DbA_UserVariant).
-  If @IsSysAdmin = 0
-  Begin
-    Delete DbToClean
-    From @tDb as DbToClean
-    Where Not Exists
+  Delete DbToClean
+  From #tDb as DbToClean
+  Where  
+    -- non sysadmins can only clean up backups of databases that are in their delegated list
+    -- so remove those who aren't in the delegated list
+    Not Exists (Select * From Maint.IsSysAdminSpecial(ORIGINAL_LOGIN()))
+    And 
+    Not Exists
     (
       Select *
-      From Maint.DelegatedDbManagement as Delegation
+      From 
+        Maint.DelegatedDbManagement as Delegation
         Cross Apply yUtl.SplitParamInRows(Delegation.SourceDatabaseList) as SourceDb
         Cross Apply yMaint.ValidateDelegatedDbManagement(SourceDb.Line, DbToClean.DbName, NULL) as Validation
       Where Delegation.LoginName = ORIGINAL_LOGIN() Collate Database_Default
@@ -8953,158 +8953,177 @@ Begin
         And Validation.ErrorMessage Is Null
     )
 
-    -- Never let a delegated cleanup reach files outside the authorized list.
-    Set @BkpRetDaysForUnSelectedDb = NULL
-  End
-  
-  --select * from @tDb
-
-  -- create table of directory info lines
-  declare @FilesFromFolder table ( line nvarchar(1000) collate database_default)
-
-  If LEFT(@extension,1)<> '.' Set @extension = '.'+@extension 
-
-  Insert into @FilesFromFolder
-  Select FileName from S#.Clr_GetFolderListDetailed (@path, '*'+@extension)
-  
-  If Exists(Select * from @FilesFromFolder Where line = '<ERROR>')
-  Begin
-    Set @err = 
+  -- Keep CLR errors independently of file names, dates and retention rules.
+  -- Ordinary files must have a recognized, valid date in their backup name.
+  Drop table if exists #DbFiles
+  SELECT
+    seq=DENSE_RANK() OVER (ORDER BY d.FileName)
+  , Filename =d.FileName Collate Database_Default
+  , GetDirError = d.ErrMessage Collate Database_Default 
+  , DbName = db.DbName Collate Database_Default
+  , Creation_Date=DateFromName
+  , Prm.RefDate
+  , AgeInMinutes
+  , HowCaseIsHandled
+  , ValidPath
+  , isSysAdmin
+  Into #DbFiles
+  FROM
     (
-    Select CONVERT(nvarchar(max),'')+Line+NCHAR(10) as [text()]
-    From @FilesFromFolder
-    Where line <> '<ERROR>'
-    for XML PATH('')
-    )
-    Exec yExecNLog.LogAndOrExec  
-      @context = 'Maint.DeleteOldBackups'
-    , @err = @err
-    Return
-  End  
+    Select
+      likeForUserDbWithDate = '%[_][[][0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9][_][0-9][0-9]h[0-9][0-9]m[0-9][0-9][_]___][_]%'
+    , likeForMsDb = 'MSDB[_][[]%'
+    , extension=IIF(@extension = '' Or LEFT(@extension, 1) = '.', @extension, '.' + @extension)
+    , RefDate=Ctx.JobStart
+    , DeleteOnlyLogDiffBackups = @DeleteOnlyLogDiffBackups
+    , BkpRetDays=@BkpRetDays
+    , BkpRetDaysForUnSelectedDb=@BkpRetDaysForUnSelectedDb
+    , IsSysAdmin=(Select Top 1 1 From Maint.IsSysAdminSpecial(ORIGINAL_LOGIN()))
+    , ValidPath=IIF(right(@path, 1)='\', @path, @path + '\')
+    From dbo.MainContextInfo(null) as ctx
+    ) as Prm
+    -- Normalize only the file name; ErrMessage remains NULL when no CLR error occurred.
+    CROSS APPLY (select FileName=ISNULL(Clr.FileName,''), Clr.ErrMessage from S#.Clr_GetFolderListDetailed(ValidPath, '*' + Prm.extension) as Clr) as d
+    CROSS APPLY (Select posPatternDate=patindex(Prm.likeForUserDbWithDate, d.FileName)) as PosPatternDate
+    CROSS APPLY (Select PosMsdb=patindex(Prm.likeForMsDb, d.FileName)) as PosMsdb
+    OUTER APPLY
+    (
+    -- Keep file if it matches the patterns for YourSqlDba user database backups
+    Select DateCreate=Substring(d.FileName, posPatternDate + 2, 16)
+    Where d.ErrMessage IS NULL And posPatternDate > 0
 
-  --SELECT *
-  --From @FilesFromFolder
-  
-  declare @dbFiles table 
-  (
-    Seq int primary key clustered
-  , DbName sysname null
-  , FileName nvarchar(max) null 
-  , Creation_Date nvarchar(23) null
-  , RefDate nvarchar(23) null
-  , AgeInMinutes Int null
-  )
-  ;With FilesReturnedBy_Clr_GetFolderList
-   as
-   (
-   SELECT 
-     ROW_NUMBER() OVER (ORDER BY d.line) As Seq
-   , ltrim(rtrim(d.line)) as FileName
-   , patindex ('%[_][[][0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9][_][0-9][0-9]h[0-9][0-9]m[0-9][0-9][_]___][_]%'
-              , d.line) as posPatternDate
-   , patindex ('MSDB_[[]%', d.line) as PosMsdb
-   FROM @FilesFromFolder as d
-   )
-   , T1 as 
-   (
-   select 
-     seq
-   , FileName
-   , Case 
-       When PosMsDb > 0 Then Substring(FileName, posMsdb+6, 10) + ' 00:00'
-       Else Substring(FileName, posPatternDate+2, 16) 
-     End as DateCreate   
-   From FilesReturnedBy_Clr_GetFolderList
-   Where 
-      PosMsDb > 0 
-   Or PosPatternDate > 0
-   )
-   , T2 as (select seq, FileName, replace(DateCreate, 'h', ':') as DateCreate From T1)
-   , T3 as (select seq, FileName, replace(DateCreate, '_', ' ') as DateCreate From T2)
-   , T4 as 
-   (
-   select Distinct -- distinct helped to circumvent a funny run-time error
-     seq
-   , FileName
-   , convert(datetime, DateCreate, 121) as Creation_Date 
-   , @RefDate As RefDate 
-   -- There is 1440 minutes per day
-   , datediff(mi, convert(datetime, DateCreate, 121), @RefDate) As AgeInMinutes
-   From T3
-   )
- Insert into @dbFiles   
- Select F.Seq, db.DbName, F.FileName, F.Creation_Date, F.RefDate, F.AgeInMinutes 
- From 
-   T4 as f
-   Left Join
-   @tDb as db
-   On (db.DbName + '_[') = (Substring(f.FileName, 1, len(db.DbName) + 2 ))  
- Where 
-       (   (@BkpRetDays is not NULL)  
-       and (f.AgeInMinutes > (@BkpRetDays * 1440))  
-       and (db.DbName Is Not Null)                    -- The file was selected by @tDb
-	   and ((@DeleteOnlyLogDiffBackups = 1 and F.FileName like '%_logs%') or (@DeleteOnlyLogDiffBackups = 1 and F.FileName like '%_differential%') or @DeleteOnlyLogDiffBackups = 0)
-       )                 
-    Or
-       (@IsSysAdmin = 1 And Substring(f.FileName, 1, 6) = 'MSDB_[') -- Only sysadmins always delete old MSDB backups
-    Or 
-       (   (@BkpRetDaysForUnSelectedDb is not NULL)   -- Delete files not seleted by @tDb
-       and (db.DbName Is Null)                        -- The file was not selected by @tDb
-       and (f.AgeInMinutes > (@BkpRetDaysForUnSelectedDb * 1440) ))
+    -- Keep file if it matches the pattern for MSDB backups
+    UNION ALL
+    Select DateCreate=Substring(d.FileName, PosMsdb + 6, 10) + ' 00:00'
+    Where d.ErrMessage IS NULL And PosMsdb > 0 And posPatternDate = 0
 
-  --SELECT *
-  --, (@BkpRetDays * 1440) as 'BkpRetDays in minutes'
-  --, (@BkpRetDaysForUnSelectedDb * 1440) as 'BkpRetDaysForUnSelectedDb in minutes'
-  --From @DbFiles
-  --Order by FileName
-  
+    -- OUTER APPLY preserves error rows without a date for the logging loop.
+    ) as BackupDate
+    -- get date from file names and turn it into datetime format and compute the age of the file in minutes
+    CROSS APPLY (select DateFromName1=replace(DateCreate, 'h', ':')) as DateFromName1
+    CROSS APPLY (select DateFromName2=replace(DateFromName1, '_', ' ')) as DateFromName2
+    CROSS APPLY (select DateFromName=Try_convert(datetime, DateFromName2, 121)) as DateFromName
+    CROSS APPLY (Select AgeInMinutes=datediff(mi, DateFromName, Prm.RefDate)) as AgeInMinutes
+    Left Join #tDb as db
+      On db.DbName + '_[' = Substring(d.FileName, 1, len(db.DbName) + 2)
+    OUTER APPLY
+    (
+    -- If dir enum fails, there is at least one row to explain it, so keep it
+    Select HowCaseIsHandled = ValidPath +'-->Dir Enum failed because of a CLR error: ' + d.ErrMessage
+    Where d.ErrMessage IS NOT NULL And d.FileName = ''
+    UNION ALL
+
+    -- Keep file attribute errors so the deletion loop can log them and skip the file
+    Select HowCaseIsHandled = ValidPath + d.FileName + '-->File attributes could not be read for this file: CLR Error' + d.ErrMessage
+    Where d.ErrMessage IS NOT NULL And d.FileName <> ''
+    UNION ALL
+
+    -- OR The file name must match the pattern for user database backups made by YourSqlDba
+    Select HowCaseIsHandled = ValidPath + d.FileName + '--> User DB Backup From YourSqlDba is going to be deleted because it is older than the retention days'
+    Where DateFromName IS NOT NULL
+      And BkpRetDays IS NOT NULL
+      And AgeInMinutes > BkpRetDays * 1440
+      And db.DbName IS NOT NULL -- found in the selected database list
+      And  (DeleteOnlyLogDiffBackups = 0
+        Or (
+           DeleteOnlyLogDiffBackups = 1
+           And (d.FileName like '%[_]logs%' Or d.FileName like '%[_]differential%')))
+
+    -- OR the file name must match the pattern for MSDB backups made by YourSqlDba
+    -- but only sysadmins can delete these backups, subject to the retention days
+    UNION ALL
+    Select HowCaseIsHandled = ValidPath + d.FileName + '-->MSDB Backup from YourSqlDba is going to be deleted by sysadmin account because it is older than the retention days'
+    Where DateFromName IS NOT NULL 
+      And IsSysAdmin = 1 And PosMsdb > 0
+      And BkpRetDays IS NOT NULL 
+      And AgeInMinutes > BkpRetDays * 1440
+
+    -- The file was not selected by #tDb, and the user is a sysadmin
+    -- Keep dated backups older than the retention days for unselected databases
+    UNION ALL
+    Select HowCaseIsHandled = ValidPath + d.FileName + '-->is going to be deleted because it is older than the retention days for unselected databases'
+    Where DateFromName IS NOT NULL
+      And db.DbName IS NULL And IsSysAdmin = 1 -- not found in the selected database list and I am a sysadmin
+      And BkpRetDaysForUnSelectedDb IS NOT NULL
+      And AgeInMinutes > BkpRetDaysForUnSelectedDb * 1440
+    ) as HowCaseIsHandled
+  Where
+    (HowCaseIsHandled IS NOT NULL) -- Must be handled by the deletion loop below, or logged as an error
+
+  --Select * from #dbFiles
+
+  Declare @Info nvarchar(max)
+  Declare @FullFilePath nvarchar(max) 
+  Declare @err nvarchar(max)
   Declare @Cmd nvarchar(1000)
   declare @filename nvarchar(max)
-  declare @dbName sysname
-  declare @SeqFile int
+  declare @SeqFile bigint
   declare @context nvarchar(max)
+  declare @ValidPath nvarchar(max)
+  declare @HowCaseIsHandled nvarchar(max)
+  declare @GetDirError nvarchar(max)
+
+  Declare @StartOfCleanup datetime = getdate()
+
+  -- Seq starts at zero so the error row with an empty file name is processed too.
+  Set @filename = ''
   Set @SeqFile = 0
 
-  Set @filename = ''
   While (1=1)
   Begin
-    Select top 1 @filename = FileName, @SeqFile = seq, @dbName = dbName
-    From @DbFiles 
-    Where Seq > @SeqFile
+    
+    Select Top 1 
+      @filename = FileName, @SeqFile = seq, @ValidPath = ValidPath
+    , @fullFilePath = FullFilePath
+    , @HowCaseIsHandled = HowCaseIsHandled -- carries both error and info messages for logging
+    , @GetDirError = IIF(GetDirError IS NOT NULL, HowCaseIsHandled, NULL)
+    From 
+      #DbFiles
+      -- FileName is empty for directory enumeration errors; those rows are logged, never deleted.
+      OUTER APPLY (Select FullFilePath = ValidPath + FileName) as FullFilePath
+    Where HowCaseIsHandled IS Not NULL 
+      And Seq > @SeqFile 
     Order by seq
 
     If @@rowcount = 0 Break
 
-    Set @FullFilePath = @path+@Filename
-    
-    Exec S#.Clr_DeleteFile @FullFilePath, @Err output
-    If @err <> '' -- If file is not found no error is generated
-    Begin
+    If @GetDirError is NOT NULL
       Exec yExecNLog.LogAndOrExec 
         @context = 'Maint.DeleteOldBackups'
-      , @err = @err
-    end  
+      , @err = @GetDirError
     Else
     Begin
-      Set @FullFilePath = @FullFilePath + ' deleted'
-      Exec yExecNLog.LogAndOrExec 
-        @context = 'Maint.DeleteOldBackups'
-      , @info = @FullFilePath  
+      -- Add log for attempted deletion of the file, but do not delete it if it is a CLR error file
+      Set  @err = NULL
+      Exec S#.Clr_DeleteFile @FullFilePath, @Err output
+      If ISNULL(@err,'') <> '' -- If file is not found no error is generated
+      Begin
+        Set @HowCaseIsHandled = @HowCaseIsHandled + ' --> File deletion failed: ' + @err
+        Exec yExecNLog.LogAndOrExec 
+          @context = 'Maint.DeleteOldBackups'
+        , @err = @HowCaseIsHandled
+      end  
+      Else
+      Begin
+        Set @HowCaseIsHandled = @HowCaseIsHandled + ' --> File deleted successfully'
+        Exec yExecNLog.LogAndOrExec 
+          @context = 'Maint.DeleteOldBackups'
+        , @info = @HowCaseIsHandled 
+      End
     End
   End -- While
-
 
   -- From here, send execution report and any error message if found
 
   -- If the operator is missing, emit an error message 
   -- and exit now to put error status in the SQL Agent job.
-  
+
   Declare @email_Address sysname   -- to read email address of the operator
-  
+
   select @email_Address = email_Address 
   from  Msdb..sysoperators 
   where name = @oper and enabled = 1
-  
+
   If @@rowcount = 0  -- here the error is loggued into job
     Exec yExecNLog.LogAndOrExec 
       @context = 'Maint.DeleteOldBackups'
@@ -9121,7 +9140,7 @@ Begin
 
   If    @email_Address is NOT NULL 
         -- Do not perform message report if caller is Maint.YourSqlDba_DoMaint because the caller will do
-    And Not Exists (Select * From Dbo.MainContextInfo(NULL) as Ctx Where Ctx.MainSqlCmd Not Like '%Exec %Maint.YourSqlDba_DoMaint$')
+    And Not Exists (Select * From Dbo.MainContextInfo(NULL) as Ctx Where Ctx.MainSqlCmd Like '%Exec %Maint.YourSqlDba_DoMaint%')
     Exec yMaint.SendExecReports
       @email_Address = @email_Address
     , @MaintJobName = @MaintJobName
@@ -9756,24 +9775,27 @@ Begin
   -- ===================================================================================== 
   -- main database backup loop by database
   -- ===================================================================================== 
-    set @info =
-        (
-        Select 
-          CONVERT(nvarchar(max), '|') 
-        + case when d.FullRecoveryMode = 1 Then '(Full recovery)  ' Else '(Simple Recovery)' End 
-        + d.dbName 
-        + '|'
-        from @DbTable D
-        Order by d.dbname
-        for XML PATH('')
-        ) 
-    Set @info = 'Database list obtained by @incBd and @ExecDb' + nchar(10) + REPLACE(@info, '|', nchar(10))    
-    If ISNULL(ltrim(@Info),'') = ''
-      Set @info = 'No databases either qualify by name or are available'
+    Select @Info = Info
+    From
+      (
+      Select 
+        NoDbMsg=('No databases either qualify by name or are available')
+      , StartMsgAboutDbList='Database list obtained by @IncDb and @ExcDb'+NCHAR(10)
+      ) as Msg
+      CROSS Apply
+      (
+      Select DbList=STRING_AGG(InfoLine, NCHAR(10)) WITHIN GROUP (Order By d.DbName)
+      From 
+        @DbTable as d
+        CROSS APPLY (Select RecoveryMode=IIF(d.FullRecoveryMode=1, '(Full recovery)  ', '(Simple recovery)  ')) as RecoveryMode
+        CROSS APPLY (Select InfoLine=CONVERT(nvarchar(max), RecoveryMode)+d.DbName) as InfoLine
+      ) as DbList
+      CROSS APPLY (Select DbListInfoWithList=StartMsgAboutDbList+DbList) as InfoWithList
+      CROSS APPLY (Select Info=ISNULL(DbListInfoWithList, NoDbMsg)) as Info
 
-    Exec yExecNLog.LogAndOrExec 
+    Exec yExecNLog.LogAndOrExec
       @context = 'yMaint.Backups'
-    , @Info = @info
+    , @Info = @Info
 
     Set @DbName = ''
     While(1 = 1) -- T-SQL lacks simple Do Loop, work around...
@@ -9795,7 +9817,7 @@ Begin
           Break -- exit, no more db to process
       End
 
-      If @DbName IN ('YOURSQLDBA','MSDB') -- Skip over, because it is always backuped up at the end
+      If @DbName IN ('YOURSQLDBA','MSDB') -- Skip over: backed up explicitly at the end of maintenance
         Continue
 
       Set @msg = 'Checking if '+@dbname + ' must be processed...'
@@ -9819,6 +9841,9 @@ Begin
       -- Validation block only, is log backup can be done?
       If @DoLogBkp = 1 -- log backups ?
       Begin
+        If @DbName = 'master' -- master does not support log backups
+          Continue
+
         -- If the database is read_only it is impossible to take log backup because
         -- first full backup is not recorded to the database, which void log backup
         -- And if the database is read-only what is the point to backup its log
@@ -10094,7 +10119,100 @@ Begin
 
     End -- Loop While (1 = 1) process each database selected
 
-    -- YourSqlDba backup always occurs with the maintenance backup type
+  End try
+  Begin catch
+    Exec yExecNLog.LogAndOrExec 
+      @context = 'yMaint.Backups'
+    , @Info = 'Error in yMaint.backups'
+    , @err = '?'
+  End Catch
+
+  -- This maintenance execution is no longer producing restore work for this job/mirror.
+  -- ProcessRestores of this job may then know that if its queue is empty it may terminate 
+  Delete T
+  From 
+    Dbo.MainContextInfo(null) as Ctx
+    JOIN 
+    Mirroring.ActiveRestoreChannelForMirror as T
+    ON T.JobNameForRestore = Ctx.JobNameForRestore
+
+End -- yMaint.Backups
+GO
+-- ------------------------------------------------------------------------------
+-- @@MARK: Maintenance - Final backups of maintenance databases
+Create Or Alter Proc yMaint.BackupMaintenanceDatabases
+With Execute As Owner
+as
+Begin
+  Set nocount On
+
+  -- Called by YourSqlDba_DoMaint after any requested backup phase, mirror restore wait,
+  -- login synchronization launch and recovery-policy checks, including caught errors.
+  -- Backing these databases up inside yMaint.Backups was too early: later actions
+  -- and errors were still being added to the maintenance history.
+  -- Protect the history after every maintenance, including runs without database
+  -- backups and runs that reach finalization through the main error handler.
+  -- Keep the requested backup type when present; otherwise use a full backup.
+  -- Preserve the full-backup fallback, naming and encryption rules.
+  -- The caller retains its maintenance app lock until these backups have finished.
+  Begin Try
+    Declare @DoBackup nvarchar(5) = 'F'
+    Declare @DoFullBkp int
+    Declare @DoDiffBkp int
+    Declare @DoLogBkp int
+    Declare @FullBackupPath nvarchar(512)
+    Declare @LogBackupPath nvarchar(512)
+    Declare @FullBkExt nvarchar(7)
+    Declare @LogBkExt nvarchar(7)
+    Declare @TimeStampNamingForBackups int
+    Declare @Language nvarchar(512)
+    Declare @EncryptionAlgorithm nvarchar(10)
+    Declare @EncryptionCertificate nvarchar(100)
+    Declare @fileName nvarchar(512)
+    Declare @sql nvarchar(max)
+    Declare @errorN int
+
+    Select
+      @DoFullBkp = DoFullBkp
+    , @DoDiffBkp = DoDiffBkp
+    , @DoLogBkp = DoLogBkp
+    , @FullBackupPath = FullBackupPath
+    , @LogBackupPath = LogBackupPath
+    , @FullBkExt = FullBkExt
+    , @LogBkExt = LogBkExt
+    , @TimeStampNamingForBackups = TimeStampNamingForBackups
+    , @EncryptionAlgorithm = EncryptionAlgorithm
+    , @EncryptionCertificate = EncryptionCertificate
+    From dbo.MainContextInfo(NULL)
+
+    -- Without a job context there is no maintenance history or configuration
+    -- to finalize. Report this as a failure instead of silently skipping it.
+    If @@ROWCOUNT = 0
+      Throw 51000, 'Final maintenance backups require a valid maintenance job context.', 1;
+
+    If @DoFullBkp = 1 Set @DoBackup = 'F'
+    If @DoDiffBkp = 1 Set @DoBackup = 'D'
+    If @DoLogBkp = 1 Set @DoBackup = 'L'
+
+    -- Both destinations are mandatory after every maintenance, even when no
+    -- other database backups were requested. Never substitute another destination.
+    -- Validate before normalization, which would turn an empty path into a backslash.
+    If ISNULL(@FullBackupPath, '') = '' Or ISNULL(@LogBackupPath, '') = ''
+      Throw 51000, 'Specify both @FullBackupPath and @LogBackupPath for the final maintenance backups.', 1;
+
+    Set @FullBackupPath = yUtl.NormalizePath(@FullBackupPath)
+    Set @LogBackupPath = yUtl.NormalizePath(@LogBackupPath)
+
+    If ISNULL(@FullBkExt, '') = '' Set @FullBkExt = 'BAK'
+    If ISNULL(@LogBkExt, '') = '' Set @LogBkExt = 'TRN'
+
+    Exec yInstall.InstallationLanguage @Language output
+
+    -- Save YourSqlDba first so it contains the late maintenance actions and errors.
+    -- Save msdb second so its backup history also includes the YourSqlDba backup.
+    -- These are successive backups, not an atomic snapshot: the final backup
+    -- results and reporting entries cannot all be included in both databases.
+    -- YourSqlDba uses the maintenance backup type, or full for maintenance-only runs,
     -- to keep its history and configuration protected.
     -- Here alter backup type to full if a full is needed first
     Declare @YourSqlDbaBackupType char(1) = @DoBackup
@@ -10123,40 +10241,32 @@ Begin
     Set @sql = yMaint.MakeBackupCmd ('YourSqlDba', @YourSqlDbaBackupType, @fileName, IIF(@YourSqlDbaBackupType = 'F', 1, 0), '', @EncryptionAlgorithm, @EncryptionCertificate)
 
     Exec yExecNLog.LogAndOrExec
-      @context = 'yMaint.backups'
+      @context = 'yMaint.BackupMaintenanceDatabases'
     , @sql = @sql
     , @Info = 'YourSqlDba backup to save the most up-to-date maintenance history'
     , @errorN = @errorN output
 
     -- a full backup of msdb always occurs even after log backup
-    -- to get the most accurate up-to-date log history       
-    Set @fileName = yMaint.MakeBackupFileName('MsDb', 'F', @FullBackupPath, @Language, @FullBkExt, @TimeStampNamingForBackups) 
-    Set @sql = yMaint.MakeBackupCmd ('Msdb', 'F', @fileName, 1, '', @EncryptionAlgorithm, @EncryptionCertificate) 
+    -- to get the most accurate up-to-date log history
+    Set @fileName = yMaint.MakeBackupFileName('MsDb', 'F', @FullBackupPath, @Language, @FullBkExt, @TimeStampNamingForBackups)
+    Set @sql = yMaint.MakeBackupCmd ('Msdb', 'F', @fileName, 1, '', @EncryptionAlgorithm, @EncryptionCertificate)
 
-    Exec yExecNLog.LogAndOrExec 
-      @context = 'yMaint.backups'
+    Exec yExecNLog.LogAndOrExec
+      @context = 'yMaint.BackupMaintenanceDatabases'
     , @sql = @sql
     , @Info = 'Full Msdb backup to save the most up-to-date backup history'
     , @errorN = @errorN output
 
-  End try
-  Begin catch
-    Exec yExecNLog.LogAndOrExec 
-      @context = 'yMaint.Backups'
-    , @Info = 'Error in yMaint.backups'
+  End Try
+  Begin Catch
+    -- Log final-backup failures before the caller releases the app lock and
+    -- builds its report. Do not skip that finalization because a backup failed.
+    Exec yExecNLog.LogAndOrExec
+      @context = 'yMaint.BackupMaintenanceDatabases'
+    , @Info = 'Error in final backups of maintenance databases'
     , @err = '?'
   End Catch
-
-  -- This maintenance execution is no longer producing restore work for this job/mirror.
-  -- ProcessRestores of this job may then know that if its queue is empty it may terminate 
-  Delete T
-  From 
-    Dbo.MainContextInfo(null) as Ctx
-    JOIN 
-    Mirroring.ActiveRestoreChannelForMirror as T
-    ON T.JobNameForRestore = Ctx.JobNameForRestore
-
-End -- yMaint.Backups
+End -- yMaint.BackupMaintenanceDatabases
 GO
 ----------------------------------------------------------------------------------------------------------
 -- Cleanup YourSqlDba tables for removed servers.
@@ -10727,6 +10837,11 @@ Begin
     End
   End
 
+  -- Every maintenance ends with backups of its history databases, independently
+  -- of @DoBackup. Require both paths before normalizing or starting maintenance work.
+  If ISNULL(@FullBackupPath, '') = '' Or ISNULL(@LogBackupPath, '') = ''
+    Raiserror ('Specify both @FullBackupPath and @LogBackupPath for every maintenance.', 11, 1)
+
   Set @FullBackupPath = yUtl.NormalizePath(@FullBackupPath)
   Set @LogBackupPath = yUtl.NormalizePath(@LogBackupPath)
 
@@ -10774,14 +10889,6 @@ Begin
   Where D.Name is NULL  
     And LB.keepTrace = 0
   
-  If @FullBackupPath IS NULL Or @LogBackupPath IS NULL 
-  Begin
-    If @DoBackup IN ('F', 'L', 'D')
-    Begin
-      Raiserror ('Specify @FullBackupPath and/or @LogBackupPath to the procedure ', 11, 1)
-    End  
-  End
-
   -- Error message if operator is missing, exit now to let error status in Sql agent job
   
   select @email_Address = email_Address 
@@ -10998,6 +11105,12 @@ Begin
     , @Info = 'Error in Maint.YourSqlDba_DoMaint'
     , @err = '?'
   End catch
+
+  -- Final database backups must include the late maintenance work and caught errors.
+  -- Protect this history after every maintenance, independently of @DoBackup.
+  -- Run them once, outside the main TRY/CATCH, before releasing the app lock and
+  -- sending the report so final-backup failures are included in that report too.
+  Exec yMaint.BackupMaintenanceDatabases
 
   -- Close App lock that signal that Maint.YourSqlDba_DoMaint
   Exec Maint.SignalEndOf_YourSqlDba_DoMaint 

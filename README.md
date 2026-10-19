@@ -58,45 +58,12 @@ SQL Server. It creates a database named `YourSqlDba` containing T-SQL modules,
 including functions, stored procedures, and views. Most operate behind the
 scheduled maintenance jobs, while some are also useful for occasional DBA work.
 
-## Latest release: 7.1.0.12
 
-1. **Controlled delegation of database management operations**
+## Latest release: 7.1.0.13
 
-   YourSqlDba now provides a least-privilege delegation model for application
-   owners and senior support users who need to refresh non-production databases,
-   test or roll back application upgrades, or clean up backups without receiving
-   `sysadmin` privileges.
+Old backup cleanup and logging have been improved. The `YourSqlDba` database is
+now backed up separately at the end of maintenance to preserve the most complete
+and up-to-date maintenance history possible.
 
-   A sysadmin authorizes each delegated login through
-   `Maint.DelegatedDbManagement`. Restore targets are restricted by naming rules
-   that prevent delegated users from overwriting source or unrelated databases.
-
-2. **Simplified transaction log backup file management**
-
-   The initial transaction log backup produced after a full or differential
-   maintenance backup now keeps its own file name and is no longer reused by the
-   regular log backup job.
-
-   The next regular log backup creates the reusable log backup file and records
-   it in `Maint.JobLastBkpLocations.lastLogBkpFile`. When
-   `@BkpLogsOnSameFile = 0`, each regular log backup continues to use a new file.
-
-3. **More resilient YourSqlDba upgrades**
-
-   Upgrade information is preserved temporarily in the
-   `YourSqlDbaUpgradeSavedInfos` database. This protects the existing
-   configuration if an upgrade fails. The temporary database is removed after a
-   successful upgrade. Exclusive access handling during upgrades has also been
-   improved.
-
-4. **Exclusive access for delegated restores**
-
-   Before a delegated non-sysadmin restore, YourSqlDba terminates active sessions
-   connected to the target database. Delegated users cannot normally terminate
-   those sessions themselves, and their restore targets are already restricted.
-
-   For sysadmins, sessions are not terminated automatically because a parameter
-   mistake could affect an unrelated or production database. Sysadmins must
-   handle active sessions explicitly when using `Maint.DuplicateDb`,
-   `Maint.DuplicateDbFromBackupHistory`, or `Maint.RestoreDb`. They may call
-   `S#.KillDbUsers` explicitly when appropriate.
+For details about earlier releases, including the breaking change introduced in
+version 7.1.0.12, see the [online release notes](https://pelsql.github.io/YourSqlDba/releases.html).
