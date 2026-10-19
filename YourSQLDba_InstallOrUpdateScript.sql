@@ -9049,6 +9049,9 @@ Begin
     ) as HowCaseIsHandled
   Where
     (HowCaseIsHandled IS NOT NULL) -- Must be handled by the deletion loop below, or logged as an error
+  
+  -- just in case the file enumeration returned many files
+  Create Index iDbFilesSeq On #DbFiles (seq)
 
   --Select * from #dbFiles
 
