@@ -2,6 +2,13 @@
 
 Ces consignes s’appliquent aux modifications SQL dans ce dépôt.
 
+- SQL Server 2019 est la version minimale prise en charge. Utiliser directement ses fonctionnalités et métadonnées disponibles, sans ajouter de branches de compatibilité pour les versions antérieures.
+- Limiter les variables déclarées aux valeurs nécessaires aux échanges avec les procédures ou aux instructions suivantes. Garder les résultats intermédiaires sous forme de colonnes nommées dans une chaîne `FROM` / `APPLY`.
+- Garder la projection finale simple en tête, par exemple `Select @bkpFile=bkpFile`. Construire la valeur finale dans le dernier `APPLY`, après ses dépendances.
+- Aligner la source du `FROM` et les `CROSS APPLY` au même niveau, en retrait sous `FROM`. Dans un `APPLY` multiligne, aligner les `SELECT` et `UNION ALL` avec les parenthèses, sans indentation supplémentaire.
+- Utiliser des noms intermédiaires explicites et, pour une affectation unique, reprendre le nom de la colonne comme alias de l’expression de table.
+- Séparer les étapes fonctionnelles par des lignes vides, en respectant la présentation existante.
+
 - Traiter les lignes `APPLY` comme l’équivalent, ligne pour ligne, d’une programmation séquentielle avec des variables. Préserver les étapes intermédiaires et leur ordre de lecture.
 - Privilégier un `APPLY` distinct par affectation de colonne. Lorsqu’une étape tient sur une ligne, garder cette présentation. Ne pas fusionner les étapes en une expression composée.
 - Éviter les expressions imbriquées et les indentations à l’intérieur des expressions. Décomposer les calculs en plusieurs lignes `APPLY` successives : les imbrications sont difficiles à lire pour l’utilisateur.

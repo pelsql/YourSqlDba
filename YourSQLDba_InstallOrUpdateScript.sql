@@ -431,22 +431,30 @@ Begin
     -- if database is not upgraded yet, do a save, but avoid if it is to the same version
   If Not Exists(Select * from YourSqlDba.Install.VersionInfo () Actual join #Version NextVersion On Actual.VersionNumber = NextVersion.Version Collate database_default)
   Begin
-    Declare @pathBkp Nvarchar(512);
-    Exec master.dbo.xp_instance_regread 
-      N'HKEY_LOCAL_MACHINE'
-    , N'Software\Microsoft\MSSQLServer\MSSQLServer'
-    , N'BackupDirectory'
-    , @pathBkp OUTPUT
-    , 'no_output'
-
     -- SAVING A BACKUP COPY OF YOURSQLDBA, BEFORE WIPING IT AND RECRATING IT
     -- Don't use SaveDbOnNewFileSet but use "lighter" code to reduce code dependencies
 
     Declare @Language nvarchar(512)
     Exec YourSqlDba.yInstall.InstallationLanguage @language Output
-    If RIGHT(@pathBkp, 1) <> '\' Set @pathBkp = @pathBkp + '\'
+
     Declare @bkpFile nvarchar(512)
-    Select @bkpFile = @pathBkp+'YourSqlDba_'+REPLACE(CONVERT(nvarchar, Getdate(), 120), ':', '_')+'.bak';
+    Select @bkpFile=bkpFile 
+    From 
+      (select InstanceDefaultBackupPath=CONVERT(nvarchar(512), SERVERPROPERTY('InstanceDefaultBackupPath'))) as InstanceDefaultBackupPath
+      CROSS APPLY (Select pathBkp = IIF(right(InstanceDefaultBackupPath,1) = '\', InstanceDefaultBackupPath, InstanceDefaultBackupPath+'\')) as pathBkp
+      CROSS APPLY (Select BkpTS0=CONVERT(nvarchar(30), Getdate(), 120)) as BkpTS0
+      CROSS APPLY (Select BkpTS1=STUFF(BkpTS0, 11, 1, '_')) as BkpTS1
+      CROSS APPLY (Select BkpTS2=STUFF(BkpTS1, 14, 1, 'h')) as BkpTS2
+      CROSS APPLY (Select BkpTS3=STUFF(BkpTS2, 17, 1, 'm')) as BkpTS3
+      CROSS APPLY (Select DayOfWeekNo=((@@datefirst + DatePart(dw, getdate())) % 7) + 1) as DayOfWeekNo
+      CROSS APPLY
+      (
+      Select DayOfWeek=CHOOSE(DayOfWeekNo, 'Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam') Where @Language like 'Français%'
+      UNION ALL
+      Select DayOfWeek=CHOOSE(DayOfWeekNo, 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat') Where @Language Not like 'Français%'
+      ) as DayOfWeek
+      CROSS APPLY (Select BkpFile=pathBkp+'YourSqlDba_['+BkpTS3+'_'+DayOfWeek+']_Database.Bak') as BkpFile
+
     Declare @version nvarchar(10)
     Select @version = VersionNumber From YourSqlDba.Install.VersionInfo ()
 
