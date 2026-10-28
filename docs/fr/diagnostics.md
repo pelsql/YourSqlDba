@@ -96,10 +96,19 @@ avant de modifier la liste d’exclusion.
 
 Au début de chaque nettoyage, `Maint.DeleteOldBackups`
 vérifie le compte de service du moteur obtenu par
-`sys.dm_server_services`. Il signale que le compte n’est pas membre de `sysadmin`
+`sys.dm_server_services`. Le diagnostic est produit seulement si `ORIGINAL_LOGIN()`
+correspond à ce compte de service ; les connexions sous un autre compte, notamment
+les utilisateurs délégués, ne le produisent pas.
+Il signale que le compte n’est pas membre de `sysadmin`
 et distingue le cas où l’appartenance est indéterminée. Une recherche directe
 dans les membres du rôle complète `IS_SRVROLEMEMBER` pour les comptes que cette
 fonction ne reconnaît pas correctement.
+
+La fonction commune `Maint.IsSysAdminSpecial(@loginName)` retourne une ligne avec
+`IsSysAdmin` à `1`, `0` ou `NULL`, ainsi qu’un `Message` dans la langue de la session
+pour `0` et `NULL`. Les contrôles d’autorisation personnalisés doivent filtrer sur
+`IsSysAdmin = 1` ; la seule présence d’une ligne ne suffit plus à établir
+l’appartenance. Le nettoyage ajoute sa propre racine au message commun.
 
 Le diagnostic est consigné comme erreur dans l’historique du nettoyage et inclus
 dans son rapport autonome ou celui de la maintenance appelante, y compris les

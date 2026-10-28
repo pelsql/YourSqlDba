@@ -113,9 +113,17 @@ before changing the exclusion list.
 
 At the start of each backup cleanup, `Maint.DeleteOldBackups`
 checks the Database Engine service account obtained from `sys.dm_server_services`.
+The diagnostic applies only when `ORIGINAL_LOGIN()` matches that service account;
+connections using another login, including delegated users, do not produce it.
 It warns when the account is not a `sysadmin` member, and reports an indeterminate
 result separately. A direct role-membership lookup supplements `IS_SRVROLEMEMBER`
 for accounts that the latter does not recognize correctly.
+
+The shared function `Maint.IsSysAdminSpecial(@loginName)` returns one row with
+`IsSysAdmin` equal to `1`, `0`, or `NULL`, plus a localized `Message` for `0`
+and `NULL`. Custom authorization checks must filter on `IsSysAdmin = 1`;
+testing only whether the function returns a row no longer establishes membership.
+Backup cleanup adds its own message prefix to this shared diagnostic.
 
 The diagnostic is logged as an error in the cleanup history and included in the
 standalone cleanup report or the calling maintenance report, including log-backup

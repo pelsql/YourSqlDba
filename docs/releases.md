@@ -19,6 +19,8 @@ the logged error.
 
 - Improved sysadmin membership detection, retaining the direct-membership
   workaround for accounts that `IS_SRVROLEMEMBER` does not recognize correctly.
+  `Maint.IsSysAdminSpecial` now returns one row with an `IsSysAdmin` result and a
+  localized diagnostic. Custom callers using `EXISTS` must add `Where IsSysAdmin=1`.
 - `Maint.DeleteOldBackups` now checks the Database Engine service account and
   logs a diagnostic when it is not a sysadmin member or membership cannot be
   determined. Cleanup and other maintenance operations, including backups,

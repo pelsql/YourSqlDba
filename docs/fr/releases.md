@@ -20,6 +20,9 @@ nécessaires, notamment les sauvegardes. Le rapport final signale l’erreur con
 - Amélioration de la détection de l’appartenance à sysadmin, en conservant le
   recours à l’appartenance directe pour les comptes que `IS_SRVROLEMEMBER`
   ne reconnaît pas correctement.
+  `Maint.IsSysAdminSpecial` retourne maintenant une ligne avec un résultat
+  `IsSysAdmin` et un diagnostic traduit. Les appels personnalisés utilisant
+  `EXISTS` doivent ajouter `Where IsSysAdmin=1`.
 - `Maint.DeleteOldBackups` vérifie maintenant le compte de service du moteur et
   consigne un diagnostic si le compte n’est pas membre de sysadmin ou si son
   appartenance est indéterminée. Le nettoyage et les autres opérations de

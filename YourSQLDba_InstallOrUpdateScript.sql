@@ -5185,27 +5185,49 @@ GO
 Create Or Alter Function Maint.IsSysAdminSpecial(@loginName sysname)
 -- Because IS_SrvRoleMember fails to identify a Windows account with no domain as sysadmin
 -- typical case, a microsoft account on a personal computer outside a domainé
--- And the next function yMaint.ValidateDelegatedDbManagement must succeed in all cases
+-- Always return one row: IsSysAdmin is 1, 0, or NULL when membership is undetermined.
+-- Authorization callers must explicitly filter on IsSysAdmin=1.
 Returns Table 
 as
 Return 
-  -- if succeed keep it
-  Select RoleName = 'sysadmin', MemberName = @LoginName, type_desc = '', sid = SUSER_SID(@LoginName)
-  Where IS_SRVROLEMEMBER('sysadmin', @loginName) = 1
-
-  Union all
-
-  -- if it doesn't, try this workaround (which do not handle sysadmin inherited by group membership)
-  SELECT  r.name AS RoleName,  p.name AS MemberName,  p.type_desc,  p.sid
-  FROM 
-    sys.server_role_members AS rm
-    JOIN sys.server_principals AS r
-    ON r.principal_id = rm.role_principal_id
-    JOIN sys.server_principals AS p
-    ON p.principal_id = rm.member_principal_id
-  WHERE r.name = N'sysadmin'
-    And p.name = @loginName 
-    And IS_SRVROLEMEMBER('sysadmin', @loginName) = 0
+Select
+  RoleName = IIF(IsSysAdmin=1, N'sysadmin', NULL)
+, MemberName = LoginName
+, p.type_desc
+, p.sid
+, IsSysAdmin
+, Message
+From
+  (Select LoginName=@loginName) as LoginName
+  LEFT JOIN sys.server_principals as p ON p.name=LoginName
+  CROSS APPLY (Select SysAdminMembership=IS_SRVROLEMEMBER('sysadmin', LoginName)) as SysAdminMembership
+  OUTER APPLY
+  (
+  -- Direct membership also resolves false negatives and indeterminate results.
+  -- This fallback does not resolve membership inherited through Windows groups.
+  Select DirectSysAdmin=1
+  From
+    sys.server_role_members as rm
+    JOIN sys.server_principals as r ON r.principal_id=rm.role_principal_id
+  Where r.name=N'sysadmin'
+    And rm.member_principal_id=p.principal_id
+  ) as DirectSysAdmin
+  CROSS APPLY (Select IsSysAdmin=IIF(DirectSysAdmin=1, 1, SysAdminMembership)) as IsSysAdmin
+  CROSS APPLY (Select AccountName=ISNULL(LoginName, N'(unknown / inconnu)')) as AccountName
+  OUTER APPLY
+  (
+  Select Message=N'Login: '+AccountName+N'. This account is not a member of sysadmin. Review its SQL Server login, server role membership, and Windows groups.'
+  Where IsSysAdmin=0 And @@LANGUAGE <> 'français'
+  UNION ALL
+  Select Message=N'Connexion : '+AccountName+N'. Ce compte n''est pas membre de sysadmin. Vérifier sa connexion SQL Server, son appartenance aux rôles serveur et ses groupes Windows.'
+  Where IsSysAdmin=0 And @@LANGUAGE = 'français'
+  UNION ALL
+  Select Message=N'Unable to determine sysadmin membership for login: '+AccountName+N'. Check login visibility and Windows group resolution. This result does not establish that the account is not a sysadmin.'
+  Where IsSysAdmin IS NULL And @@LANGUAGE <> 'français'
+  UNION ALL
+  Select Message=N'Impossible de déterminer l''appartenance à sysadmin de la connexion : '+AccountName+N'. Vérifier la visibilité des connexions et la résolution des groupes Windows. Ce résultat ne prouve pas que le compte n''est pas sysadmin.'
+  Where IsSysAdmin IS NULL And @@LANGUAGE = 'français'
+  ) as Message
 GO
 Create Or Alter Function yMaint.ValidateDelegatedDbManagement
 (
@@ -5227,7 +5249,7 @@ From
   , E.MaintenanceModeSuffix
   From (select MaintenanceModeSuffix From Maint.MaintenanceEnums) as E
   ) as Prm
-  OUTER APPLY (Select SysAdminMember=MemberName From Maint.IsSysAdminSpecial (ORIGINAL_LOGIN())) as isSysAdmin 
+  OUTER APPLY (Select SysAdminMember=MemberName From Maint.IsSysAdminSpecial (ORIGINAL_LOGIN()) Where IsSysAdmin=1) as isSysAdmin 
   CROSS APPLY (Select ExpectedTargetPattern = SourceDbRaw + '[_]_%') As ExpectedTargetPattern
   CROSS APPLY (Select ExpectedMaintenanceModeTarget = SourceDbRaw + '_' + MaintenanceModeSuffix) as ExpectedMaintenanceModeTarget
   CROSS APPLY 
@@ -8937,43 +8959,20 @@ Begin
     , @Info = 'Start of backup cleanup'
 
   Declare @ServiceAccountMessage nvarchar(max)
-  -- Check the configured Database Engine account, not the caller or SQL Agent account.
+  -- Report only when the original connection uses the Database Engine service account.
   -- A service SID may grant effective rights independently of this account's membership.
-  Select @ServiceAccountMessage = RootMsg+ServiceAccountMessage
+  Select @ServiceAccountMessage = RootMsg+Message
   From
     (Select EngineProcessId=CONVERT(int, SERVERPROPERTY('ProcessID'))) as EngineProcessId
     OUTER APPLY (Select service_account From sys.dm_server_services Where process_id=EngineProcessId) as EngineService
-    CROSS APPLY (Select SysAdminMembership=IS_SRVROLEMEMBER('sysadmin', service_account)) as SysAdminMembership
-    OUTER APPLY
-    (
-    Select DirectSysAdmin=1
-    From
-      sys.server_role_members as rm
-      JOIN sys.server_principals as r ON r.principal_id=rm.role_principal_id
-      JOIN sys.server_principals as p ON p.principal_id=rm.member_principal_id
-    Where r.name=N'sysadmin' And p.name=service_account
-    ) as DirectSysAdmin
-    CROSS APPLY (Select EffectiveMembership=IIF(DirectSysAdmin=1, 1, SysAdminMembership)) as EffectiveMembership
+    CROSS APPLY Maint.IsSysAdminSpecial(service_account) as ServiceAccountStatus
     CROSS APPLY 
     (
     Select rootMsg = 'Old backup deletion won''t be done because: ' Where @@LANGUAGE <> 'français' 
     Union All
     Select rootMsg = 'La suppression des anciennes sauvegardes ne sera pas effectuée: ' Where @@LANGUAGE = 'français'
     ) as RootMsg 
-    CROSS APPLY
-    (
-    Select ServiceAccountMessage=N'SQL Server Database Engine service account: '+service_account+N'. This account is not a member of sysadmin. Review the SQL Server login and role configuration. A service SID may grant rights separately; also verify share and NTFS permissions for backup folders.'
-    Where EffectiveMembership=0 And @@LANGUAGE <> 'français'
-    UNION ALL
-    Select ServiceAccountMessage=N'Compte de service du moteur SQL Server : '+service_account+N'. Ce compte n''est pas membre de sysadmin. Vérifier la connexion SQL Server et les rôles attribués. Une identité de service peut accorder des droits séparément ; vérifier aussi les droits du partage et NTFS des répertoires de sauvegarde.'
-    Where EffectiveMembership=0 And @@LANGUAGE = 'français'
-    UNION ALL
-    Select ServiceAccountMessage=N'Unable to determine sysadmin membership for the SQL Server Database Engine service account: '+ISNULL(service_account, N'(account unavailable)')+N'. Check login visibility, Windows group resolution, and SQL Server service configuration. This result does not establish that the account is not a sysadmin.'
-    Where EffectiveMembership IS NULL And @@LANGUAGE <> 'français'
-    UNION ALL
-    Select ServiceAccountMessage=N'Impossible de déterminer l''appartenance à sysadmin du compte de service du moteur SQL Server : '+ISNULL(service_account, N'(compte indisponible)')+N'. Vérifier la visibilité des connexions, la résolution des groupes Windows et la configuration du service SQL Server. Ce résultat ne prouve pas que le compte n''est pas sysadmin.'
-    Where EffectiveMembership IS NULL And @@LANGUAGE = 'français'
-    ) as ServiceAccountMessage
+  Where service_account=ORIGINAL_LOGIN()
 
   If @ServiceAccountMessage IS NOT NULL
   Begin
@@ -8996,7 +8995,7 @@ Begin
   Where  
     -- non sysadmins can only clean up backups of databases that are in their delegated list
     -- so remove those who aren't in the delegated list
-    Not Exists (Select * From Maint.IsSysAdminSpecial(ORIGINAL_LOGIN()))
+    Not Exists (Select * From Maint.IsSysAdminSpecial(ORIGINAL_LOGIN()) Where IsSysAdmin=1)
     And 
     Not Exists
     (
@@ -9036,7 +9035,7 @@ Begin
     , DeleteOnlyLogDiffBackups = @DeleteOnlyLogDiffBackups
     , BkpRetDays=@BkpRetDays
     , BkpRetDaysForUnSelectedDb=@BkpRetDaysForUnSelectedDb
-    , IsSysAdmin=(Select Top 1 1 From Maint.IsSysAdminSpecial(ORIGINAL_LOGIN()))
+    , IsSysAdmin=(Select Top 1 1 From Maint.IsSysAdminSpecial(ORIGINAL_LOGIN()) Where IsSysAdmin=1)
     , ValidPath=IIF(right(@path, 1)='\', @path, @path + '\')
     From dbo.MainContextInfo(null) as ctx
     ) as Prm
@@ -11553,7 +11552,7 @@ Begin
   -- Sysadmin users are not restricted to delegated targets. For them, killing
   -- sessions automatically could affect an unrelated or production database after
   -- a parameter mistake, so they must handle active sessions explicitly.
-  If Not Exists(Select * From Maint.IsSysAdminSpecial (ORIGINAL_LOGIN()))
+  If Not Exists(Select * From Maint.IsSysAdminSpecial (ORIGINAL_LOGIN()) Where IsSysAdmin=1)
      And DB_ID(@TargetDb) Is Not Null
   Begin
     Exec S#.KillDbUsers @db=@QuotedTargetDb
@@ -11830,7 +11829,7 @@ Begin
   -- Sysadmin users are not restricted to delegated targets. For them, killing
   -- sessions automatically could affect an unrelated or production database after
   -- a parameter mistake, so they must handle active sessions explicitly.
-  If Not Exists(Select * From Maint.IsSysAdminSpecial (ORIGINAL_LOGIN()))
+  If Not Exists(Select * From Maint.IsSysAdminSpecial (ORIGINAL_LOGIN()) Where IsSysAdmin=1)
      And DB_ID(@TargetDb) Is Not Null
   Begin
     Exec S#.KillDbUsers @db=@QuotedTargetDb
@@ -12103,7 +12102,7 @@ Begin
   -- Sysadmin users are not restricted to delegated targets. For them, killing
   -- sessions automatically could affect an unrelated or production database after
   -- a parameter mistake, so they must handle active sessions explicitly.
-  If Not Exists(Select * From Maint.IsSysAdminSpecial (ORIGINAL_LOGIN()))
+  If Not Exists(Select * From Maint.IsSysAdminSpecial (ORIGINAL_LOGIN()) Where IsSysAdmin=1)
      And DB_ID(@TargetDb) Is Not Null
   Begin
     Exec S#.KillDbUsers @db=@QuotedTargetDb
