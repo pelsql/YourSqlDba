@@ -5,14 +5,36 @@ parent: YourSqlDba documentation
 nav_order: 60
 ---
 
-## Latest release: 7.1.0.13
-**[Get script 7.1.0.13](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)**
+## Latest release: 7.1.0.14
+**[Get script 7.1.0.14](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)**
+
+Released October 28, 2026.
+
+**Requirement for global maintenance:** The SQL Server Database Engine service
+account must be a member of the `sysadmin` server role for global maintenance
+through `Maint.YourSqlDba_DoMaint`. Missing membership can prevent backup cleanup.
+The diagnostic is logged without immediately stopping maintenance, so that other
+necessary operations, including backups, can proceed. The final report signals
+the logged error.
+
+- Improved sysadmin membership detection, retaining the direct-membership
+  workaround for accounts that `IS_SRVROLEMEMBER` does not recognize correctly.
+- `Maint.DeleteOldBackups` now checks the Database Engine service account and
+  logs a diagnostic when it is not a sysadmin member or membership cannot be
+  determined. Cleanup and other maintenance operations, including backups,
+  continue; the final maintenance report signals the logged errors.
+- Added an English and French [backup cleanup reference](maintenance/delete-old-backups.md),
+  with current parameters, retention rules, permissions, and standalone examples.
+
+# Version history and release notes
+
+**Version 7.1.0.13**
+
+**[Get script 7.1.0.13](https://raw.githubusercontent.com/pelsql/YourSqlDba/4b703c1823e95f78c7476cbb0695b63464ed80af/YourSQLDba_InstallOrUpdateScript.sql)**
 
 Old backup cleanup has been improved. The `YourSqlDba` database is now backed up
 separately at the end of maintenance to preserve the most complete and up-to-date
 maintenance history possible for recovery after a major server failure.
-
-# Version history and release notes
 
 **Version 7.1.0.12**
 
@@ -79,7 +101,7 @@ maintenance history possible for recovery after a major server failure.
    had been attributed to this behavior, the function was corrected to
    guarantee that order.
 
-[View script 7.1.0.12 on GitHub](../YourSQLDba_InstallOrUpdateScript.sql)
+[View script 7.1.0.12 on GitHub](https://github.com/pelsql/YourSqlDba/blob/7108bbbc96cce2172265598679b73473fd472f76/YourSQLDba_InstallOrUpdateScript.sql)
 
 **[Get script 7.1.0.12](https://raw.githubusercontent.com/pelsql/YourSqlDba/7108bbbc96cce2172265598679b73473fd472f76/YourSQLDba_InstallOrUpdateScript.sql)**
 

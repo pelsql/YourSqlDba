@@ -58,6 +58,7 @@ QuickLinks
 - Who YourSqlDba is for: [Introduction](Who-YourSqlDba-is-for.md)
 - Installation and first-time setup: [Installation guide](installation.md)
 - Main maintenance entry point: [`Maint.YourSqlDba_DoMaint`](maintenance/your-sql-dba-domaint.md)
+- Backup cleanup: [Delete old backups](maintenance/delete-old-backups.md)
 - Delegated database management: [Controlled backup, restore, database refresh, cleanup, and application-upgrade operations for selected non-sysadmin users](maintenance/delegated-database-management.md)
 - Mirror and migration preparation: [Restore-based mirroring, migration testing, and failover](maintenance/mirror-standby-migration.md)
 - Job reporting and diagnostics: [`Maint.HistoryView`, Database Mail, and performance diagnostics](diagnostics.md)

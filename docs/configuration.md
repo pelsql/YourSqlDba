@@ -141,6 +141,8 @@ A value of `NULL` disables cleanup for that backup type.
 Retention applies only to files YourSqlDba can recognize as part of its backup
 naming rules.
 
+See [Delete old backups](maintenance/delete-old-backups.md) for detailed cleanup rules and standalone examples.
+
 ## Spread maintenance work
 
 Use these parameters to reduce work per run:

@@ -65,6 +65,7 @@ Liens rapides
 - [Installation et mise à niveau](installation.md)
 - [Configuration](configuration.md)
 - [`Maint.YourSqlDba_DoMaint`](maintenance/your-sql-dba-domaint.md), point d’entrée principal de la maintenance
+- [Suppression des anciennes sauvegardes](maintenance/delete-old-backups.md)
 - [Délégation de la gestion de base de données](maintenance/delegated-database-management.md)
 - [Miroir, standby et tests de migration](maintenance/mirror-standby-migration.md)
 - [Référence des procédures de mirroring](maintenance/mirroring-reference.md)

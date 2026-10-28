@@ -109,6 +109,21 @@ databases, can be excluded with
 [`Maint.YourSqlDba_DoMaint` recovery model policy](maintenance/your-sql-dba-domaint.md#recovery-model-policy)
 before changing the exclusion list.
 
+### Database Engine service account and sysadmin
+
+At the start of each backup cleanup, `Maint.DeleteOldBackups`
+checks the Database Engine service account obtained from `sys.dm_server_services`.
+It warns when the account is not a `sysadmin` member, and reports an indeterminate
+result separately. A direct role-membership lookup supplements `IS_SRVROLEMEMBER`
+for accounts that the latter does not recognize correctly.
+
+The diagnostic is logged as an error in the cleanup history and included in the
+standalone cleanup report or the calling maintenance report, including log-backup
+runs that perform cleanup. It does not stop file enumeration or deletion.
+No permissions are changed automatically. SQL Server
+can also receive rights through its per-service SID; account membership and
+share/NTFS permissions on backup folders must be considered separately.
+
 ## Maintenance diagnostics with Maint.HistoryView
 
 `Maint.HistoryView` is the primary diagnostic and reporting tool for YourSqlDba

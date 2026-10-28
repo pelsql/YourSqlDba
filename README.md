@@ -59,11 +59,12 @@ including functions, stored procedures, and views. Most operate behind the
 scheduled maintenance jobs, while some are also useful for occasional DBA work.
 
 
-## Latest release: 7.1.0.13
+## Latest release: 7.1.0.14
 
-Old backup cleanup and logging have been improved. The `YourSqlDba` database is
-now backed up separately at the end of maintenance to preserve the most complete
-and up-to-date maintenance history possible.
+Sysadmin membership detection has been improved. Backup cleanup now checks the
+SQL Server Database Engine service account and logs configuration anomalies
+without stopping the remaining maintenance operations, including backups.
+The final maintenance report signals the logged errors.
 
 For details about earlier releases, including the breaking change introduced in
 version 7.1.0.12, see the [online release notes](https://pelsql.github.io/YourSqlDba/releases.html).

@@ -5,15 +5,40 @@ parent: YourSqlDba documentation (fr)
 nav_order: 60
 ---
 
-## Dernière version : 7.1.0.13
-**[Obtenir script 7.1.0.13](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)**
+## Dernière version : 7.1.0.14
+**[Obtenir script 7.1.0.14](https://raw.githubusercontent.com/pelsql/YourSqlDba/refs/heads/master/YourSQLDba_InstallOrUpdateScript.sql)**
+
+Publication le 28 octobre 2026.
+
+**Prérequis pour la maintenance globale :** Le compte de service du moteur SQL
+Server doit être membre du rôle serveur `sysadmin` pour la maintenance globale
+exécutée par `Maint.YourSqlDba_DoMaint`. L’absence de cette appartenance peut
+empêcher la suppression des anciennes sauvegardes. Le diagnostic est consigné
+sans arrêt immédiat de la maintenance afin de poursuivre les autres opérations
+nécessaires, notamment les sauvegardes. Le rapport final signale l’erreur consignée.
+
+- Amélioration de la détection de l’appartenance à sysadmin, en conservant le
+  recours à l’appartenance directe pour les comptes que `IS_SRVROLEMEMBER`
+  ne reconnaît pas correctement.
+- `Maint.DeleteOldBackups` vérifie maintenant le compte de service du moteur et
+  consigne un diagnostic si le compte n’est pas membre de sysadmin ou si son
+  appartenance est indéterminée. Le nettoyage et les autres opérations de
+  maintenance, notamment les sauvegardes, continuent ; le rapport final signale
+  les erreurs consignées.
+- Ajout d’une [référence du nettoyage des sauvegardes](maintenance/delete-old-backups.md)
+  en français et en anglais : paramètres actuels, règles de conservation, droits
+  et exemples d’appels autonomes.
+
+# Historique des versions et notes de version
+
+**Version 7.1.0.13**
+
+**[Obtenir script 7.1.0.13](https://raw.githubusercontent.com/pelsql/YourSqlDba/4b703c1823e95f78c7476cbb0695b63464ed80af/YourSQLDba_InstallOrUpdateScript.sql)**
 
 Le nettoyage des anciennes sauvegardes a été amélioré. La base de données
 `YourSqlDba` est maintenant sauvegardée séparément à la fin de la maintenance
 afin de conserver un historique de maintenance aussi complet et à jour que
 possible pour la récupération après une panne majeure du serveur.
-
-# Historique des versions et notes de version
 
 **Version 7.1.0.12**
 
@@ -75,7 +100,7 @@ possible pour la récupération après une panne majeure du serveur.
    éléments JSON fournis en entrée. Bien qu’aucun problème connu n’ait été attribué à ce comportement,
    la fonction a été corrigée afin de garantir cet ordre.
 
-[Voir script 7.1.0.12 sur GitHub](../YourSQLDba_InstallOrUpdateScript.sql)
+[Voir script 7.1.0.12 sur GitHub](https://github.com/pelsql/YourSqlDba/blob/7108bbbc96cce2172265598679b73473fd472f76/YourSQLDba_InstallOrUpdateScript.sql)
 
 **[Obtenir script 7.1.0.12](https://raw.githubusercontent.com/pelsql/YourSqlDba/7108bbbc96cce2172265598679b73473fd472f76/YourSQLDba_InstallOrUpdateScript.sql)**
 

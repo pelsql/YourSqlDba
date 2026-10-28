@@ -223,6 +223,8 @@ Des valeurs plus élevées sont utiles lorsque le dossier doit conserver plusieu
 
 La rétention s’applique aux fichiers que YourSqlDba peut identifier comme faisant partie de ses règles de nommage de sauvegarde. Les fichiers qui n'obéissent pas à ces règles sont ignorés. Il incombe au DBA de les gérer.
 
+Voir [Suppression des anciennes sauvegardes](delete-old-backups.md) pour les paramètres, les règles de nommage, les appels autonomes et les droits.
+
 ## Répartir le travail de maintenance
 
 Deux paramètres réduisent la quantité de travail effectuée dans une seule exécution :

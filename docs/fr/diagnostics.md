@@ -92,6 +92,23 @@ peuvent être exclues avec `@ExcDbFromPolicy_CheckFullRecoveryModel`.
 Examinez la [politique de mode de récupération de `Maint.YourSqlDba_DoMaint`](maintenance/your-sql-dba-domaint.md#recovery-model-policy)
 avant de modifier la liste d’exclusion.
 
+### Compte de service du moteur et appartenance à sysadmin
+
+Au début de chaque nettoyage, `Maint.DeleteOldBackups`
+vérifie le compte de service du moteur obtenu par
+`sys.dm_server_services`. Il signale que le compte n’est pas membre de `sysadmin`
+et distingue le cas où l’appartenance est indéterminée. Une recherche directe
+dans les membres du rôle complète `IS_SRVROLEMEMBER` pour les comptes que cette
+fonction ne reconnaît pas correctement.
+
+Le diagnostic est consigné comme erreur dans l’historique du nettoyage et inclus
+dans son rapport autonome ou celui de la maintenance appelante, y compris les
+sauvegardes de journaux qui effectuent un nettoyage. Il n’arrête pas l’énumération
+ni la suppression des fichiers. Aucun droit n’est modifié automatiquement.
+SQL Server peut aussi recevoir des droits par son identité propre au service ;
+l’appartenance du compte et les droits de partage/NTFS des répertoires de
+sauvegarde doivent être examinés séparément.
+
 ## Diagnostics de maintenance avec Maint.HistoryView
 
 `Maint.HistoryView` est l’outil de diagnostic et de reporting principal pour la maintenance YourSqlDba.

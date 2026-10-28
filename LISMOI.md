@@ -43,12 +43,13 @@ l'[historique des versions et notes de version](https://pelsql.github.io/YourSql
 
 YourSqlDba est un grand script T-SQL qui automatise les tâches de maintenance de bases de données pour SQL Server. Il crée une base de données nommée `YourSqlDba` qui contient des modules T-SQL, dont des fonctions, des procédures stockées et des vues. La plupart fonctionnent derrière les travaux de maintenance planifiés, tandis que certains sont aussi utiles pour des travaux DBA occasionnels.
 
-## Dernière version : 7.1.0.13
+## Dernière version : 7.1.0.14
 
-Le nettoyage des anciennes sauvegardes et la journalisation ont été améliorés.
-La base de données `YourSqlDba` est maintenant sauvegardée séparément à la fin de
-la maintenance afin de conserver un historique de maintenance aussi complet et
-à jour que possible.
+La détection de l’appartenance à sysadmin a été améliorée. Le nettoyage des
+sauvegardes vérifie maintenant le compte de service du moteur SQL Server et
+consigne les anomalies de configuration sans interrompre les autres opérations
+de maintenance, notamment les sauvegardes. Le rapport final signale les erreurs
+consignées.
 
 Pour les détails des versions précédentes, notamment le changement incompatible
 introduit dans la version 7.1.0.12, consultez les

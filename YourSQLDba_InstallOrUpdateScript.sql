@@ -24,7 +24,7 @@
 Drop Table if Exists #version
 create table #Version (version nvarchar(40), VersionDate datetime)
 set nocount on
-insert into #Version Values ('7.1.0.13', convert(datetime, '2026-01-01', 120))  
+insert into #Version Values ('7.1.0.14', convert(datetime, '2026-01-01', 120))  
 
 --Alter database yoursqldba set single_user with rollback immediate
 --go
@@ -5189,18 +5189,23 @@ Create Or Alter Function Maint.IsSysAdminSpecial(@loginName sysname)
 Returns Table 
 as
 Return 
-SELECT
-  r.name AS RoleName,
-  p.name AS MemberName,
-  p.type_desc,
-  p.sid
-FROM sys.server_role_members AS rm
-JOIN sys.server_principals AS r
-  ON r.principal_id = rm.role_principal_id
-JOIN sys.server_principals AS p
-  ON p.principal_id = rm.member_principal_id
-WHERE r.name = N'sysadmin'  
-  And p.name = @loginName
+  -- if succeed keep it
+  Select RoleName = 'sysadmin', MemberName = @LoginName, type_desc = '', sid = SUSER_SID(@LoginName)
+  Where IS_SRVROLEMEMBER('sysadmin', @loginName) = 1
+
+  Union all
+
+  -- if it doesn't, try this workaround (which do not handle sysadmin inherited by group membership)
+  SELECT  r.name AS RoleName,  p.name AS MemberName,  p.type_desc,  p.sid
+  FROM 
+    sys.server_role_members AS rm
+    JOIN sys.server_principals AS r
+    ON r.principal_id = rm.role_principal_id
+    JOIN sys.server_principals AS p
+    ON p.principal_id = rm.member_principal_id
+  WHERE r.name = N'sysadmin'
+    And p.name = @loginName 
+    And IS_SRVROLEMEMBER('sysadmin', @loginName) = 0
 GO
 Create Or Alter Function yMaint.ValidateDelegatedDbManagement
 (
@@ -8931,6 +8936,51 @@ Begin
       @context = 'Maint.DeleteOldBackups'
     , @Info = 'Start of backup cleanup'
 
+  Declare @ServiceAccountMessage nvarchar(max)
+  -- Check the configured Database Engine account, not the caller or SQL Agent account.
+  -- A service SID may grant effective rights independently of this account's membership.
+  Select @ServiceAccountMessage = RootMsg+ServiceAccountMessage
+  From
+    (Select EngineProcessId=CONVERT(int, SERVERPROPERTY('ProcessID'))) as EngineProcessId
+    OUTER APPLY (Select service_account From sys.dm_server_services Where process_id=EngineProcessId) as EngineService
+    CROSS APPLY (Select SysAdminMembership=IS_SRVROLEMEMBER('sysadmin', service_account)) as SysAdminMembership
+    OUTER APPLY
+    (
+    Select DirectSysAdmin=1
+    From
+      sys.server_role_members as rm
+      JOIN sys.server_principals as r ON r.principal_id=rm.role_principal_id
+      JOIN sys.server_principals as p ON p.principal_id=rm.member_principal_id
+    Where r.name=N'sysadmin' And p.name=service_account
+    ) as DirectSysAdmin
+    CROSS APPLY (Select EffectiveMembership=IIF(DirectSysAdmin=1, 1, SysAdminMembership)) as EffectiveMembership
+    CROSS APPLY 
+    (
+    Select rootMsg = 'Old backup deletion won''t be done because: ' Where @@LANGUAGE <> 'français' 
+    Union All
+    Select rootMsg = 'La suppression des anciennes sauvegardes ne sera pas effectuée: ' Where @@LANGUAGE = 'français'
+    ) as RootMsg 
+    CROSS APPLY
+    (
+    Select ServiceAccountMessage=N'SQL Server Database Engine service account: '+service_account+N'. This account is not a member of sysadmin. Review the SQL Server login and role configuration. A service SID may grant rights separately; also verify share and NTFS permissions for backup folders.'
+    Where EffectiveMembership=0 And @@LANGUAGE <> 'français'
+    UNION ALL
+    Select ServiceAccountMessage=N'Compte de service du moteur SQL Server : '+service_account+N'. Ce compte n''est pas membre de sysadmin. Vérifier la connexion SQL Server et les rôles attribués. Une identité de service peut accorder des droits séparément ; vérifier aussi les droits du partage et NTFS des répertoires de sauvegarde.'
+    Where EffectiveMembership=0 And @@LANGUAGE = 'français'
+    UNION ALL
+    Select ServiceAccountMessage=N'Unable to determine sysadmin membership for the SQL Server Database Engine service account: '+ISNULL(service_account, N'(account unavailable)')+N'. Check login visibility, Windows group resolution, and SQL Server service configuration. This result does not establish that the account is not a sysadmin.'
+    Where EffectiveMembership IS NULL And @@LANGUAGE <> 'français'
+    UNION ALL
+    Select ServiceAccountMessage=N'Impossible de déterminer l''appartenance à sysadmin du compte de service du moteur SQL Server : '+ISNULL(service_account, N'(compte indisponible)')+N'. Vérifier la visibilité des connexions, la résolution des groupes Windows et la configuration du service SQL Server. Ce résultat ne prouve pas que le compte n''est pas sysadmin.'
+    Where EffectiveMembership IS NULL And @@LANGUAGE = 'français'
+    ) as ServiceAccountMessage
+
+  If @ServiceAccountMessage IS NOT NULL
+  Begin
+    Exec yExecNLog.LogAndOrExec
+      @context = 'Maint.DeleteOldBackups'
+    , @err = @ServiceAccountMessage
+  End
 
   Drop table if exists #tDb
   SELECT DbName=D.Db Collate Database_Default, D.db_owner, D.FullRecoveryMode, D.compatibility_level

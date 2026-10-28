@@ -243,6 +243,8 @@ Retention applies to backup files that YourSqlDba can identify as part of its
 maintenance naming rules. Files that do not follow these rules are ignored.
 It is the responsibility of the DBA to manage them.
 
+See [Delete old backups](delete-old-backups.md) for the cleanup parameters, filename rules, standalone calls, and permissions.
+
 ## Spreading maintenance work
 
 Two parameters reduce the amount of work performed in a single maintenance run:

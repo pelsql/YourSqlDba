@@ -138,6 +138,8 @@ Une valeur `NULL` désactive le nettoyage pour ce type de sauvegarde.
 
 La rétention s’applique uniquement aux fichiers que YourSqlDba peut reconnaître comme faisant partie de ses règles de nommage de sauvegarde.
 
+Voir [Suppression des anciennes sauvegardes](maintenance/delete-old-backups.md) pour les règles détaillées et les exemples d’appels autonomes.
+
 ## Répartir le travail de maintenance
 
 Utilisez ces paramètres pour réduire la charge par exécution :
